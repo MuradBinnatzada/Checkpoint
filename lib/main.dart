@@ -2797,8 +2797,18 @@ class GameDetailScreen extends StatelessWidget {
             final top = MediaQuery.paddingOf(context).top;
             final collapsed = kToolbarHeight + top;
             final t = ((c.maxHeight - collapsed) / (_expanded - kToolbarHeight)).clamp(0.0, 1.0).toDouble();
+            // Full (un-collapsed) height of the bar; the hero is always laid out at
+            // this height so it never gets squeezed while the bar collapses.
+            final full = context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>()?.maxExtent ?? (_expanded + top);
             return Stack(fit: StackFit.expand, children: [
-              Opacity(opacity: t, child: _DetailHeaderArt(game: game, topInset: top)),
+              ClipRect(
+                child: OverflowBox(
+                  alignment: Alignment.bottomCenter,
+                  minHeight: full,
+                  maxHeight: full,
+                  child: Opacity(opacity: t, child: _DetailHeaderArt(game: game, topInset: top)),
+                ),
+              ),
               Positioned(
                 left: 68,
                 right: 20,
@@ -2903,30 +2913,39 @@ class _DetailHeaderArt extends StatelessWidget {
       ),
       Padding(
         padding: EdgeInsets.fromLTRB(20, topInset + kToolbarHeight, 20, 20),
-        child: Align(
-          alignment: Alignment.bottomLeft,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Container(
-              width: 118,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 10))],
-              ),
-              child: CoverArt(game: game, radius: 14),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
-                const SizedBox(height: 6),
-                Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text('Released ${game.releaseYear}', style: const TextStyle(color: Colors.white60, fontSize: 13)),
-                const SizedBox(height: 10),
-                Wrap(spacing: 6, runSpacing: 6, children: [for (final p in game.platforms) PlatformBadge(p, dense: true)]),
+        // FittedBox(scaleDown) is a safety net: at normal sizes it does nothing, but a
+        // long title + many platform chips + a large system font shrinks the block to
+        // fit instead of overflowing/clipping.
+        child: LayoutBuilder(
+          builder: (context, c) => FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.bottomLeft,
+            child: SizedBox(
+              width: c.maxWidth,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Container(
+                  width: 118,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 10))],
+                  ),
+                  child: CoverArt(game: game, radius: 14),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
+                    const SizedBox(height: 6),
+                    Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text('Released ${game.releaseYear}', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 6, runSpacing: 6, children: [for (final p in game.platforms) PlatformBadge(p, dense: true)]),
+                  ]),
+                ),
               ]),
             ),
-          ]),
+          ),
         ),
       ),
     ]);
