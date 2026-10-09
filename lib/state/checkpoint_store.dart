@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide SortField;
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -32,6 +33,15 @@ class CheckpointStore extends ChangeNotifier {
 
   final CheckpointRepository _repository;
   final AuthService _authService;
+
+  final GameApiService _apiService = GameApiService();
+  List<Game> _searchResults = [];
+  List<Game> get searchResults => _searchResults;
+
+  Future<void> searchExternalGames(String query) async {
+    _searchResults = await _apiService.searchGames(query);
+    notifyListeners();
+  }
 
   User? _user;
   UserProfile _profile;
@@ -120,6 +130,50 @@ class CheckpointStore extends ChangeNotifier {
     );
     _followingIds = await _repository.fetchFollowingIds(user.id);
     _followersCount = await _repository.fetchFollowersCount(user.id);
+  }
+
+  Future<void> removeFromLibrary(String id) async {
+    final current = _user;
+    if (current == null) return;
+
+    // Remove from local library list
+    _libraryGames = List.unmodifiable(_libraryGames.where((g) => g.id != id));
+    
+    // Find the catalog version of the game and reset its status
+    final game = gameById(id);
+    final catalogById = <String, Game>{for (final g in _games) g.id: g};
+    // Revert to a clean catalog state (stripping status, rating, hours)
+    catalogById[id] = game.copyWith(
+      hoursPlayed: 0,
+      targetHours: 0,
+      rating: 0,
+    ); // Note: You may need to manually set status to null if your copyWith ignores nulls
+
+    _games = List.unmodifiable(catalogById.values.toList()..sort((a, b) => a.title.compareTo(b.title)));
+    notifyListeners();
+
+    try {
+      await _repository.deleteUserGame(current.id, id);
+    } catch (e) {
+      debugPrint('Delete failed: $e');
+    }
+  }
+
+  Future<void> toggleFavorite(String id) async {
+    final game = gameById(id);
+    final isCurrentlyFavorite = game.isFavorite;
+
+    // Enforce Top 4 Limit
+    final currentFavorites = _libraryGames.where((g) => g.isFavorite).length;
+    if (!isCurrentlyFavorite && currentFavorites >= 4) {
+      _lastError = 'You can only have 4 favorite games.';
+      notifyListeners();
+      return;
+    }
+
+    final next = game.copyWith(isFavorite: !isCurrentlyFavorite);
+    _replaceGame(next);
+    await _saveUserGame(next);
   }
 
   List<Game> _mergeCatalogAndUserGames(
@@ -408,6 +462,9 @@ class CheckpointStore extends ChangeNotifier {
     for (final g in _games) {
       if (g.id == id) return g;
     }
+    for (final g in _searchResults) {
+      if (g.id == id) return g;
+    }
     return null;
   }
 
@@ -642,16 +699,18 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   void _replaceGame(Game next) {
-    if (next.status != null) {
-      final libraryById = <String, Game>{
-        for (final game in _libraryGames) game.id: game,
-      };
+    // Always update library list if the game is in the library
+    final libraryById = <String, Game>{
+      for (final game in _libraryGames) game.id: game,
+    };
+    if (libraryById.containsKey(next.id)) {
       libraryById[next.id] = next;
       _libraryGames = List.unmodifiable(
         libraryById.values.toList()..sort((a, b) => a.title.compareTo(b.title)),
       );
     }
 
+    // Always update catalog list
     final catalogById = <String, Game>{
       for (final game in _games) game.id: game,
     };
@@ -666,6 +725,7 @@ class CheckpointStore extends ChangeNotifier {
     final current = _user;
     if (current == null || game.status == null) return;
     try {
+      await _repository.upsertBaseGame(game);
       await _repository.upsertUserGame(
         userId: current.id,
         gameId: game.id,
@@ -676,6 +736,7 @@ class CheckpointStore extends ChangeNotifier {
         playedOn: game.playedOn,
         purchasePrice: game.purchasePrice,
         dateAdded: game.dateAdded,
+        isFavorite: game.isFavorite,
       );
     } catch (e, st) {
       debugPrint('User game save failed: $e\n$st');

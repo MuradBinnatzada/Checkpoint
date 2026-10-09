@@ -42,6 +42,7 @@ abstract final class Db {
   static const hours = 'hours';
   static const platform = 'platform';
   static const note = 'note';
+  static const isFavorite = 'is_favorite';
 
   static const followerId = 'follower_id';
   static const followeeId = 'followee_id';

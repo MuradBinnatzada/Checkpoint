@@ -89,6 +89,7 @@ class Game {
     this.playedOn,
     this.purchasePrice = 0,
     this.dateAdded,
+    this.isFavorite = false,
   });
 
   final String id;
@@ -102,6 +103,7 @@ class Game {
   final List<Color> coverColors;
   final IconData coverIcon;
   final String? coverUrl;
+  final bool isFavorite;
 
   // user state
   final GameStatus? status;
@@ -127,6 +129,7 @@ class Game {
     double? purchasePrice,
     DateTime? dateAdded,
     String? coverUrl,
+    bool? isFavorite,
   }) =>
       Game(
         id: id,
@@ -147,5 +150,6 @@ class Game {
         playedOn: playedOn ?? this.playedOn,
         purchasePrice: purchasePrice ?? this.purchasePrice,
         dateAdded: dateAdded ?? this.dateAdded,
+        isFavorite: isFavorite ?? this.isFavorite,
       );
 }

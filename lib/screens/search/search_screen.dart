@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
@@ -59,10 +60,12 @@ class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
   String? _genre;
   SearchKind _kind = SearchKind.games;
+  Timer? _debounce; 
 
   @override
   void dispose() {
     _controller.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -75,7 +78,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ..sort((a, b) {
           final ai = a.inLibrary ? 1 : 0;
           final bi = b.inLibrary ? 1 : 0;
-          if (ai != bi) return ai - bi; // new-to-you first
+          if (ai != bi) return ai - bi; 
           return a.title.compareTo(b.title);
         });
 
@@ -87,7 +90,13 @@ class _SearchScreenState extends State<SearchScreen> {
     final genres = ({for (final g in all) ...g.genres}.toList())..sort();
     final q = _query.trim().toLowerCase();
 
-    final games = isUsers ? const <Game>[] : _filterGames(all, q);
+    // If searching, pull from IGDB and merge local status. If empty, show local catalog.
+    final games = isUsers
+        ? const <Game>[]
+        : (q.isEmpty
+            ? _filterGames(all, q)
+            : store.searchResults.map((g) => store.maybeGame(g.id) ?? g).toList());
+
     final users = isUsers ? store.searchUsers(_query) : const <SocialUser>[];
     final count = isUsers ? users.length : games.length;
     final browsing = q.isEmpty && (isUsers || _genre == null);
@@ -107,7 +116,17 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _controller,
             textInputAction: TextInputAction.search,
-            onChanged: (v) => setState(() => _query = v),
+            onChanged: (v) {
+              setState(() => _query = v);
+              if (_kind == SearchKind.games) {
+                if (_debounce?.isActive ?? false) _debounce!.cancel();
+                _debounce = Timer(const Duration(milliseconds: 600), () {
+                  if (v.trim().isNotEmpty) {
+                    context.store.searchExternalGames(v);
+                  }
+                });
+              }
+            },
             decoration: fieldDecoration(
               'Search',
               hint: isUsers ? 'Names or @handles…' : 'Games, studios, platforms…',
@@ -119,6 +138,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       onPressed: () {
                         _controller.clear();
                         setState(() => _query = '');
+                        _debounce?.cancel();
                       },
                     ),
             ).copyWith(labelText: null),

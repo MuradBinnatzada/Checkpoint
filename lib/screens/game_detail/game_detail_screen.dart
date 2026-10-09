@@ -39,6 +39,19 @@ class GameDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.only(left: 16),
             child: Center(child: _RoundIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.maybePop(context))),
           ),
+          actions: [
+            if (game.status != null) // Only show heart if it's in the library
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(
+                  child: _RoundIconButton(
+                    icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                    color: game.isFavorite ? Palette.danger : Colors.white,
+                    onTap: () => context.actions.toggleFavorite(game.id),
+                  ),
+                ),
+              ),
+          ],
           flexibleSpace: LayoutBuilder(builder: (context, c) {
             final top = MediaQuery.paddingOf(context).top;
             final collapsed = kToolbarHeight + top;
@@ -104,9 +117,10 @@ class GameDetailScreen extends StatelessWidget {
 }
 
 class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.onTap});
+  const _RoundIconButton({required this.icon, required this.onTap, this.color});
   final IconData icon;
   final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +131,7 @@ class _RoundIconButton extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.38),
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: Icon(icon, size: 18, color: Colors.white)),
+        child: InkWell(onTap: onTap, child: Icon(icon, size: 18, color: color ?? Colors.white)),
       ),
     );
   }
@@ -288,6 +302,21 @@ class _StatusActions extends StatelessWidget {
           icon: const Icon(Icons.play_circle_rounded, size: 18),
           label: const Text('Start Playing'),
         ),
+      if (game.status != null) ...[
+        const SizedBox(width: double.infinity, height: 4),
+        TextButton.icon(
+          onPressed: () {
+            store.removeFromLibrary(game.id);
+            Navigator.maybePop(context);
+            messenger
+              ..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(content: Text('Removed ${game.title} from library')));
+          },
+          style: TextButton.styleFrom(foregroundColor: Palette.danger),
+          icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          label: const Text('Remove from Library'),
+        ),
+      ]
     ]);
   }
 }

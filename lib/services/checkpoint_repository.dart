@@ -173,6 +173,7 @@ class CheckpointRepository {
     required double targetHours,
     required GamePlatform? playedOn,
     required double purchasePrice,
+    required bool isFavorite,
     DateTime? dateAdded,
   }) async {
     await _client.from(Db.userGames).upsert({
@@ -185,6 +186,7 @@ class CheckpointRepository {
       Db.playedOn: playedOn == null ? null : gamePlatformToDb(playedOn),
       Db.purchasePrice: purchasePrice,
       Db.dateAdded: (dateAdded ?? DateTime.now()).toUtc().toIso8601String(),
+      Db.isFavorite: isFavorite,
     }, onConflict: '${Db.userId},${Db.gameId}');
   }
 
@@ -202,6 +204,26 @@ class CheckpointRepository {
       Db.platform: gamePlatformToDb(platform),
       Db.note: note.trim(),
     });
+  }
+
+  Future<void> upsertBaseGame(Game game) async {
+    await _client.from(Db.games).upsert({
+      Db.id: game.id,
+      Db.title: game.title,
+      Db.developer: game.developer,
+      Db.publisher: game.publisher,
+      Db.releaseYear: game.releaseYear,
+      Db.genres: game.genres,
+      Db.summary: game.synopsis,
+      Db.coverUrl: game.coverUrl,
+    });
+  }
+
+  Future<void> deleteUserGame(String userId, String gameId) async {
+    // Delete logs first to satisfy foreign key constraints (if cascade isn't on)
+    await _client.from(Db.logEntries).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
+    // Delete the game from the user's library
+    await _client.from(Db.userGames).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
   }
 
   Stream<List<Map<String, dynamic>>> watchCatalogGames() =>
@@ -285,7 +307,7 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
   );
 }
 
-Game _gameFromUserGameRow(Map<String, dynamic> row) {
+  Game _gameFromUserGameRow(Map<String, dynamic> row) {
   final nested = row[Db.games];
   final gameRow = nested is Map<String, dynamic>
       ? nested
@@ -299,6 +321,7 @@ Game _gameFromUserGameRow(Map<String, dynamic> row) {
     playedOn: gamePlatformFromDb(row[Db.playedOn]),
     purchasePrice: _double(row[Db.purchasePrice]),
     dateAdded: _date(row[Db.dateAdded]),
+    isFavorite: row[Db.isFavorite] == true,
   );
 }
 
