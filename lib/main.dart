@@ -2,8 +2,13 @@
 //  CHECKPOINT — video game tracker
 //  Single-file Flutter architecture: models · state · theme · screens · sheets
 //
-//  • Zero third-party packages. Paste into lib/main.dart of a fresh
-//    `flutter create checkpoint` project and run (Flutter 3.27+ / Dart 3.6+).
+//  • Packages: supabase_flutter + google_sign_in ^6.2 (keep it on 6.x: 7.0
+//    removed the `GoogleSignIn(...)` constructor). Paste into lib/main.dart of a
+//    `flutter create checkpoint` project.
+//  • Auth: Supabase Auth — email/password + native Google (see `AuthService`).
+//    Google needs build-time client IDs:
+//      --dart-define=GOOGLE_WEB_CLIENT_ID=<web client id>
+//      --dart-define=GOOGLE_IOS_CLIENT_ID=<ios client id>   (iOS only)
 //  • State: `CheckpointStore` is a plain ChangeNotifier exposed through an
 //    InheritedNotifier (`StoreScope`). It is a drop-in for Provider/Riverpod:
 //    wrap the app in `ChangeNotifierProvider(create: (_) => CheckpointStore.seeded())`
@@ -17,10 +22,13 @@
 //    when a real backend (IGDB, RAWG, …) is wired in.
 // ═════════════════════════════════════════════════════════════════════════════
 
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Added this import
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // (Keep your other imports for CheckpointApp and Palette here)
 
@@ -30,7 +38,7 @@ Future<void> main() async {
 
   // 3. Initialize Supabase
   await Supabase.initialize(
-    url: 'https://nmbarqhvcjgyuwreebda.supabase.co/rest/v1/',
+    url: 'https://nmbarqhvcjgyuwreebda.supabase.co', // project root, no /rest/v1
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tYmFycWh2Y2pneXV3cmVlYmRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODE5OTcsImV4cCI6MjEwNjk1Nzk5N30.tXIvaeJPK1ZEI75U6f-SkD-4iRZBVVE3Cy5OxBCscGQ'
   );
 
@@ -290,6 +298,51 @@ class UserProfile {
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
 
+  /// Placeholder while signed out. Never presented as a real person.
+  factory UserProfile.guest() => UserProfile(
+        name: 'Guest',
+        handle: '',
+        bio: '',
+        joined: DateTime.now(),
+        weeklyGoalHours: 20,
+        followers: 0,
+        following: 0,
+      );
+
+  /// Instant profile built from the Supabase auth user, so the UI never flashes
+  /// someone else's data while the `profiles` row loads. Google sign-in supplies
+  /// `full_name`; email sign-ups fall back to the part before the "@".
+  factory UserProfile.fromAuthUser(User u) {
+    final meta = u.userMetadata ?? const <String, dynamic>{};
+    final local = (u.email ?? '').split('@').first;
+    return UserProfile(
+      name: _nonBlank(meta['full_name']) ?? _nonBlank(meta['name']) ?? _nonBlank(local) ?? 'Player',
+      handle: _asHandle(_nonBlank(meta['user_name']) ?? _nonBlank(meta['preferred_username']) ?? _nonBlank(local) ?? 'player'),
+      bio: '',
+      joined: DateTime.tryParse(u.createdAt)?.toLocal() ?? DateTime.now(),
+      weeklyGoalHours: 20,
+      followers: 0, // no follow graph in the backend yet
+      following: 0,
+    );
+  }
+
+  /// Overlays a row of the `profiles` table (column names live in [Db]).
+  /// Any missing or blank column keeps the value we already have.
+  UserProfile withRow(Map<String, dynamic> row) {
+    final username = _nonBlank(row[Db.username]);
+    final raw = row[Db.weeklyGoal];
+    final goal = raw is num ? raw.toDouble() : double.tryParse('$raw');
+    return UserProfile(
+      name: _nonBlank(row[Db.displayName]) ?? name,
+      handle: username != null ? _asHandle(username) : handle,
+      bio: _nonBlank(row[Db.bio]) ?? bio,
+      joined: DateTime.tryParse('${row[Db.createdAt]}')?.toLocal() ?? joined,
+      weeklyGoalHours: (goal != null && goal > 0) ? goal : weeklyGoalHours,
+      followers: followers,
+      following: following,
+    );
+  }
+
   UserProfile copyWith({double? weeklyGoalHours}) => UserProfile(
         name: name,
         handle: handle,
@@ -300,6 +353,27 @@ class UserProfile {
         following: following,
       );
 }
+
+/// Table / column names of the Supabase `profiles` table, in ONE place.
+/// These are assumptions (a typical `profiles` table keyed by auth.users.id) —
+/// edit them to match your SQL schema. A wrong name never breaks login: the
+/// profile simply falls back to what the auth user already tells us.
+abstract final class Db {
+  static const profiles = 'profiles';
+  static const id = 'id'; // uuid, = auth.users.id
+  static const username = 'username';
+  static const displayName = 'display_name';
+  static const bio = 'bio';
+  static const weeklyGoal = 'weekly_goal_hours';
+  static const createdAt = 'created_at';
+}
+
+String? _nonBlank(Object? v) {
+  final t = v?.toString().trim();
+  return (t == null || t.isEmpty) ? null : t;
+}
+
+String _asHandle(String s) => '@${s.replaceFirst(RegExp(r'^@+'), '').replaceAll(RegExp(r'\s+'), '')}';
 
 /// Another Checkpoint member (mock, no backend yet).
 @immutable
@@ -473,31 +547,81 @@ class CheckpointStore extends ChangeNotifier {
     notifyListeners();
   }
 
-    // ── auth (mock) ────────────────────────────────────────────────────────────
-  bool _isLoggedIn = true; // set false to preview read-only mode
-  bool get isLoggedIn => _isLoggedIn;
+  // ── auth (Supabase) ────────────────────────────────────────────────────────
+  // No local "logged in" flag: `isLoggedIn` is simply "is there a Supabase user
+  // right now". `bindAuth` seeds it from the session Supabase restored from disk,
+  // then follows `onAuthStateChange`, so email sign-in, Google, sign-out, expiry
+  // and sessions started elsewhere (e.g. an OAuth redirect) all land here.
+  AuthService? _authService;
+  StreamSubscription<AuthState>? _authSub;
+  User? _user;
+  bool _disposed = false;
 
-  void logIn() => _setLoggedIn(true);
-  void logOut() => _setLoggedIn(false);
+  bool get isLoggedIn => _user != null;
+  User? get authUser => _user;
+  AuthService get auth => _authService ?? (throw StateError('CheckpointStore.bindAuth() was never called'));
 
-  void _setLoggedIn(bool v) {
-    if (v == _isLoggedIn) return;
-    _isLoggedIn = v;
+  void bindAuth(AuthService service) {
+    _authSub?.cancel();
+    _authService = service;
+    _user = null;
+    _profile = UserProfile.guest(); // never show the mock profile to a real session
+    _applyUser(service.currentUser);
+    _authSub = service.changes.listen(
+      (s) => _applyUser(s.session?.user, reloadProfile: s.event == AuthChangeEvent.userUpdated),
+      onError: (Object e) => debugPrint('Auth stream error: $e'),
+    );
+  }
+
+  Future<void> signOut() => auth.signOut();
+
+  void _applyUser(User? user, {bool reloadProfile = false}) {
+    final changed = user?.id != _user?.id;
+    _user = user;
+    if (!changed && !reloadProfile) return; // e.g. tokenRefreshed
+    if (changed) {
+      // Follows are mock-only: a real account starts with none, signing out restores the demo set.
+      _followingIds
+        ..clear()
+        ..addAll(user == null ? _mockFollowSeed : const <String>{});
+      _profile = user == null ? UserProfile.guest() : UserProfile.fromAuthUser(user);
+    }
+    if (user != null) unawaited(_loadRemoteProfile(user));
     notifyListeners();
   }
 
+  Future<void> _loadRemoteProfile(User user) async {
+    try {
+      final row = await auth.fetchProfile(user.id);
+      if (_disposed || _user?.id != user.id) return; // signed out / switched account meanwhile
+      if (row == null) return; // no row yet: keep the profile built from the auth user
+      _profile = _profile.withRow(row);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Could not load profile row (check the names in `Db`): $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _authSub?.cancel();
+    super.dispose();
+  }
+
   // ── social (mock) ──────────────────────────────────────────────────────────
-  final Set<String> _followingIds = {
+  static final Set<String> _mockFollowSeed = {
     for (final u in MockSocial.users)
       if (u.startsFollowed) u.id,
   };
+  final Set<String> _followingIds = {..._mockFollowSeed};
 
   bool isFollowing(String userId) => _followingIds.contains(userId);
   int get followersCount => _profile.followers;
   int get followingCount => _profile.following + _followingIds.length;
 
   void toggleFollow(String userId) {
-    if (!_isLoggedIn) return;
+    if (!isLoggedIn) return;
     if (!_followingIds.remove(userId)) _followingIds.add(userId);
     notifyListeners();
   }
@@ -764,6 +888,111 @@ class StoreScope extends InheritedNotifier<CheckpointStore> {
 extension StoreContext on BuildContext {
   CheckpointStore get store => StoreScope.of(this);
   CheckpointStore get actions => StoreScope.read(this);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  3b · AUTH SERVICE  (Supabase Auth + native Google Sign-In)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Google OAuth client IDs are injected at build time, nothing is hard-coded:
+///   flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=xxx.apps.googleusercontent.com \
+///               --dart-define=GOOGLE_IOS_CLIENT_ID=yyy.apps.googleusercontent.com
+/// The WEB client ID (the same one configured under Supabase → Authentication →
+/// Google) is required on every platform: it makes Google issue an ID token that
+/// Supabase can verify. The iOS client ID is only needed on iOS.
+const _googleWebClientId = '920307411259-urq6579e0gukditu4839u7djhs3j3p5e.apps.googleusercontent.com';
+const _googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+
+/// All network/auth calls live here so screens and the store stay SDK-light.
+class AuthService {
+  AuthService(this._client);
+  final SupabaseClient _client;
+
+  GoTrueClient get _auth => _client.auth;
+
+  /// Google's native account picker only exists on Android and iOS.
+  bool get _usesNativeGoogle =>
+      !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// The user from the session Supabase restored from disk (null = signed out).
+  User? get currentUser => _auth.currentUser;
+
+  /// Emits on sign-in, sign-out, token refresh and profile updates.
+  Stream<AuthState> get changes => _auth.onAuthStateChange;
+
+  Future<void> signInWithEmail(String email, String password) =>
+      _auth.signInWithPassword(email: email.trim(), password: password);
+
+  /// Returns true when a session exists immediately, false when the project
+  /// requires the user to confirm their email address first.
+  Future<bool> signUpWithEmail(String email, String password, {String? displayName}) async {
+    final name = displayName?.trim() ?? '';
+    final res = await _auth.signUp(
+      email: email.trim(),
+      password: password,
+      data: {if (name.isNotEmpty) 'full_name': name},
+    );
+    return res.session != null;
+  }
+
+  Future<void> signInWithGoogle() async {
+    if (!_usesNativeGoogle) {
+      // Web / desktop have no native account picker: use Supabase's browser flow.
+      await _auth.signInWithOAuth(OAuthProvider.google);
+      return;
+    }
+    if (_googleWebClientId.isEmpty) {
+      throw AuthException("Google sign-in isn't configured. Set _googleWebClientId in main.dart.");
+    }
+
+    final GoogleSignIn googleSignIn = GoogleSignIn(
+      serverClientId: _googleWebClientId,
+      scopes: ['email', 'profile'],
+    );
+
+    // Native flow: Google account picker -> ID token -> Supabase session.
+    final googleUser = await googleSignIn.signIn();
+    if (googleUser == null) throw AuthException('Google sign-in was cancelled.');
+
+    final googleAuth = await googleUser.authentication;
+    final idToken = googleAuth.idToken;
+    final accessToken = googleAuth.accessToken;
+    if (idToken == null) throw AuthException('Google did not return an ID token.');
+
+    await _auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: accessToken,
+    );
+  }
+
+  Future<void> signOut() async {
+    await _auth.signOut();
+    if (_usesNativeGoogle) {
+      try {
+        await GoogleSignIn(serverClientId: _googleWebClientId, scopes: ['email', 'profile']).signOut();
+      } catch (e) {
+        debugPrint('Google sign-out failed: $e');
+      }
+    }
+  }
+
+  /// The signed-in user's row in `profiles` (null when it doesn't exist yet).
+  Future<Map<String, dynamic>?> fetchProfile(String userId) async {
+    return await _client.from(Db.profiles).select().eq(Db.id, userId).maybeSingle();
+  }
+
+  /// Text for the UI. Raw exceptions never reach the screen.
+  static String messageFor(Object e) {
+    if (e is AuthException) return e.message;
+    if (e is PlatformException) {
+      return switch (e.code) {
+        GoogleSignIn.kSignInCanceledError => 'Google sign-in was cancelled.',
+        _ => 'Google sign-in failed (${e.code}). Check the OAuth client IDs in Google Cloud.',
+      };
+    }
+    return 'Something went wrong. Please try again.';
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1694,6 +1923,12 @@ class _CheckpointAppState extends State<CheckpointApp> {
   late final CheckpointStore _store = CheckpointStore.seeded();
 
   @override
+  void initState() {
+    super.initState();
+    _store.bindAuth(AuthService(Supabase.instance.client));
+  }
+
+  @override
   void dispose() {
     _store.dispose();
     super.dispose();
@@ -1784,14 +2019,264 @@ class AuthGate extends StatelessWidget {
               child: EmptyState(
                 icon: Icons.lock_outline_rounded,
                 title: 'Log in to track games',
-                message: 'You can still browse and search. Log in to build your library and log your hours.',
-                actionLabel: 'Log in',
-                onAction: context.actions.logIn,
+                message: 'You can still browse and search. Log in or create an account to build your library and log your hours.',
+                actionLabel: 'Log in or sign up',
+                onAction: () => showLoginScreen(context),
               ),
             ),
           ),
         ),
     ]);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  7b · LOGIN / SIGN-UP
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Pushes the full-screen login. It closes itself as soon as the store reports a
+/// signed-in user, whichever path (email, Google, restored session) got there.
+Future<void> showLoginScreen(BuildContext context) => Navigator.of(context).push(
+      MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const LoginScreen()),
+    );
+
+enum _AuthMode { logIn, signUp }
+
+enum _Busy { email, google }
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+
+  _AuthMode _mode = _AuthMode.logIn;
+  _Busy? _busy;
+  bool _showPassword = false;
+  bool _closing = false;
+  String? _error;
+  String? _info;
+
+  bool get _isSignUp => _mode == _AuthMode.signUp;
+  bool get _isBusy => _busy != null;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  void _setMode(_AuthMode m) => setState(() {
+        _mode = m;
+        _error = null;
+        _info = null;
+      });
+
+  /// Runs [action] with a spinner on the right button and any error shown inline.
+  Future<void> _run(_Busy kind, Future<void> Function() action) async {
+    if (_isBusy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = kind;
+      _error = null;
+      _info = null;
+    });
+    try {
+      await action();
+    } catch (e) {
+      debugPrint('Auth error: $e');
+      if (mounted) setState(() => _error = AuthService.messageFor(e));
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final auth = context.actions.auth;
+    await _run(_Busy.email, () async {
+      if (_isSignUp) {
+        final signedIn = await auth.signUpWithEmail(_email.text, _password.text, displayName: _name.text);
+        if (!signedIn && mounted) {
+          setState(() {
+            _mode = _AuthMode.logIn;
+            _password.clear();
+            _info = 'Almost there: check your inbox to confirm your email, then log in.';
+          });
+        }
+      } else {
+        await auth.signInWithEmail(_email.text, _password.text);
+      }
+    });
+  }
+
+  Future<void> _google() => _run(_Busy.google, context.actions.auth.signInWithGoogle);
+
+  InputDecoration _decoration(String label, IconData icon, {Widget? suffix}) => InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixIcon: suffix,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    // Subscribing here also closes the screen when ANY sign-in path succeeds.
+    if (context.store.isLoggedIn && !_closing) {
+      _closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).maybePop();
+      });
+    }
+
+    const spinner = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5));
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Close',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+              children: [
+                Center(
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: const BoxDecoration(color: Palette.surfaceHigh, shape: BoxShape.circle),
+                    child: const Icon(Icons.sports_esports_rounded, color: Palette.accent, size: 34),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Welcome to Checkpoint', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 6),
+                const Text('Track what you play, log your hours, and keep your backlog honest.',
+                    textAlign: TextAlign.center, style: TextStyle(color: Palette.muted, height: 1.35)),
+                const SizedBox(height: 24),
+                SegmentedButton<_AuthMode>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: _AuthMode.logIn, label: Text('Log in')),
+                    ButtonSegment(value: _AuthMode.signUp, label: Text('Sign up')),
+                  ],
+                  selected: {_mode},
+                  onSelectionChanged: _isBusy ? null : (v) => _setMode(v.first),
+                ),
+                const SizedBox(height: 20),
+                Form(
+                  key: _formKey,
+                  child: AutofillGroup(
+                    child: Column(children: [
+                      if (_isSignUp) ...[
+                        TextFormField(
+                          controller: _name,
+                          enabled: !_isBusy,
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.name],
+                          decoration: _decoration('Display name (optional)', Icons.badge_outlined),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      TextFormField(
+                        controller: _email,
+                        enabled: !_isBusy,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: _decoration('Email', Icons.mail_outline_rounded),
+                        validator: (v) => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v?.trim() ?? '') ? null : 'Enter a valid email address',
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _password,
+                        enabled: !_isBusy,
+                        obscureText: !_showPassword,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: [_isSignUp ? AutofillHints.newPassword : AutofillHints.password],
+                        onFieldSubmitted: (_) => _submit(),
+                        decoration: _decoration(
+                          'Password',
+                          Icons.lock_outline_rounded,
+                          suffix: IconButton(
+                            tooltip: _showPassword ? 'Hide password' : 'Show password',
+                            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
+                          ),
+                        ),
+                        validator: (v) {
+                          final t = v ?? '';
+                          if (t.isEmpty) return 'Enter your password';
+                          if (_isSignUp && t.length < 6) return 'Use at least 6 characters';
+                          return null;
+                        },
+                      ),
+                    ]),
+                  ),
+                ),
+                if (_error != null) _AuthNotice(text: _error!, color: Palette.danger, icon: Icons.error_outline_rounded),
+                if (_info != null) _AuthNotice(text: _info!, color: Palette.success, icon: Icons.mark_email_read_outlined),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: _isBusy ? null : _submit,
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                  child: _busy == _Busy.email ? spinner : Text(_isSignUp ? 'Create account' : 'Log in'),
+                ),
+                const SizedBox(height: 18),
+                const Row(children: [
+                  Expanded(child: Divider()),
+                  Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or', style: TextStyle(color: Palette.muted))),
+                  Expanded(child: Divider()),
+                ]),
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: _isBusy ? null : _google,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                  // Placeholder glyph: swap for the official Google "G" asset to meet their branding rules.
+                  icon: _busy == _Busy.google ? spinner : const Icon(Icons.g_mobiledata_rounded, size: 30),
+                  label: const Text('Sign in with Google'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthNotice extends StatelessWidget {
+  const _AuthNotice({required this.text, required this.color, required this.icon});
+  final String text;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 13.5, height: 1.3))),
+      ]),
+    );
   }
 }
 
@@ -3501,13 +3986,24 @@ class ProfileScreen extends StatelessWidget {
                   ]),
                 ),
                 IconButton(
-                  tooltip: 'Log out (mock)',
-                  onPressed: context.actions.logOut,
+                  tooltip: 'Log out',
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      await context.actions.signOut();
+                    } catch (_) {
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(const SnackBar(content: Text("Couldn't log out. Check your connection and try again.")));
+                    }
+                  },
                   icon: const Icon(Icons.logout_rounded, color: Palette.muted),
                 ),
               ]),
-              const SizedBox(height: 14),
-              Text(p.bio, style: const TextStyle(height: 1.4, color: Colors.white70)),
+              if (p.bio.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(p.bio, style: const TextStyle(height: 1.4, color: Colors.white70)),
+              ],
               const SizedBox(height: 16),
               Row(children: [
                 _CountStat(value: fmtCount(store.followersCount), label: 'Followers'),
