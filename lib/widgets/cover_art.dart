@@ -2,16 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
 
-/// Poster art (2:3). Loads a mock network poster; the gradient + glyph
+/// Poster art (2:3). Loads the catalog cover when present; the gradient + glyph
 /// underneath is the loading / offline fallback.
 class CoverArt extends StatelessWidget {
   const CoverArt({super.key, required this.game, this.radius = 12});
   final Game game;
   final double radius;
-
-  /// Mock poster endpoint: a stable 2:3 image per game id.
-  /// Swap for the real IGDB/RAWG cover URL when a backend is wired in.
-  static String posterUrl(Game g) => 'https://picsum.photos/seed/${g.id}/400/600';
 
   @override
   Widget build(BuildContext context) {
@@ -41,17 +37,18 @@ class CoverArt extends StatelessWidget {
             if (!showTitle) Center(child: Icon(game.coverIcon, size: w * 0.5, color: Colors.white70)),
 
             // 2 · network poster, fades in over the fallback
-            Image(
-              image: NetworkImage(posterUrl(game)),
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) => AnimatedOpacity(
-                opacity: (wasSynchronouslyLoaded || frame != null) ? 1 : 0,
-                duration: const Duration(milliseconds: 300),
-                child: child,
+            if (game.coverUrl case final url?)
+              Image(
+                image: NetworkImage(url),
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) => AnimatedOpacity(
+                  opacity: (wasSynchronouslyLoaded || frame != null) ? 1 : 0,
+                  duration: const Duration(milliseconds: 300),
+                  child: child,
+                ),
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(), // keep fallback
               ),
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(), // keep fallback
-            ),
 
             // 3 · scrim + title
             const DecoratedBox(

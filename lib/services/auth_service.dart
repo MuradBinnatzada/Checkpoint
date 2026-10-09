@@ -3,12 +3,11 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../data/mock_user.dart';
-import '../data/db_schema.dart';
+import 'package:checkpoint/data/db_schema.dart';
 
 /// Google OAuth client IDs.
 ///
-/// The WEB client ID (the same one configured under Supabase → Authentication →
+/// The WEB client ID (the same one configured under Supabase Authentication >
 /// Google) is required on every platform: it makes Google issue an ID token that
 /// Supabase can verify. The iOS client ID is optional and only read on iOS:
 ///   flutter run --dart-define=GOOGLE_IOS_CLIENT_ID=yyy.apps.googleusercontent.com
@@ -17,8 +16,7 @@ const _googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
 
 /// All network/auth calls live here so screens and the store stay SDK-light.
 ///
-/// Requires `google_sign_in: ^6.x` in pubspec.yaml: the public `GoogleSignIn(...)`
-/// constructor used below was removed in 7.0 (which uses `GoogleSignIn.instance`).
+/// Requires `google_sign_in: ^6.x` in pubspec.yaml.
 class AuthService {
   AuthService(this._client);
   final SupabaseClient _client;
@@ -96,6 +94,29 @@ class AuthService {
   /// The signed-in user's row in `profiles` (null when it doesn't exist yet).
   Future<Map<String, dynamic>?> fetchProfile(String userId) async {
     return await _client.from(Db.profiles).select().eq(Db.id, userId).maybeSingle();
+  }
+
+  /// Creates the `profiles` row on first login. Existing rows are left unchanged.
+  Future<Map<String, dynamic>?> ensureProfile(User user) async {
+    final existing = await fetchProfile(user.id);
+    if (existing != null) return existing;
+
+    await _client.from(Db.profiles).upsert({
+      Db.id: user.id,
+      Db.email: user.email,
+      Db.displayName: _displayNameFor(user),
+    });
+    return fetchProfile(user.id);
+  }
+
+  static String _displayNameFor(User user) {
+    final meta = user.userMetadata ?? const <String, dynamic>{};
+    final local = (user.email ?? '').split('@').first.trim();
+    for (final value in [meta['full_name'], meta['name'], meta['display_name'], local]) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) return text;
+    }
+    return 'Player';
   }
 
   /// Text for the UI. Raw exceptions never reach the screen.

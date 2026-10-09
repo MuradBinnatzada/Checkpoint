@@ -13,6 +13,26 @@ enum GameStatus {
   final Color color;
 }
 
+String gameStatusToDb(GameStatus status) => switch (status) {
+      GameStatus.playing => 'playing',
+      GameStatus.toPlay => 'to_play',
+      GameStatus.completed => 'completed',
+      GameStatus.dropped => 'dropped',
+      GameStatus.wishlist => 'wishlist',
+    };
+
+GameStatus? gameStatusFromDb(Object? value) {
+  final raw = value?.toString().trim();
+  return switch (raw) {
+    'playing' => GameStatus.playing,
+    'to_play' || 'toPlay' || 'To Play' => GameStatus.toPlay,
+    'completed' => GameStatus.completed,
+    'dropped' => GameStatus.dropped,
+    'wishlist' => GameStatus.wishlist,
+    _ => null,
+  };
+}
+
 enum GamePlatform {
   pc('PC', Icons.desktop_windows_rounded, Color(0xFF8AB4F8)),
   steamDeck('Steam Deck', Icons.gamepad_rounded, Color(0xFF66C0F4)),
@@ -26,6 +46,24 @@ enum GamePlatform {
   final String label;
   final IconData icon;
   final Color color;
+}
+
+String gamePlatformToDb(GamePlatform platform) => platform.name;
+
+GamePlatform? gamePlatformFromDb(Object? value) {
+  final raw = value?.toString().trim();
+  if (raw == null || raw.isEmpty) return null;
+  final normalized = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  return switch (normalized) {
+    'pc' => GamePlatform.pc,
+    'steamdeck' => GamePlatform.steamDeck,
+    'ps5' || 'playstation5' => GamePlatform.ps5,
+    'ps4' || 'playstation4' => GamePlatform.ps4,
+    'xbox' || 'xboxseries' || 'xboxone' => GamePlatform.xbox,
+    'switch' || 'nswitch' || 'nintendoswitch' => GamePlatform.nswitch,
+    'mobile' || 'ios' || 'android' => GamePlatform.mobile,
+    _ => null,
+  };
 }
 
 /// Catalog metadata + the user's tracking state for that game.
@@ -43,6 +81,7 @@ class Game {
     required this.synopsis,
     required this.coverColors,
     required this.coverIcon,
+    this.coverUrl,
     this.status,
     this.rating = 0,
     this.hoursPlayed = 0,
@@ -62,6 +101,7 @@ class Game {
   final String synopsis;
   final List<Color> coverColors;
   final IconData coverIcon;
+  final String? coverUrl;
 
   // user state
   final GameStatus? status;
@@ -86,6 +126,7 @@ class Game {
     GamePlatform? playedOn,
     double? purchasePrice,
     DateTime? dateAdded,
+    String? coverUrl,
   }) =>
       Game(
         id: id,
@@ -98,6 +139,7 @@ class Game {
         synopsis: synopsis,
         coverColors: coverColors,
         coverIcon: coverIcon,
+        coverUrl: coverUrl ?? this.coverUrl,
         status: status ?? this.status,
         rating: rating ?? this.rating,
         hoursPlayed: hoursPlayed ?? this.hoursPlayed,

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/state/checkpoint_store.dart';
@@ -13,7 +16,15 @@ class CheckpointApp extends StatefulWidget {
 }
 
 class _CheckpointAppState extends State<CheckpointApp> {
-  late final CheckpointStore _store = CheckpointStore.seeded();
+  late final CheckpointStore _store = CheckpointStore.supabase(
+    Supabase.instance.client,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_store.initialize());
+  }
 
   @override
   void dispose() {
