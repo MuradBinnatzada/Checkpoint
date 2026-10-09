@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/lib/services/game_api_service.dart
 
 # Symbolication related
 app.*.symbols
