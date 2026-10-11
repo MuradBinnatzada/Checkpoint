@@ -86,6 +86,7 @@ class CheckpointRepository {
           ${Db.playedOn},
           ${Db.purchasePrice},
           ${Db.dateAdded},
+          ${Db.isFavorite},
           ${Db.games}!inner (
             ${Db.id},
             ${Db.igdbId},
@@ -313,6 +314,7 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
       ? nested
       : Map<String, dynamic>.from(nested as Map);
   final catalogGame = _gameFromCatalogRow(gameRow);
+  assert(row.containsKey(Db.isFavorite));
   return catalogGame.copyWith(
     status: gameStatusFromDb(row[Db.status]),
     rating: _double(row[Db.rating]),

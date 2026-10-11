@@ -168,7 +168,6 @@ class _HeroBanner extends StatefulWidget {
 
 class _HeroBannerState extends State<_HeroBanner> {
   final _controller = PageController(viewportFraction: 0.9);
-  int _page = 0;
 
   @override
   void dispose() {
@@ -204,41 +203,16 @@ class _HeroBannerState extends State<_HeroBanner> {
       );
     }
     final scale = textScale(context);
-    final page = _page.clamp(0, games.length - 1);
-    return Column(
-      children: [
-        SizedBox(
-          height: 196 + (scale - 1) * 120,
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: games.length,
-            onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: _HeroCard(game: games[i]),
-            ),
-          ),
+    return SizedBox(
+      height: 196 + (scale - 1) * 120,
+      child: PageView.builder(
+        controller: _controller,
+        itemCount: games.length,
+        itemBuilder: (_, i) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: _HeroCard(game: games[i]),
         ),
-        if (games.length > 1) ...[
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 0; i < games.length; i++)
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: i == page ? 18 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: i == page ? Palette.accent : Colors.white24,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ],
+      ),
     );
   }
 }

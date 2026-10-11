@@ -14,6 +14,7 @@ import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:flutter/material.dart';
 
 class CheckpointStore extends ChangeNotifier {
   CheckpointStore({
@@ -243,7 +244,14 @@ class CheckpointStore extends ChangeNotifier {
     }
   }
 
+  int _pendingSaves = 0;
+  bool _refreshQueued = false;
+
   Future<void> _refreshCatalogAndLibrary(User user) async {
+    if (_pendingSaves > 0) {
+      _refreshQueued = true; // Pause refresh until local writes finish
+      return;
+    }
     try {
       _catalogGames = await _repository.fetchCatalogGames();
       final userGames = await _repository.fetchUserGames(user.id);
@@ -442,13 +450,146 @@ class CheckpointStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? _steamId;
+
+  void setSteamId(String id) {
+    _steamId = id;
+    notifyListeners();
+  }
+
   Future<void> syncLibrary() async {
-    if (_isSyncing || _connected.isEmpty) return;
+    if (_isSyncing || !isConnected(ConnectedService.steam) || _steamId == null) {
+      return;
+    }
+
     _isSyncing = true;
     notifyListeners();
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    _isSyncing = false;
-    notifyListeners();
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'sync-steam',
+        body: {'steam_id': _steamId},
+      );
+
+      final data = response.data as Map<String, dynamic>;
+      final List<dynamic> rawGames = data['games'] ?? [];
+      final current = _user;
+
+      // Non-game software that Steam lists alongside games. Word boundaries
+      // keep short terms like "obs" from matching titles such as "Observer".
+      final junkFilter = RegExp(
+        r'\b(?:blender|wallpaper engine|soundpad|aseprite|obs|3dmark)\b',
+        caseSensitive: false,
+      );
+
+      if (current != null) {
+        for (final raw in rawGames) {
+          final String title = raw['name'] ?? '';
+          final int playtimeMinutes = raw['playtime_forever'] ?? 0;
+          final double hoursPlayed = (playtimeMinutes / 60.0);
+
+          if (title.isEmpty) continue;
+          if (junkFilter.hasMatch(title)) continue;
+
+          final appId = raw['appid'].toString();
+          // Keep the deterministic UUID so Postgres is happy and we avoid duplicates
+          final gameId = '57e40000-0000-0000-0000-${appId.padLeft(12, '0')}';
+
+          final game = await _enrichGame(gameId, title, hoursPlayed);
+
+          // Throttle the bulk sync so IGDB doesn't rate-limit the lookups.
+          // Runs before the null check so unmatched titles are throttled too.
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+
+          // No IGDB match (or lookup failed): skip rather than save a stub.
+          if (game == null) continue;
+
+          await _saveUserGame(game);
+        }
+        await _refreshCatalogAndLibrary(current);
+      }
+    } catch (e) {
+      debugPrint('Error syncing Steam library: $e');
+      _lastError = 'Could not sync Steam library.';
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  // ---- Steam title cleanup so IGDB can match the base game ----------------
+  static final RegExp _trademarkRe = RegExp(r'[™®©]');
+
+  // "Title (Deluxe Edition)" / "Title [Director's Cut]"
+  static final RegExp _bracketedEditionRe = RegExp(
+    r"\s*[\(\[][^\)\]]*\b(?:edition|director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
+    caseSensitive: false,
+  );
+
+  // "Title - Complete Edition". Dash-separated only, so real subtitles after
+  // a colon ("The Witcher 3: Wild Hunt") are left alone.
+  static final RegExp _dashedEditionRe = RegExp(
+    r"\s+[-–—]\s+[^-–—]*\b(?:edition|director['’]?s\s+cut)\b.*$",
+    caseSensitive: false,
+  );
+
+  // "Title Special Edition", "Title: Game of the Year Edition", "Title Director's Cut"
+  static final RegExp _trailingEditionRe = RegExp(
+    r"\s*:?\s*(?:(?:game\s+of\s+the\s+year|goty|definitive|complete|enhanced|deluxe|ultimate|gold|special|anniversary|collector['’]?s|legendary|standard|premium|extended|digital)\s+)*(?:edition|director['’]?s\s+cut)\b.*$",
+    caseSensitive: false,
+  );
+
+  static final RegExp _spacesRe = RegExp(r'\s+');
+  static final RegExp _danglingRe = RegExp(r'[\s\-–—:]+$');
+
+  static String _cleanSteamTitle(String raw) {
+    final stripped =
+        raw.replaceAll(_trademarkRe, '').replaceAll(_spacesRe, ' ').trim();
+    final cleaned = stripped
+        .replaceAll(_bracketedEditionRe, '')
+        .replaceAll(_dashedEditionRe, '')
+        .replaceAll(_trailingEditionRe, '')
+        .replaceAll(_danglingRe, '')
+        .trim();
+    // Never search for an empty string (e.g. a game literally named "Edition").
+    return cleaned.isEmpty ? stripped : cleaned;
+  }
+
+  /// Returns `null` when IGDB has no match or the lookup fails, so callers can
+  /// skip the title instead of saving placeholder data.
+  Future<Game?> _enrichGame(String gameId, String title, double hoursPlayed) async {
+    final cleanTitle = _cleanSteamTitle(title);
+    try {
+      final igdbResults = await _apiService.searchGames(cleanTitle);
+      if (igdbResults.isEmpty) {
+        debugPrint('No IGDB match for "$cleanTitle" (Steam title: "$title")');
+      } else {
+        final igdbGame = igdbResults.first;
+        // Map IGDB data to a new Game object while injecting our Steam ID and hours
+        return Game(
+          id: gameId,
+          title: igdbGame.title,
+          publisher: igdbGame.publisher,
+          developer: igdbGame.developer,
+          releaseYear: igdbGame.releaseYear,
+          platforms: igdbGame.platforms,
+          genres: igdbGame.genres,
+          synopsis: igdbGame.synopsis,
+          coverColors: igdbGame.coverColors,
+          coverIcon: igdbGame.coverIcon,
+          coverUrl: igdbGame.coverUrl,
+          hoursPlayed: hoursPlayed,
+          status: GameStatus.playing,
+          playedOn: GamePlatform.pc,
+          dateAdded: DateTime.now(),
+        );
+      }
+    } catch (e) {
+      debugPrint('IGDB lookup failed for "$cleanTitle" (Steam title: "$title"): $e');
+    }
+
+    // IGDB found nothing or the lookup failed: no fallback game.
+    return null;
   }
 
   List<Game> get games => List.unmodifiable(_games);
@@ -699,18 +840,16 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   void _replaceGame(Game next) {
-    // Always update library list if the game is in the library
+    // Unconditionally update or add to the library list
     final libraryById = <String, Game>{
       for (final game in _libraryGames) game.id: game,
     };
-    if (libraryById.containsKey(next.id)) {
-      libraryById[next.id] = next;
-      _libraryGames = List.unmodifiable(
-        libraryById.values.toList()..sort((a, b) => a.title.compareTo(b.title)),
-      );
-    }
+    libraryById[next.id] = next;
+    _libraryGames = List.unmodifiable(
+      libraryById.values.toList()..sort((a, b) => a.title.compareTo(b.title)),
+    );
 
-    // Always update catalog list
+    // Unconditionally update the main catalog list
     final catalogById = <String, Game>{
       for (final game in _games) game.id: game,
     };
@@ -718,14 +857,22 @@ class CheckpointStore extends ChangeNotifier {
     _games = List.unmodifiable(
       catalogById.values.toList()..sort((a, b) => a.title.compareTo(b.title)),
     );
+    
     notifyListeners();
   }
 
   Future<void> _saveUserGame(Game game) async {
     final current = _user;
     if (current == null || game.status == null) return;
+    
+    _pendingSaves++;
+    
     try {
-      await _repository.upsertBaseGame(game);
+      // Optimization: Only upsert to the global catalog if it's a brand new game
+      if (!_catalogGames.any((g) => g.id == game.id)) {
+        await _repository.upsertBaseGame(game);
+      }
+
       await _repository.upsertUserGame(
         userId: current.id,
         gameId: game.id,
@@ -741,7 +888,13 @@ class CheckpointStore extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('User game save failed: $e\n$st');
       _lastError = 'Could not save that game update.';
-      await _refreshCatalogAndLibrary(current);
+      _refreshQueued = true; // Revert to server truth once writes settle
+    } finally {
+      _pendingSaves--;
+      if (_pendingSaves == 0 && _refreshQueued) {
+        _refreshQueued = false;
+        await _refreshCatalogAndLibrary(current);
+      }
     }
   }
 }

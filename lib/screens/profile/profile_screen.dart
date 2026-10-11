@@ -74,13 +74,19 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
+              // Plain, non-interactive total playtime above the stat cards.
+              Text(
+                'Total Playtime: ${fmtHours(store.totalHours)} hours',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
               Row(children: [
                 Expanded(
                   child: StatTile(
-                    icon: Icons.schedule_rounded,
-                    value: fmtHours(store.totalHours),
-                    label: 'Total hours',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.playing, sortBy: SortField.hoursPlayed),
+                    icon: Icons.play_arrow_rounded,
+                    value: '${store.count(GameStatus.playing)}',
+                    label: 'Playing',
+                    onTap: () => context.actions.openLibraryTab(GameStatus.playing),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -124,7 +130,79 @@ class ProfileScreen extends StatelessWidget {
                         child: _ServiceTile(
                           service: s,
                           connected: store.isConnected(s),
-                          onTap: () => context.actions.toggleService(s),
+                          onTap: () {
+                            // 1. Steam requires an ID dialog before enabling sync
+                            if (s == ConnectedService.steam) {
+                              String enteredSteamId = '';
+                              showDialog(
+                                context: context,
+                                builder: (c) => AlertDialog(
+                                  title: const Text('Connect Steam Account'),
+                                  content: TextField(
+                                    autofocus: true,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Enter 17-digit Steam ID64',
+                                      helperText: 'e.g., 76561198000000000',
+                                    ),
+                                    onChanged: (val) => enteredSteamId = val.trim(),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(c),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () {
+                                        if (enteredSteamId.isNotEmpty) {
+                                          store.setSteamId(enteredSteamId);
+                                          if (!store.isConnected(s)) {
+                                            context.actions.toggleService(s);
+                                          }
+                                        }
+                                        Navigator.pop(c);
+                                      },
+                                      child: const Text('Save Steam ID'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else if (s.supportsSync) {
+                              // 2. Direct toggle for other sync-capable services (e.g. Discord)
+                              context.actions.toggleService(s);
+                            } else {
+                              // 3. Profile-link dialog for PSN/Xbox
+                              String enteredId = '';
+                              showDialog(
+                                context: context,
+                                builder: (c) => AlertDialog(
+                                  title: Text('Connect ${s.label}'),
+                                  content: TextField(
+                                    autofocus: true,
+                                    decoration: InputDecoration(
+                                      hintText: 'Enter your ${s.label} Gamertag/ID',
+                                    ),
+                                    onChanged: (val) => enteredId = val.trim(),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(c),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () {
+                                        if (enteredId.isNotEmpty && !store.isConnected(s)) {
+                                          context.actions.toggleService(s);
+                                        }
+                                        Navigator.pop(c);
+                                      },
+                                      child: const Text('Save Profile Link'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                          },
                         ),
                       ),
                     ],
@@ -132,21 +210,28 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 14),
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton.tonalIcon(
-                      onPressed: store.connectedCount == 0 || store.isSyncing
-                          ? null
-                          : () async {
-                              final messenger = ScaffoldMessenger.of(context);
-                              final n = store.connectedCount;
-                              await context.actions.syncLibrary();
-                              messenger
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(SnackBar(content: Text('Library synced · $n account${n == 1 ? '' : 's'}')));
-                            },
-                      icon: store.isSyncing
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.sync_rounded),
-                      label: Text(store.isSyncing ? 'Syncing…' : 'Sync Library'),
+                    child: Builder(
+                      builder: (context) {
+                        // 3. Only enable Sync if at least one connected service supports syncing
+                        final hasSyncableService = ConnectedService.values
+                            .any((s) => s.supportsSync && store.isConnected(s));
+
+                        return FilledButton.tonalIcon(
+                          onPressed: !hasSyncableService || store.isSyncing
+                              ? null
+                              : () async {
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  await context.actions.syncLibrary();
+                                  messenger
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(const SnackBar(content: Text('Library synced successfully')));
+                                },
+                          icon: store.isSyncing
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.sync_rounded),
+                          label: Text(store.isSyncing ? 'Syncing…' : 'Sync Library'),
+                        );
+                      }
                     ),
                   ),
                 ]),

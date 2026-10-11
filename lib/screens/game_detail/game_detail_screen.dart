@@ -56,22 +56,35 @@ class GameDetailScreen extends StatelessWidget {
             final top = MediaQuery.paddingOf(context).top;
             final collapsed = kToolbarHeight + top;
             final t = ((c.maxHeight - collapsed) / (_expanded - kToolbarHeight)).clamp(0.0, 1.0).toDouble();
-            return Stack(fit: StackFit.expand, children: [
-              Opacity(opacity: t, child: _DetailHeaderArt(game: game, topInset: top)),
-              Positioned(
-                left: 68,
-                right: 20,
-                bottom: 0,
-                height: kToolbarHeight,
-                child: Opacity(
-                  opacity: 1 - t,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            // The header art is always laid out at its full expanded size and anchored
+            // to the bottom, then clipped. That way the title/year column is never
+            // squeezed into the shrinking app bar (the source of the bottom overflow).
+            return ClipRect(
+              child: Stack(fit: StackFit.expand, children: [
+                Opacity(
+                  opacity: t,
+                  child: OverflowBox(
+                    alignment: Alignment.bottomCenter,
+                    minHeight: _expanded + top,
+                    maxHeight: _expanded + top,
+                    child: _DetailHeaderArt(game: game, topInset: top),
                   ),
                 ),
-              ),
-            ]);
+                Positioned(
+                  left: 68,
+                  right: 20,
+                  bottom: 0,
+                  height: kToolbarHeight,
+                  child: Opacity(
+                    opacity: 1 - t,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              ]),
+            );
           }),
         ),
         SliverToBoxAdapter(
@@ -177,7 +190,11 @@ class _DetailHeaderArt extends StatelessWidget {
             const SizedBox(width: 16),
             Expanded(
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
+                // Flexible lets the title give up lines (with an ellipsis) instead of
+                // pushing the rest of the column past the bottom edge.
+                Flexible(
+                  child: Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
+                ),
                 const SizedBox(height: 6),
                 Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),

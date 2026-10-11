@@ -28,6 +28,8 @@ class _LibraryScreenState extends State<LibraryScreen>
     with SingleTickerProviderStateMixin {
   late final CheckpointStore _store;
   late final TabController _tabs;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -47,6 +49,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     _tabs
       ..removeListener(_onTabsChanged)
       ..dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -58,6 +61,13 @@ class _LibraryScreenState extends State<LibraryScreen>
   void _onStoreChanged() {
     final i = _store.currentLibraryTabIndex;
     if (i != _tabs.index) _tabs.index = i;
+  }
+
+  void _onSearchChanged(String value) => setState(() => _searchQuery = value);
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _searchQuery = '');
   }
 
   @override
@@ -149,15 +159,84 @@ class _LibraryScreenState extends State<LibraryScreen>
             ],
           ),
           const SizedBox(height: 8),
+          _LibrarySearchField(
+            controller: _searchController,
+            tabLabel: store.currentLibraryStatus.label,
+            hasText: _searchQuery.isNotEmpty,
+            onChanged: _onSearchChanged,
+            onClear: _clearSearch,
+          ),
           Expanded(
             child: TabBarView(
               controller: _tabs,
               children: [
-                for (final s in GameStatus.values) LibraryCollection(status: s),
+                for (final s in GameStatus.values)
+                  LibraryCollection(
+                    status: s,
+                    searchQuery: _searchQuery,
+                    onClearSearch: _clearSearch,
+                  ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Dark rounded search field shown between the tab bar and the game grid/list.
+class _LibrarySearchField extends StatelessWidget {
+  const _LibrarySearchField({
+    required this.controller,
+    required this.tabLabel,
+    required this.hasText,
+    required this.onChanged,
+    required this.onClear,
+  });
+  final TextEditingController controller;
+  final String tabLabel;
+  final bool hasText;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide.none,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        cursorColor: Palette.accent,
+        style: const TextStyle(fontSize: 15),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: Palette.surfaceHigh,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          hintText: 'Search in $tabLabel',
+          hintStyle: const TextStyle(color: Palette.muted),
+          prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+          suffixIcon: hasText
+              ? IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close_rounded, color: Palette.muted),
+                  onPressed: onClear,
+                )
+              : null,
+          border: border,
+          enabledBorder: border,
+          focusedBorder: border.copyWith(
+            borderSide: BorderSide(
+              color: Palette.accent.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -307,8 +386,17 @@ class _PlatformFilterButton extends StatelessWidget {
 }
 
 class LibraryCollection extends StatelessWidget {
-  const LibraryCollection({super.key, required this.status});
+  const LibraryCollection({
+    super.key,
+    required this.status,
+    this.searchQuery = '',
+    this.onClearSearch,
+  });
   final GameStatus status;
+
+  /// Free-text title filter, applied only to this tab's games.
+  final String searchQuery;
+  final VoidCallback? onClearSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -327,9 +415,24 @@ class LibraryCollection extends StatelessWidget {
       );
     }
 
-    final games = store.libraryFor(status);
+    final query = searchQuery.trim().toLowerCase();
+    final games = store
+        .libraryFor(status)
+        .where((g) => g.title.toLowerCase().contains(query))
+        .toList();
     if (games.isEmpty) {
       final p = store.platformFilter;
+      if (query.isNotEmpty) {
+        return EmptyState(
+          icon: Icons.search_off_rounded,
+          title: 'No matches for "${searchQuery.trim()}"',
+          message: p != null
+              ? 'Try another title, or clear the platform filter.'
+              : 'Try a different title.',
+          actionLabel: 'Clear search',
+          onAction: () => onClearSearch?.call(),
+        );
+      }
       return EmptyState(
         icon: status.icon,
         title: p != null
@@ -364,6 +467,7 @@ class _PosterGrid extends StatelessWidget {
         final cols = c.maxWidth >= 900 ? 6 : (c.maxWidth >= 600 ? 5 : 3);
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
             mainAxisSpacing: 12,
@@ -453,6 +557,7 @@ class _GameList extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: games.length,
       separatorBuilder: (context, index) => Divider(
         height: 1,
