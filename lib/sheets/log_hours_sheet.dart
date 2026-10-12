@@ -26,7 +26,7 @@ Future<void> showLogHoursSheet(BuildContext context, String gameId) async {
   );
 }
 
-/// Game-detail sheet: set total time played + target total hours.
+/// Game-detail sheet: set total time played.
 class LogHoursSheet extends StatefulWidget {
   const LogHoursSheet({super.key, required this.gameId});
   final String gameId;
@@ -38,14 +38,12 @@ class LogHoursSheet extends StatefulWidget {
 class _LogHoursSheetState extends State<LogHoursSheet> {
   late final Game _game = StoreScope.read(context).gameById(widget.gameId);
   late final TextEditingController _total = TextEditingController(text: fmtHours(_game.hoursPlayed));
-  late final TextEditingController _target = TextEditingController(text: _game.targetHours > 0 ? fmtHours(_game.targetHours) : '');
   final _note = TextEditingController();
   late GamePlatform? _platform = _game.playedOn ?? (_game.platforms.isEmpty ? null : _game.platforms.first);
 
   @override
   void dispose() {
     _total.dispose();
-    _target.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -53,9 +51,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
   @override
   Widget build(BuildContext context) {
     final total = parseNum(_total.text);
-    final targetText = _target.text.trim();
-    final target = targetText.isEmpty ? 0.0 : parseNum(targetText);
-    final valid = total != null && total >= 0 && target != null && target >= 0;
+    final valid = total != null && total >= 0;
     final delta = total == null ? null : total - _game.hoursPlayed;
 
     String preview;
@@ -73,27 +69,13 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
       title: 'Log hours',
       subtitle: _game.title,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: TextField(
-              controller: _total,
-              keyboardType: decimalKeyboard,
-              inputFormatters: [decimalFormatter],
-              onChanged: (_) => setState(() {}),
-              decoration: fieldDecoration('Total played', suffix: 'hrs'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: _target,
-              keyboardType: decimalKeyboard,
-              inputFormatters: [decimalFormatter],
-              onChanged: (_) => setState(() {}),
-              decoration: fieldDecoration('Target total', suffix: 'hrs'),
-            ),
-          ),
-        ]),
+        TextField(
+          controller: _total,
+          keyboardType: decimalKeyboard,
+          inputFormatters: [decimalFormatter],
+          onChanged: (_) => setState(() {}),
+          decoration: fieldDecoration('Total played', suffix: 'hrs'),
+        ),
         const SizedBox(height: 10),
         Wrap(spacing: 8, children: [
           for (final h in const <double>[0.5, 1, 2, 5])
@@ -121,7 +103,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
                     context.actions.updateTime(
                       gameId: _game.id,
                       totalHours: total,
-                      targetHours: target,
+                      targetHours: _game.targetHours,
                       platform: _platform,
                       note: _note.text,
                     );
