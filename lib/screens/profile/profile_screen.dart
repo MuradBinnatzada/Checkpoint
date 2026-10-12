@@ -6,6 +6,8 @@ import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
@@ -22,9 +24,8 @@ class ProfileScreen extends StatelessWidget {
     final p = store.profile;
     final byPlatform = store.hoursByPlatform.entries.toList();
     final maxH = byPlatform.isEmpty ? 1.0 : byPlatform.first.value;
-    final week = store.hoursThisWeek;
-    final weekProgress = (week / p.weeklyGoalHours).clamp(0.0, 1.0).toDouble();
     final top = store.topRated;
+    final favorites = store.libraryGames.where((g) => g.isFavorite).toList();
 
     return SafeArea(
       bottom: false,
@@ -103,23 +104,50 @@ class ProfileScreen extends StatelessWidget {
               Row(children: [
                 Expanded(
                   child: StatTile(
-                    icon: Icons.star_rounded,
-                    value: store.averageRating == 0 ? '—' : store.averageRating.toStringAsFixed(1),
-                    label: 'Avg. rating',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.completed, sortBy: SortField.rating),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatTile(
                     icon: Icons.inventory_2_rounded,
                     value: '${store.count(GameStatus.toPlay)}',
                     label: 'To Play',
                     onTap: () => context.actions.openLibraryTab(GameStatus.toPlay),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: StatTile(
+                    icon: Icons.block_rounded,
+                    value: '${store.count(GameStatus.dropped)}',
+                    label: 'Dropped',
+                    onTap: () => context.actions.openLibraryTab(GameStatus.dropped),
+                  ),
+                ),
               ]),
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
+              const Text('Favorite Games', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              if (favorites.isEmpty)
+                const Panel(
+                  child: Text(
+                    'No favorites selected yet. Tap the heart icon on a game to showcase it here.',
+                    style: TextStyle(color: Palette.muted, fontSize: 13, height: 1.35),
+                  ),
+                )
+              else
+                // Always lay out 4 equal slots so covers keep the same size
+                // whether the user has 1 favorite or 4.
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (var i = 0; i < 4; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: i < favorites.length
+                          ? GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => openGame(context, favorites[i].id),
+                              child: CoverArt(game: favorites[i]),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ]),
+              const SizedBox(height: 32),
               Panel(
                 title: 'Connected accounts',
                 child: Column(children: [
@@ -171,7 +199,7 @@ class ProfileScreen extends StatelessWidget {
                               // 2. Direct toggle for other sync-capable services (e.g. Discord)
                               context.actions.toggleService(s);
                             } else {
-                              // 3. Profile-link dialog for PSN/Xbox
+                              // 3. Profile-link dialog for PSN/Xbox/Nintendo
                               String enteredId = '';
                               showDialog(
                                 context: context,
@@ -233,35 +261,6 @@ class ProfileScreen extends StatelessWidget {
                         );
                       }
                     ),
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 14),
-              Panel(
-                title: 'Weekly goal',
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Decrease goal',
-                    onPressed: () => context.actions.setWeeklyGoal(p.weeklyGoalHours - 5),
-                    icon: const Icon(Icons.remove_circle_outline_rounded),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Increase goal',
-                    onPressed: () => context.actions.setWeeklyGoal(p.weeklyGoalHours + 5),
-                    icon: const Icon(Icons.add_circle_outline_rounded),
-                  ),
-                ]),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text.rich(TextSpan(children: [
-                    TextSpan(text: fmtHours(week), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
-                    TextSpan(text: ' / ${fmtHours(p.weeklyGoalHours)} hrs this week', style: const TextStyle(color: Palette.muted)),
-                  ])),
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(value: weekProgress, minHeight: 8, color: weekProgress >= 1 ? Palette.success : Palette.accent, backgroundColor: Colors.white12),
                   ),
                 ]),
               ),
@@ -344,13 +343,19 @@ class _ServiceTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           child: Column(children: [
             Icon(service.icon, size: 28, color: connected ? service.color : Palette.muted),
             const SizedBox(height: 6),
-            Text(service.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(service.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
             const SizedBox(height: 2),
-            Text(connected ? 'Connected' : 'Connect', style: TextStyle(fontSize: 11, color: connected ? Palette.success : Palette.muted)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(connected ? 'Connected' : 'Connect', style: TextStyle(fontSize: 11, color: connected ? Palette.success : Palette.muted)),
+            ),
           ]),
         ),
       ),

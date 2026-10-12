@@ -40,6 +40,7 @@ enum GamePlatform {
   ps4('PS4', Icons.sports_esports_outlined, Color(0xFF7BA4FF)),
   xbox('Xbox', Icons.videogame_asset_rounded, Color(0xFF6CC24A)),
   nswitch('Switch', Icons.videogame_asset_outlined, Color(0xFFFF6B6B)),
+  nintendo('Nintendo', Icons.videogame_asset_rounded, Color(0xFFE60012)),
   mobile('Mobile', Icons.smartphone_rounded, Color(0xFFFFB74D));
 
   const GamePlatform(this.label, this.icon, this.color);
@@ -61,6 +62,7 @@ GamePlatform? gamePlatformFromDb(Object? value) {
     'ps4' || 'playstation4' => GamePlatform.ps4,
     'xbox' || 'xboxseries' || 'xboxone' => GamePlatform.xbox,
     'switch' || 'nswitch' || 'nintendoswitch' => GamePlatform.nswitch,
+    'nintendo' => GamePlatform.nintendo,
     'mobile' || 'ios' || 'android' => GamePlatform.mobile,
     _ => null,
   };

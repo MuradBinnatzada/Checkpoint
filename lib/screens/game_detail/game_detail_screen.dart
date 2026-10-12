@@ -237,16 +237,7 @@ class _ProgressPanel extends StatelessWidget {
         const SizedBox(height: 16),
         Row(children: [
           stat('${fmtHours(game.hoursPlayed)} h', 'Played'),
-          stat(game.targetHours > 0 ? '${fmtHours(game.targetHours)} h' : '—', 'Target'),
-          stat(game.targetHours > 0 ? '${(game.progress * 100).round()}%' : '—', 'Progress'),
         ]),
-        if (game.targetHours > 0) ...[
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(value: game.progress, minHeight: 8, color: Palette.accent, backgroundColor: Colors.white12),
-          ),
-        ],
       ]),
     );
   }

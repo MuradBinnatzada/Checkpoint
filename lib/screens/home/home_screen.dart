@@ -330,28 +330,6 @@ class _HeroCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: game.progress,
-                          minHeight: 7,
-                          color: Palette.accent,
-                          backgroundColor: Colors.white24,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        game.targetHours > 0
-                            ? '${(game.progress * 100).round()}% of ${fmtHours(game.targetHours)} hr target'
-                            : 'No target set',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white70,
-                        ),
-                      ),
                     ],
                   ),
                 ),

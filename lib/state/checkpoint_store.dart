@@ -519,10 +519,13 @@ class CheckpointStore extends ChangeNotifier {
 
   // ---- Steam title cleanup so IGDB can match the base game ----------------
   static final RegExp _trademarkRe = RegExp(r'[™®©]');
+  static final RegExp _colonNoSpaceRe = RegExp(r':(?=\p{L})', unicode: true);
+  static final RegExp _separatorsRe = RegExp(r'[:\-–—]');
+  static final RegExp _apostropheRe = RegExp(r"['’]");
 
   // "Title (Deluxe Edition)" / "Title [Director's Cut]"
   static final RegExp _bracketedEditionRe = RegExp(
-    r"\s*[\(\[][^\)\]]*\b(?:edition|director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
+    r"\s*[\(\[][^\)\]]*\b(?:edition\vert{}director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
     caseSensitive: false,
   );
 
@@ -543,8 +546,11 @@ class CheckpointStore extends ChangeNotifier {
   static final RegExp _danglingRe = RegExp(r'[\s\-–—:]+$');
 
   static String _cleanSteamTitle(String raw) {
-    final stripped =
-        raw.replaceAll(_trademarkRe, '').replaceAll(_spacesRe, ' ').trim();
+    final stripped = raw
+        .replaceAll(_trademarkRe, '')
+        .replaceAllMapped(_colonNoSpaceRe, (_) => ': ')
+        .replaceAll(_spacesRe, ' ')
+        .trim();
     final cleaned = stripped
         .replaceAll(_bracketedEditionRe, '')
         .replaceAll(_dashedEditionRe, '')
@@ -555,41 +561,58 @@ class CheckpointStore extends ChangeNotifier {
     return cleaned.isEmpty ? stripped : cleaned;
   }
 
+  /// Colons and hyphens -> spaces, apostrophes removed, whitespace collapsed.
+  static String _stripPunctuation(String s) => s
+      .replaceAll(_apostropheRe, '')
+      .replaceAll(_separatorsRe, ' ')
+      .replaceAll(_spacesRe, ' ')
+      .trim();
+
   /// Returns `null` when IGDB has no match or the lookup fails, so callers can
   /// skip the title instead of saving placeholder data.
   Future<Game?> _enrichGame(String gameId, String title, double hoursPlayed) async {
     final cleanTitle = _cleanSteamTitle(title);
     try {
-      final igdbResults = await _apiService.searchGames(cleanTitle);
+      var igdbResults = await _apiService.searchGames(cleanTitle);
+      
+      // Second chance: retry with punctuation stripped if initial search fails
+      if (igdbResults.isEmpty) {
+        final looseTitle = _stripPunctuation(cleanTitle);
+        if (looseTitle.isNotEmpty && looseTitle != cleanTitle) {
+          debugPrint('No IGDB match for "$cleanTitle", retrying as "$looseTitle"');
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          igdbResults = await _apiService.searchGames(looseTitle);
+        }
+      }
+
       if (igdbResults.isEmpty) {
         debugPrint('No IGDB match for "$cleanTitle" (Steam title: "$title")');
-      } else {
-        final igdbGame = igdbResults.first;
-        // Map IGDB data to a new Game object while injecting our Steam ID and hours
-        return Game(
-          id: gameId,
-          title: igdbGame.title,
-          publisher: igdbGame.publisher,
-          developer: igdbGame.developer,
-          releaseYear: igdbGame.releaseYear,
-          platforms: igdbGame.platforms,
-          genres: igdbGame.genres,
-          synopsis: igdbGame.synopsis,
-          coverColors: igdbGame.coverColors,
-          coverIcon: igdbGame.coverIcon,
-          coverUrl: igdbGame.coverUrl,
-          hoursPlayed: hoursPlayed,
-          status: GameStatus.playing,
-          playedOn: GamePlatform.pc,
-          dateAdded: DateTime.now(),
-        );
+        return null;
       }
+
+      final igdbGame = igdbResults.first;
+      // Map IGDB data to a new Game object while injecting our Steam ID and hours
+      return Game(
+        id: gameId,
+        title: igdbGame.title,
+        publisher: igdbGame.publisher,
+        developer: igdbGame.developer,
+        releaseYear: igdbGame.releaseYear,
+        platforms: igdbGame.platforms,
+        genres: igdbGame.genres,
+        synopsis: igdbGame.synopsis,
+        coverColors: igdbGame.coverColors,
+        coverIcon: igdbGame.coverIcon,
+        coverUrl: igdbGame.coverUrl,
+        hoursPlayed: hoursPlayed,
+        status: GameStatus.playing,
+        playedOn: GamePlatform.pc,
+        dateAdded: DateTime.now(),
+      );
     } catch (e) {
       debugPrint('IGDB lookup failed for "$cleanTitle" (Steam title: "$title"): $e');
+      return null;
     }
-
-    // IGDB found nothing or the lookup failed: no fallback game.
-    return null;
   }
 
   List<Game> get games => List.unmodifiable(_games);
@@ -684,10 +707,16 @@ class CheckpointStore extends ChangeNotifier {
     return rated.fold<double>(0, (s, g) => s + g.rating) / rated.length;
   }
 
+  /// Total hours per platform, based on each game's total playtime (so hours
+  /// imported via Steam sync count too, not just manually logged sessions).
   Map<GamePlatform, double> get hoursByPlatform {
     final m = <GamePlatform, double>{};
-    for (final l in _logs) {
-      m[l.platform] = (m[l.platform] ?? 0) + l.hours;
+    for (final g in _libraryGames) {
+      if (g.hoursPlayed <= 0) continue;
+      final platform =
+          g.playedOn ??
+          (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
+      m[platform] = (m[platform] ?? 0) + g.hoursPlayed;
     }
     final entries = m.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
