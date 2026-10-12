@@ -41,8 +41,49 @@ class CheckpointStore extends ChangeNotifier {
   List<Game> _searchResults = [];
   List<Game> get searchResults => _searchResults;
 
+  // Bumped by every search and by [clearSearch], so a response that arrives
+  // after the box was emptied (or after a newer search started) is dropped
+  // instead of bringing stale results back.
+  int _searchSeq = 0;
+
+  List<String> _recentSearches = [];
+  List<String> get recentSearches => List.unmodifiable(_recentSearches);
+
+  static const _maxRecentSearches = 10;
+
+  /// Puts [query] at the top of the recent searches (dropping any earlier copy,
+  /// ignoring case) and keeps only the newest [_maxRecentSearches].
+  void addRecentSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    _recentSearches
+      ..removeWhere((e) => e.toLowerCase() == q.toLowerCase())
+      ..insert(0, q);
+    if (_recentSearches.length > _maxRecentSearches) {
+      _recentSearches.removeRange(_maxRecentSearches, _recentSearches.length);
+    }
+    notifyListeners();
+
+    // Save recent searches to device
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('recent_searches', _recentSearches);
+  }
+
   Future<void> searchExternalGames(String query) async {
-    _searchResults = await _apiService.searchGames(query);
+    addRecentSearch(query);
+    final seq = ++_searchSeq;
+    final results = await _apiService.searchGames(query);
+    if (seq != _searchSeq) return;
+    _searchResults = results;
+    notifyListeners();
+  }
+
+  /// Drops the current search results (search box emptied, or the user left
+  /// the Search tab) and discards any search still in flight.
+  void clearSearch() {
+    _searchSeq++;
+    if (_searchResults.isEmpty) return;
+    _searchResults = [];
     notifyListeners();
   }
 
@@ -82,6 +123,10 @@ class CheckpointStore extends ChangeNotifier {
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
     _steamId = prefs.getString('steam_id');
+    _psnId = prefs.getString('psn_id');
+    _xboxId = prefs.getString('xbox_id');
+    _discordId = prefs.getString('discord_id');
+    _recentSearches = List<String>.of(prefs.getStringList('recent_searches') ?? const []);
     
     final savedServices = prefs.getStringList('connected_services') ?? [];
     for (final sName in savedServices) {
@@ -360,6 +405,7 @@ class CheckpointStore extends ChangeNotifier {
   void setBottomNavIndex(int i) {
     if (i == _currentBottomNavIndex) return;
     _currentBottomNavIndex = i;
+    clearSearch();
     notifyListeners();
   }
 
@@ -496,6 +542,7 @@ class CheckpointStore extends ChangeNotifier {
 
   bool get isSyncing => _isSyncing;
   int get connectedCount => _connected.length;
+  Set<ConnectedService> get connectedServices => Set.unmodifiable(_connected);
   bool isConnected(ConnectedService s) => _connected.contains(s);
 
   void toggleService(ConnectedService s) async {
@@ -508,6 +555,7 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   String? _steamId;
+  String? get steamId => _steamId;
 
   void setSteamId(String id) async {
     _steamId = id;
@@ -516,6 +564,41 @@ class CheckpointStore extends ChangeNotifier {
     // Save Steam ID to device
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('steam_id', id);
+  }
+
+  String? _psnId;
+  String? _xboxId;
+  String? _discordId;
+  String? get psnId => _psnId;
+  String? get xboxId => _xboxId;
+  String? get discordId => _discordId;
+
+  /// Saves the username for PSN, Xbox or Discord, marks that service as
+  /// connected, and persists both the ID and the connected-services list.
+  /// Steam keeps using [setSteamId]; Nintendo has no stored ID.
+  void setServiceId(ConnectedService service, String id) async {
+    final String prefKey;
+    switch (service) {
+      case ConnectedService.psn:
+        _psnId = id;
+        prefKey = 'psn_id';
+      case ConnectedService.xbox:
+        _xboxId = id;
+        prefKey = 'xbox_id';
+      case ConnectedService.discord:
+        _discordId = id;
+        prefKey = 'discord_id';
+      case ConnectedService.steam || ConnectedService.nintendo:
+        debugPrint('setServiceId: ${service.name} has no stored ID.');
+        return;
+    }
+    _connected.add(service);
+    notifyListeners();
+
+    // Save the ID and the updated connected list to device
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(prefKey, id);
+    await prefs.setStringList('connected_services', _connected.map((e) => e.name).toList());
   }
 
   Future<void> syncLibrary() async {

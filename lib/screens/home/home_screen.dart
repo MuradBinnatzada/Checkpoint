@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
@@ -229,38 +231,20 @@ class _HeroCard extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: game.coverColors,
-              ),
+          // Blurred cover-art backdrop: image, blur, then a dark scrim.
+          if (game.coverUrl != null)
+            Positioned.fill(
+              child: Image.network(game.coverUrl!, fit: BoxFit.cover),
             ),
-          ),
-          Positioned(
-            right: -30,
-            top: -20,
-            child: Icon(
-              game.coverIcon,
-              size: 220,
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x00000000), Color(0x99000000)],
-              ),
-            ),
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: Container(color: Colors.black.withValues(alpha: 0.6)),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                SizedBox(width: 92, child: CoverArt(game: game)),
+                SizedBox(width: 92, child: CoverArt(game: game, showTitle: false)),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(

@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -159,21 +161,11 @@ class _DetailHeaderArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(fit: StackFit.expand, children: [
-      DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: game.coverColors),
-        ),
-      ),
-      Positioned(right: -40, top: topInset + 30, child: Icon(game.coverIcon, size: 300, color: Colors.white.withValues(alpha: 0.10))),
-      const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0x59000000), Color(0x00000000), Palette.background],
-            stops: [0, 0.45, 1],
-          ),
-        ),
+      // Blurred cover-art backdrop: image, blur, then a dark scrim.
+      if (game.coverUrl != null) Positioned.fill(child: Image.network(game.coverUrl!, fit: BoxFit.cover)),
+      BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(color: Colors.black.withValues(alpha: 0.6)),
       ),
       Padding(
         padding: EdgeInsets.fromLTRB(20, topInset + kToolbarHeight, 20, 20),
@@ -186,7 +178,7 @@ class _DetailHeaderArt extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 10))],
               ),
-              child: CoverArt(game: game, radius: 14),
+              child: CoverArt(game: game, radius: 14, showTitle: false),
             ),
             const SizedBox(width: 16),
             Expanded(

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
@@ -19,6 +22,9 @@ class ProfileScreen extends StatelessWidget {
 
   static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+  /// Services that ask for a username when connected (Steam has its own ID dialog).
+  static const _usernameServices = {ConnectedService.psn, ConnectedService.xbox, ConnectedService.discord};
+
   @override
   Widget build(BuildContext context) {
     final store = context.store;
@@ -27,6 +33,48 @@ class ProfileScreen extends StatelessWidget {
     final maxH = byPlatform.isEmpty ? 1.0 : byPlatform.first.value;
     final top = store.topRated;
     final favorites = store.libraryGames.where((g) => g.isFavorite).toList();
+    final hasBio = p.bio != null && p.bio!.trim().isNotEmpty;
+    final connectedServices = store.connectedServices;
+    final steamId = store.steamId;
+    final steamUrl = steamId != null && steamId.isNotEmpty ? Uri.https('steamcommunity.com', '/profiles/$steamId') : null;
+
+    Future<bool> openLink(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
+
+    // Where tapping a connected service's badge leads, once its ID is saved.
+    // Steam, Xbox and PSN open the profile page; Discord has no public profile
+    // URL, so it copies the username to the clipboard instead.
+    ({String tooltip, VoidCallback onTap})? badgeLink(ConnectedService s) {
+      switch (s) {
+        case ConnectedService.steam:
+          if (steamUrl == null) return null;
+          return (tooltip: 'Open Steam profile', onTap: () => openLink(steamUrl));
+        case ConnectedService.xbox:
+          final id = store.xboxId;
+          if (id == null || id.isEmpty) return null;
+          return (tooltip: 'Open Xbox profile', onTap: () => openLink(Uri.https('xboxgamertag.com', '/search/$id')));
+        case ConnectedService.psn:
+          final id = store.psnId;
+          if (id == null || id.isEmpty) return null;
+          return (tooltip: 'Open PSN profile', onTap: () => openLink(Uri.https('psnprofiles.com', '/$id')));
+        case ConnectedService.discord:
+          final id = store.discordId;
+          if (id == null || id.isEmpty) return null;
+          return (
+            tooltip: 'Copy Discord username',
+            onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              await Clipboard.setData(ClipboardData(text: id));
+              messenger
+                ..hideCurrentSnackBar()
+                ..showSnackBar(const SnackBar(content: Text('Discord username copied to clipboard')));
+            },
+          );
+        case ConnectedService.nintendo:
+          return null;
+      }
+    }
+
+    final badgeLinks = {for (final s in connectedServices) s: badgeLink(s)};
 
     return SafeArea(
       bottom: false,
@@ -54,8 +102,27 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 14),
-              if (p.bio != null && p.bio!.trim().isNotEmpty) ...[
-                Text(p.bio!, style: const TextStyle(height: 1.4, color: Colors.white70)),
+              if (hasBio || connectedServices.isNotEmpty) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (hasBio) Text(p.bio!, style: const TextStyle(height: 1.4, color: Colors.white70)),
+                    if (hasBio && connectedServices.isNotEmpty) const SizedBox(height: 12),
+                    if (connectedServices.isNotEmpty)
+                      Wrap(spacing: 6, runSpacing: 8, children: [
+                        // ConnectedService.values keeps the order stable, matching the
+                        // Connected accounts panel below.
+                        for (final s in ConnectedService.values)
+                          if (connectedServices.contains(s))
+                            _ServiceBadge(
+                              service: s,
+                              // Tappable only once an ID has been saved (see badgeLink above).
+                              tooltip: badgeLinks[s]?.tooltip,
+                              onTap: badgeLinks[s]?.onTap,
+                            ),
+                      ]),
+                  ],
+                ),
                 const SizedBox(height: 16),
               ],
               Row(children: [
@@ -203,11 +270,19 @@ class ProfileScreen extends StatelessWidget {
                                   ],
                                 ),
                               );
+                            } else if (_usernameServices.contains(s)) {
+                              // 3. PSN/Xbox/Discord: ask for a username, then save it and connect
+                              showDialog<String>(
+                                context: context,
+                                builder: (_) => _UsernameDialog(service: s),
+                              ).then((id) {
+                                if (id != null) store.setServiceId(s, id);
+                              });
                             } else if (s.supportsSync) {
-                              // 3. Direct toggle for other sync-capable services (e.g. Discord)
+                              // 4. Direct toggle for any other sync-capable service
                               context.actions.toggleService(s);
                             } else {
-                              // 4. Profile-link dialog for PSN/Xbox/Nintendo
+                              // 5. Profile-link dialog for Nintendo
                               final controller = TextEditingController();
                               showDialog(
                                 context: context,
@@ -353,7 +428,7 @@ class _ServiceTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           child: Column(children: [
-            Icon(service.icon, size: 28, color: connected ? service.color : Palette.muted),
+            FaIcon(service.icon, size: 28, color: connected ? service.color : Palette.muted),
             const SizedBox(height: 6),
             FittedBox(
               fit: BoxFit.scaleDown,
@@ -365,6 +440,80 @@ class _ServiceTile extends StatelessWidget {
               child: Text(connected ? 'Connected' : 'Connect', style: TextStyle(fontSize: 11, color: connected ? Palette.success : Palette.muted)),
             ),
           ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks for the username to show on (and link from) a service badge. Pops with
+/// the trimmed text, or null if cancelled or left empty.
+class _UsernameDialog extends StatefulWidget {
+  const _UsernameDialog({required this.service});
+  final ConnectedService service;
+
+  @override
+  State<_UsernameDialog> createState() => _UsernameDialogState();
+}
+
+class _UsernameDialogState extends State<_UsernameDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    Navigator.pop(context, value.isEmpty ? null : value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.service.label;
+    return AlertDialog(
+      title: Text('Connect $label'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        autocorrect: false,
+        enableSuggestions: false,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+        decoration: InputDecoration(hintText: 'Enter your $label username'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _submit, child: const Text('Connect')),
+      ],
+    );
+  }
+}
+
+/// Small, subtle icon badge for a connected service. Tappable only when [onTap]
+/// is provided (Steam, Xbox, PSN and Discord, once an ID has been saved).
+class _ServiceBadge extends StatelessWidget {
+  const _ServiceBadge({required this.service, this.onTap, this.tooltip});
+  final ConnectedService service;
+  final VoidCallback? onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip ?? service.label,
+      // Transparent Material so the InkWell ripple still has somewhere to paint,
+      // without drawing a background or border behind the icon.
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
+            child: FaIcon(service.icon, size: 20, color: service.color),
+          ),
         ),
       ),
     );
