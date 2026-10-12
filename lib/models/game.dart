@@ -35,13 +35,15 @@ GameStatus? gameStatusFromDb(Object? value) {
 
 enum GamePlatform {
   pc('PC', Icons.desktop_windows_rounded, Color(0xFF8AB4F8)),
-  steamDeck('Steam Deck', Icons.gamepad_rounded, Color(0xFF66C0F4)),
+  steamDeck('Steam Deck', Icons.videogame_asset_rounded, Color(0xFF66C0F4)),
   ps5('PS5', Icons.sports_esports_rounded, Color(0xFF5B8CFF)),
   ps4('PS4', Icons.sports_esports_outlined, Color(0xFF7BA4FF)),
   xbox('Xbox', Icons.videogame_asset_rounded, Color(0xFF6CC24A)),
   nswitch('Switch', Icons.videogame_asset_outlined, Color(0xFFFF6B6B)),
   nintendo('Nintendo', Icons.videogame_asset_rounded, Color(0xFFE60012)),
-  mobile('Mobile', Icons.smartphone_rounded, Color(0xFFFFB74D));
+  mobile('Mobile', Icons.smartphone_rounded, Color(0xFFFFB74D)),
+  vr('VR', Icons.headset_rounded, Color(0xFFB388FF)),
+  retro('Retro', Icons.save_rounded, Color(0xFF4DB6AC));
 
   const GamePlatform(this.label, this.icon, this.color);
   final String label;
@@ -64,6 +66,8 @@ GamePlatform? gamePlatformFromDb(Object? value) {
     'switch' || 'nswitch' || 'nintendoswitch' => GamePlatform.nswitch,
     'nintendo' => GamePlatform.nintendo,
     'mobile' || 'ios' || 'android' => GamePlatform.mobile,
+    'vr' => GamePlatform.vr,
+    'retro' => GamePlatform.retro,
     _ => null,
   };
 }

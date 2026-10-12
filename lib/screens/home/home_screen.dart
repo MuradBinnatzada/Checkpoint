@@ -54,7 +54,7 @@ class HomeScreen extends StatelessWidget {
                 GestureDetector(
                   onTap: () =>
                       context.actions.setBottomNavIndex(NavTab.profile),
-                  child: ProfileAvatar(name: store.profile.name, size: 44),
+                  child: ProfileAvatar(name: store.profile.name, size: 44, imageUrl: store.profile.avatarUrl),
                 ),
               ],
             ),

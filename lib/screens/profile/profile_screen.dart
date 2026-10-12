@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -36,7 +37,7 @@ class ProfileScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             children: [
               Row(children: [
-                ProfileAvatar(name: p.name, size: 76),
+                ProfileAvatar(name: p.name, size: 76, imageUrl: p.avatarUrl),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -53,8 +54,10 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 14),
-              Text(p.bio, style: const TextStyle(height: 1.4, color: Colors.white70)),
-              const SizedBox(height: 16),
+              if (p.bio != null && p.bio!.trim().isNotEmpty) ...[
+                Text(p.bio!, style: const TextStyle(height: 1.4, color: Colors.white70)),
+                const SizedBox(height: 16),
+              ],
               Row(children: [
                 _CountStat(value: fmtCount(store.followersCount), label: 'Followers'),
                 const SizedBox(width: 28),
@@ -64,12 +67,9 @@ class ProfileScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: open an edit-profile sheet
-                    ScaffoldMessenger.of(context)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(const SnackBar(content: Text('Edit Profile coming soon')));
-                  },
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const EditProfileScreen()),
+                  ),
                   icon: const Icon(Icons.edit_rounded, size: 18),
                   label: const Text('Edit Profile'),
                 ),
@@ -159,21 +159,28 @@ class ProfileScreen extends StatelessWidget {
                           service: s,
                           connected: store.isConnected(s),
                           onTap: () {
-                            // 1. Steam requires an ID dialog before enabling sync
+                            // 1. If already connected, tapping it disconnects immediately
+                            if (store.isConnected(s)) {
+                              context.actions.toggleService(s);
+                              return;
+                            }
+
+                            // 2. Steam requires an ID dialog before enabling sync
                             if (s == ConnectedService.steam) {
-                              String enteredSteamId = '';
+                              // Use TextEditingController to capture (and optionally pre-fill) the ID
+                              final controller = TextEditingController();
                               showDialog(
                                 context: context,
                                 builder: (c) => AlertDialog(
                                   title: const Text('Connect Steam Account'),
                                   content: TextField(
+                                    controller: controller,
                                     autofocus: true,
                                     keyboardType: TextInputType.number,
                                     decoration: const InputDecoration(
                                       hintText: 'Enter 17-digit Steam ID64',
                                       helperText: 'e.g., 76561198000000000',
                                     ),
-                                    onChanged: (val) => enteredSteamId = val.trim(),
                                   ),
                                   actions: [
                                     TextButton(
@@ -182,35 +189,36 @@ class ProfileScreen extends StatelessWidget {
                                     ),
                                     FilledButton(
                                       onPressed: () {
-                                        if (enteredSteamId.isNotEmpty) {
-                                          store.setSteamId(enteredSteamId);
+                                        final val = controller.text.trim();
+                                        if (val.isNotEmpty) {
+                                          store.setSteamId(val);
                                           if (!store.isConnected(s)) {
                                             context.actions.toggleService(s);
                                           }
                                         }
                                         Navigator.pop(c);
                                       },
-                                      child: const Text('Save Steam ID'),
+                                      child: const Text('Connect'),
                                     ),
                                   ],
                                 ),
                               );
                             } else if (s.supportsSync) {
-                              // 2. Direct toggle for other sync-capable services (e.g. Discord)
+                              // 3. Direct toggle for other sync-capable services (e.g. Discord)
                               context.actions.toggleService(s);
                             } else {
-                              // 3. Profile-link dialog for PSN/Xbox/Nintendo
-                              String enteredId = '';
+                              // 4. Profile-link dialog for PSN/Xbox/Nintendo
+                              final controller = TextEditingController();
                               showDialog(
                                 context: context,
                                 builder: (c) => AlertDialog(
                                   title: Text('Connect ${s.label}'),
                                   content: TextField(
+                                    controller: controller,
                                     autofocus: true,
                                     decoration: InputDecoration(
                                       hintText: 'Enter your ${s.label} Gamertag/ID',
                                     ),
-                                    onChanged: (val) => enteredId = val.trim(),
                                   ),
                                   actions: [
                                     TextButton(
@@ -219,12 +227,12 @@ class ProfileScreen extends StatelessWidget {
                                     ),
                                     FilledButton(
                                       onPressed: () {
-                                        if (enteredId.isNotEmpty && !store.isConnected(s)) {
+                                        if (controller.text.trim().isNotEmpty && !store.isConnected(s)) {
                                           context.actions.toggleService(s);
                                         }
                                         Navigator.pop(c);
                                       },
-                                      child: const Text('Save Profile Link'),
+                                      child: const Text('Connect'),
                                     ),
                                   ],
                                 ),

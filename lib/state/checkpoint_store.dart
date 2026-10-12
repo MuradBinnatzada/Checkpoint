@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide SortField;
 
 import 'package:checkpoint/app/nav_tab.dart';
@@ -65,7 +66,6 @@ class CheckpointStore extends ChangeNotifier {
     handle: '@guest',
     bio: '',
     joined: DateTime.now(),
-    weeklyGoalHours: 20,
     followers: 0,
     following: 0,
   );
@@ -246,23 +246,30 @@ class CheckpointStore extends ChangeNotifier {
 
   int _pendingSaves = 0;
   bool _refreshQueued = false;
+  Timer? _refreshDebounce;
 
   Future<void> _refreshCatalogAndLibrary(User user) async {
     if (_pendingSaves > 0) {
       _refreshQueued = true; // Pause refresh until local writes finish
       return;
     }
-    try {
-      _catalogGames = await _repository.fetchCatalogGames();
-      final userGames = await _repository.fetchUserGames(user.id);
-      _libraryGames = List.unmodifiable(userGames);
-      _games = List.unmodifiable(
-        _mergeCatalogAndUserGames(_catalogGames, userGames),
-      );
-      notifyListeners();
-    } catch (e, st) {
-      debugPrint('Library refresh failed: $e\n$st');
-    }
+
+    // Cancel any waiting refresh, and start a new 300ms countdown.
+    // This absorbs "refresh storms" from bulk server inserts into a single UI update.
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        _catalogGames = await _repository.fetchCatalogGames();
+        final userGames = await _repository.fetchUserGames(user.id);
+        _libraryGames = List.unmodifiable(userGames);
+        _games = List.unmodifiable(
+          _mergeCatalogAndUserGames(_catalogGames, userGames),
+        );
+        notifyListeners();
+      } catch (e, st) {
+        debugPrint('Library refresh failed: $e\n$st');
+      }
+    });
   }
 
   Future<void> _refreshLogs(String userId) async {
@@ -466,48 +473,20 @@ class CheckpointStore extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final current = _user;
+      if (current == null) return;
+
       final response = await Supabase.instance.client.functions.invoke(
         'sync-steam',
         body: {'steam_id': _steamId},
       );
+      
+      debugPrint('Steam Sync Complete: ${response.data}');
 
-      final data = response.data as Map<String, dynamic>;
-      final List<dynamic> rawGames = data['games'] ?? [];
-      final current = _user;
+      // Give the database a brief moment to settle broadcasts
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await _refreshCatalogAndLibrary(current);
 
-      // Non-game software that Steam lists alongside games. Word boundaries
-      // keep short terms like "obs" from matching titles such as "Observer".
-      final junkFilter = RegExp(
-        r'\b(?:blender|wallpaper engine|soundpad|aseprite|obs|3dmark)\b',
-        caseSensitive: false,
-      );
-
-      if (current != null) {
-        for (final raw in rawGames) {
-          final String title = raw['name'] ?? '';
-          final int playtimeMinutes = raw['playtime_forever'] ?? 0;
-          final double hoursPlayed = (playtimeMinutes / 60.0);
-
-          if (title.isEmpty) continue;
-          if (junkFilter.hasMatch(title)) continue;
-
-          final appId = raw['appid'].toString();
-          // Keep the deterministic UUID so Postgres is happy and we avoid duplicates
-          final gameId = '57e40000-0000-0000-0000-${appId.padLeft(12, '0')}';
-
-          final game = await _enrichGame(gameId, title, hoursPlayed);
-
-          // Throttle the bulk sync so IGDB doesn't rate-limit the lookups.
-          // Runs before the null check so unmatched titles are throttled too.
-          await Future<void>.delayed(const Duration(milliseconds: 300));
-
-          // No IGDB match (or lookup failed): skip rather than save a stub.
-          if (game == null) continue;
-
-          await _saveUserGame(game);
-        }
-        await _refreshCatalogAndLibrary(current);
-      }
     } catch (e) {
       debugPrint('Error syncing Steam library: $e');
       _lastError = 'Could not sync Steam library.';
@@ -525,18 +504,17 @@ class CheckpointStore extends ChangeNotifier {
 
   // "Title (Deluxe Edition)" / "Title [Director's Cut]"
   static final RegExp _bracketedEditionRe = RegExp(
-    r"\s*[\(\[][^\)\]]*\b(?:edition\vert{}director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
+    r"\s*[\(\[][^\)\]]*\b(?:edition|director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
     caseSensitive: false,
   );
 
-  // "Title - Complete Edition". Dash-separated only, so real subtitles after
-  // a colon ("The Witcher 3: Wild Hunt") are left alone.
+  // "Title - Complete Edition"
   static final RegExp _dashedEditionRe = RegExp(
     r"\s+[-–—]\s+[^-–—]*\b(?:edition|director['’]?s\s+cut)\b.*$",
     caseSensitive: false,
   );
 
-  // "Title Special Edition", "Title: Game of the Year Edition", "Title Director's Cut"
+  // "Title Special Edition", "Title: Game of the Year Edition"
   static final RegExp _trailingEditionRe = RegExp(
     r"\s*:?\s*(?:(?:game\s+of\s+the\s+year|goty|definitive|complete|enhanced|deluxe|ultimate|gold|special|anniversary|collector['’]?s|legendary|standard|premium|extended|digital)\s+)*(?:edition|director['’]?s\s+cut)\b.*$",
     caseSensitive: false,
@@ -590,7 +568,12 @@ class CheckpointStore extends ChangeNotifier {
         return null;
       }
 
-      final igdbGame = igdbResults.first;
+      // Prioritize exact name matches to stop sequels (PoE 2) from overriding the original
+      final targetTitle = cleanTitle.toLowerCase();
+      final igdbGame = igdbResults.firstWhere(
+        (g) => g.title.toLowerCase() == targetTitle,
+        orElse: () => igdbResults.first,
+      );
       // Map IGDB data to a new Game object while injecting our Steam ID and hours
       return Game(
         id: gameId,
@@ -778,13 +761,79 @@ class CheckpointStore extends ChangeNotifier {
     await _saveUserGame(next);
   }
 
-  Future<void> setWeeklyGoal(double hours) async {
+  static String _normalizeHandle(String handle) =>
+      handle.trim().replaceFirst(RegExp(r'^@+'), '').toLowerCase();
+
+  /// Whether [handle] (with or without the leading "@") is free for the
+  /// signed-in user. Case-insensitive; the user's own current handle counts as
+  /// available. Throws if signed out or if the lookup fails, so callers can
+  /// decide how to degrade (the unique constraint still guards the save).
+  Future<bool> isHandleAvailable(String handle) {
     final current = _user;
-    if (current == null) return;
-    final clamped = hours.clamp(1.0, 120.0).toDouble();
-    _profile = _profile.copyWith(weeklyGoalHours: clamped);
-    notifyListeners();
-    await _repository.updateWeeklyGoal(current.id, clamped);
+    if (current == null) {
+      throw StateError('Sign in to check username availability.');
+    }
+    return _repository.isHandleAvailable(_normalizeHandle(handle), current.id);
+  }
+
+  /// Uploads [image] to the avatars bucket and returns its public URL. This
+  /// doesn't touch the profile; pass the URL to [updateProfile] to save it.
+  Future<String> uploadAvatar(XFile image) => _repository.uploadAvatar(image);
+
+  /// Updates the signed-in user's display name, handle (without the leading
+  /// "@"), bio and avatar. A null [bio] or [avatarUrl] leaves that field as is.
+  /// Returns null on success, or a user-facing error message.
+  Future<String?> updateProfile({
+    required String name,
+    required String handle,
+    String? bio,
+    String? avatarUrl,
+  }) async {
+    final current = _user;
+    if (current == null) return 'Sign in to edit your profile.';
+
+    final nextName = name.trim();
+    final nextHandle = _normalizeHandle(handle);
+    final nextBio = bio?.trim();
+    if (nextName.isEmpty || nextHandle.isEmpty) {
+      return 'Display name and username can\'t be empty.';
+    }
+
+    final currentHandle = _profile.handle.replaceFirst(RegExp(r'^@+'), '');
+    final unchanged =
+        nextName == _profile.name &&
+        nextHandle == currentHandle &&
+        (nextBio == null || nextBio == _profile.bio) &&
+        (avatarUrl == null || avatarUrl == _profile.avatarUrl);
+    if (unchanged) return null;
+
+    try {
+      await _repository.updateProfile(
+        name: nextName,
+        handle: nextHandle,
+        bio: nextBio,
+        avatarUrl: avatarUrl,
+      );
+
+      // Optimistically update local profile state and trigger instant UI re-render
+      _profile = _profile.copyWith(
+        name: nextName,
+        handle: '@$nextHandle',
+        bio: nextBio,
+        avatarUrl: avatarUrl ?? _profile.avatarUrl,
+      );
+      notifyListeners();
+
+      await _refreshProfile(current);
+      return null;
+    } on PostgrestException catch (e, st) {
+      debugPrint('Profile update failed: $e\n$st');
+      if (e.code == '23505') return 'That username is already taken.';
+      return 'Could not save your profile. Please try again.';
+    } catch (e, st) {
+      debugPrint('Profile update failed: $e\n$st');
+      return 'Could not save your profile. Please try again.';
+    }
   }
 
   GameStatus _statusAfterLogging(GameStatus? s) =>

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
@@ -40,7 +41,6 @@ class CheckpointRepository {
       Db.handle: _handleFrom(displayName, user.id),
       Db.bio: '',
       Db.avatarUrl: _firstText([metadata['avatar_url'], metadata['picture']]),
-      Db.weeklyGoalHours: 20,
     });
 
     final inserted = await _client
@@ -60,11 +60,90 @@ class CheckpointRepository {
     return _profileFromRow(row, fallbackUser: user);
   }
 
-  Future<void> updateWeeklyGoal(String userId, double hours) async {
+  static const _avatarBucket = 'avatars';
+
+  static const _avatarMimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+  };
+
+  String _requireUserId() {
+    final id = _client.auth.currentUser?.id;
+    if (id == null) throw StateError('Not signed in.');
+    return id;
+  }
+
+  /// Whether [handle] is free to use. The `handle` column is citext, so the
+  /// match is case-insensitive; the lookup also lowercases for clarity.
+  /// [currentUserId]'s own row is excluded, so keeping your current handle
+  /// counts as available.
+  Future<bool> isHandleAvailable(String handle, String currentUserId) async {
+    final normalized = handle
+        .trim()
+        .replaceFirst(RegExp(r'^@+'), '')
+        .toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    final rows = await _client
+        .from(Db.profiles)
+        .select(Db.id)
+        .eq(Db.handle, normalized)
+        .neq(Db.id, currentUserId)
+        .limit(1);
+    return rows.isEmpty;
+  }
+
+  /// Saves the signed-in user's display name, handle, bio and avatar.
+  ///
+  /// [handle] is stored lowercase and without the leading "@" (the app adds
+  /// it back when reading the profile). [bio] and [avatarUrl] are only written
+  /// when non-null, so passing null leaves the stored value untouched; pass an
+  /// empty [bio] to clear it.
+  Future<void> updateProfile({
+    required String name,
+    required String handle,
+    String? bio,
+    String? avatarUrl,
+  }) async {
+    final userId = _requireUserId();
     await _client
         .from(Db.profiles)
-        .update({Db.weeklyGoalHours: hours})
+        .update({
+          Db.displayName: name.trim(),
+          Db.handle: handle.trim().replaceFirst(RegExp(r'^@+'), '').toLowerCase(),
+          if (bio != null) Db.bio: bio.trim(),
+          if (avatarUrl != null) Db.avatarUrl: avatarUrl,
+        })
         .eq(Db.id, userId);
+  }
+
+  /// Uploads [image] to the public `avatars` bucket and returns its public
+  /// URL. Files go under `<userId>/` with a unique name per upload, so a new
+  /// photo never collides with a cached copy of the old one.
+  Future<String> uploadAvatar(XFile image) async {
+    final userId = _requireUserId();
+    final bytes = await image.readAsBytes();
+
+    final name = image.name.isNotEmpty ? image.name : image.path;
+    final dot = name.lastIndexOf('.');
+    var ext = dot == -1 ? '' : name.substring(dot + 1).toLowerCase();
+    if (!_avatarMimeTypes.containsKey(ext)) ext = 'jpg';
+
+    final path = '$userId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final storage = _client.storage.from(_avatarBucket);
+    await storage.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: _avatarMimeTypes[ext],
+        cacheControl: '3600',
+        upsert: false,
+      ),
+    );
+    return storage.getPublicUrl(path);
   }
 
   Future<List<Game>> fetchCatalogGames() async {
@@ -268,8 +347,8 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
           _handleFrom(name, fallbackUser?.id ?? 'guest'),
     ),
     bio: _firstText([row[Db.bio]]) ?? '',
+    avatarUrl: _firstText([row[Db.avatarUrl]]),
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
-    weeklyGoalHours: _double(row[Db.weeklyGoalHours], fallback: 20),
     followers: 0,
     following: 0,
   );
