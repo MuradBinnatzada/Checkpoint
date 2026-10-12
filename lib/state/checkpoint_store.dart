@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -499,16 +498,24 @@ class CheckpointStore extends ChangeNotifier {
   int get connectedCount => _connected.length;
   bool isConnected(ConnectedService s) => _connected.contains(s);
 
-  void toggleService(ConnectedService s) {
+  void toggleService(ConnectedService s) async {
     if (!_connected.remove(s)) _connected.add(s);
     notifyListeners();
+
+    // Save connected state to device
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('connected_services', _connected.map((e) => e.name).toList());
   }
 
   String? _steamId;
 
-  void setSteamId(String id) {
+  void setSteamId(String id) async {
     _steamId = id;
     notifyListeners();
+    
+    // Save Steam ID to device
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('steam_id', id);
   }
 
   Future<void> syncLibrary() async {
@@ -870,17 +877,6 @@ class CheckpointStore extends ChangeNotifier {
     final next = game.copyWith(
       status: game.status ?? GameStatus.playing,
       playedOn: platform,
-      dateAdded: game.dateAdded ?? DateTime.now(),
-    );
-    _replaceGame(next);
-    await _saveUserGame(next);
-  }
-
-  Future<void> setPurchasePrice(String id, double price) async {
-    final game = gameById(id);
-    final next = game.copyWith(
-      status: game.status ?? GameStatus.playing,
-      purchasePrice: math.max(0, price),
       dateAdded: game.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);

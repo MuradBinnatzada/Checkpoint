@@ -117,8 +117,6 @@ class GameDetailScreen extends StatelessWidget {
                   const SizedBox(height: 14),
                   Panel(title: 'Update status', child: _StatusActions(game: game)),
                   const SizedBox(height: 14),
-                  ValueRatioCalculator(game: game),
-                  const SizedBox(height: 14),
                   _SessionsPanel(gameId: game.id),
                   _AchievementsPanel(game: game),
                   _AboutPanel(game: game),
@@ -332,91 +330,6 @@ class _StatusActions extends StatelessWidget {
   }
 }
 
-/// Purchase price → cost per hour, with a plain-language verdict.
-class ValueRatioCalculator extends StatefulWidget {
-  const ValueRatioCalculator({super.key, required this.game});
-  final Game game;
-
-  @override
-  State<ValueRatioCalculator> createState() => _ValueRatioCalculatorState();
-}
-
-class _ValueRatioCalculatorState extends State<ValueRatioCalculator> {
-  late final TextEditingController _price = TextEditingController(
-    text: widget.game.purchasePrice > 0 ? widget.game.purchasePrice.toStringAsFixed(2) : '',
-  );
-
-  @override
-  void dispose() {
-    _price.dispose();
-    super.dispose();
-  }
-
-  ({String label, Color color}) _verdict(double cph) {
-    if (cph <= 1) return (label: 'Bargain', color: Palette.success);
-    if (cph <= 3) return (label: 'Great value', color: Palette.success);
-    if (cph <= 6) return (label: 'Fair', color: Palette.star);
-    return (label: 'Pricey per hour', color: Palette.danger);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final g = widget.game;
-    final cph = g.costPerHour;
-    final verdict = cph == null ? null : _verdict(cph);
-
-    String hint;
-    if (g.purchasePrice <= 0) {
-      hint = 'Enter what you paid to see your cost per hour.';
-    } else if (g.hoursPlayed <= 0) {
-      hint = 'Log some hours to calculate cost per hour.';
-    } else if (cph! > 1) {
-      hint = 'Play ${fmtHours(g.purchasePrice - g.hoursPlayed)} more hours to get under ${fmtMoney(1)}/hr.';
-    } else {
-      hint = 'Already under ${fmtMoney(1)} per hour. Nice.';
-    }
-
-    return Panel(
-      title: 'Value ratio',
-      trailing: const Icon(Icons.savings_outlined, color: Palette.muted),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        TextField(
-          controller: _price,
-          keyboardType: decimalKeyboard,
-          inputFormatters: [decimalFormatter],
-          decoration: fieldDecoration('Purchase price', prefix: '\$ '),
-          onChanged: (v) => context.actions.setPurchasePrice(g.id, parseNum(v) ?? 0),
-        ),
-        const SizedBox(height: 18),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Cost per hour', style: TextStyle(color: Palette.muted, fontSize: 12.5)),
-              const SizedBox(height: 2),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  cph == null ? '—' : '${fmtMoney(cph)}/hr',
-                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: verdict?.color ?? Colors.white),
-                ),
-              ),
-            ]),
-          ),
-          if (verdict != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: verdict.color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(20)),
-              child: Text(verdict.label, style: TextStyle(color: verdict.color, fontWeight: FontWeight.w700, fontSize: 12.5)),
-            ),
-        ]),
-        const SizedBox(height: 10),
-        Text(hint, style: const TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35)),
-      ]),
-    );
-  }
-}
-
 class _SessionsPanel extends StatelessWidget {
   const _SessionsPanel({required this.gameId});
   final String gameId;
@@ -600,16 +513,25 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
       ),
       const SizedBox(height: 14),
       for (final a in shown) _AchievementTile(achievement: a),
-      if (remaining > 0)
-        TextButton(
-          onPressed: () => setState(() => _visible += _pageSize),
-          child: Text('Show $nextPage more ($remaining left)'),
-        )
-      else if (total > _initialVisible)
-        TextButton(
-          onPressed: () => setState(() => _visible = _initialVisible),
-          child: const Text('Show less'),
-        ),
+      // "Show less" appears as soon as the list has been expanded past its
+      // starting size, not only once everything is visible. The "Show more"
+      // label is Flexible so the pair can't overflow on narrow screens.
+      if (remaining > 0 || _visible > _initialVisible)
+        Row(children: [
+          if (remaining > 0)
+            Flexible(
+              child: TextButton(
+                onPressed: () => setState(() => _visible += _pageSize),
+                child: Text('Show $nextPage more ($remaining left)', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          if (remaining > 0 && _visible > _initialVisible) const SizedBox(width: 16),
+          if (_visible > _initialVisible)
+            TextButton(
+              onPressed: () => setState(() => _visible = _initialVisible),
+              child: const Text('Show less'),
+            ),
+        ]),
       if (_error != null) _errorText(),
     ]);
   }
