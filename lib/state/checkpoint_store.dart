@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide SortField;
 
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/services/game_api_service.dart';
+import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -16,6 +17,7 @@ import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CheckpointStore extends ChangeNotifier {
   CheckpointStore({
@@ -71,10 +73,24 @@ class CheckpointStore extends ChangeNotifier {
   );
 
   Future<void> initialize() async {
+    await _loadLocalData();
     _authSubscription = _authService.changes.listen((state) {
       unawaited(_handleAuthUser(state.session?.user));
     });
     await _handleAuthUser(_authService.currentUser);
+  }
+
+  Future<void> _loadLocalData() async {
+    final prefs = await SharedPreferences.getInstance();
+    _steamId = prefs.getString('steam_id');
+    
+    final savedServices = prefs.getStringList('connected_services') ?? [];
+    for (final sName in savedServices) {
+      try {
+        final service = ConnectedService.values.firstWhere((e) => e.name == sName);
+        _connected.add(service);
+      } catch (_) {} // Ignore if an enum name changed
+    }
   }
 
   @override
@@ -85,6 +101,9 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   Future<void> _handleAuthUser(User? user) async {
+    // Token refreshes and pull-to-retry re-enter here for the same user; their
+    // already-loaded achievements stay valid, a different user's do not.
+    final sameUser = user != null && user.id == _user?.id;
     _user = user;
     _isLoading = true;
     _lastError = null;
@@ -106,7 +125,7 @@ class CheckpointStore extends ChangeNotifier {
       } else {
         await _authService.ensureProfile(user);
         _profile = await _repository.ensureProfile(user);
-        await _refreshSignedInData(user);
+        await _refreshSignedInData(user, keepLoadedAchievements: sameUser);
         _startSignedInSubscriptions(user);
       }
     } catch (e, st) {
@@ -119,8 +138,14 @@ class CheckpointStore extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshSignedInData(User user) async {
-    final userGames = await _repository.fetchUserGames(user.id);
+  Future<void> _refreshSignedInData(
+    User user, {
+    bool keepLoadedAchievements = false,
+  }) async {
+    final fetched = await _repository.fetchUserGames(user.id);
+    final userGames = keepLoadedAchievements
+        ? _withLoadedAchievements(fetched)
+        : fetched;
     _libraryGames = List.unmodifiable(userGames);
     _games = List.unmodifiable(
       _mergeCatalogAndUserGames(_catalogGames, userGames),
@@ -175,6 +200,26 @@ class CheckpointStore extends ChangeNotifier {
     final next = game.copyWith(isFavorite: !isCurrentlyFavorite);
     _replaceGame(next);
     await _saveUserGame(next);
+  }
+
+  /// [CheckpointRepository.fetchUserGames] doesn't return achievements, so a
+  /// freshly fetched library has `achievements == null` everywhere. Copy over
+  /// whatever is already loaded in memory, otherwise every realtime refresh
+  /// (a favourite toggled, a rating changed...) would wipe them. Read from
+  /// [_libraryGames] at call time so achievements that arrive while a fetch is
+  /// in flight are kept too.
+  List<Game> _withLoadedAchievements(List<Game> fetched) {
+    final loaded = <String, List<Achievement>>{
+      for (final g in _libraryGames)
+        if (g.achievements != null) g.id: g.achievements!,
+    };
+    if (loaded.isEmpty) return fetched;
+    return [
+      for (final g in fetched)
+        loaded.containsKey(g.id)
+            ? g.copyWith(achievements: loaded[g.id])
+            : g,
+    ];
   }
 
   List<Game> _mergeCatalogAndUserGames(
@@ -260,7 +305,9 @@ class CheckpointStore extends ChangeNotifier {
     _refreshDebounce = Timer(const Duration(milliseconds: 300), () async {
       try {
         _catalogGames = await _repository.fetchCatalogGames();
-        final userGames = await _repository.fetchUserGames(user.id);
+        final userGames = _withLoadedAchievements(
+          await _repository.fetchUserGames(user.id),
+        );
         _libraryGames = List.unmodifiable(userGames);
         _games = List.unmodifiable(
           _mergeCatalogAndUserGames(_catalogGames, userGames),
@@ -493,6 +540,85 @@ class CheckpointStore extends ChangeNotifier {
     } finally {
       _isSyncing = false;
       notifyListeners();
+    }
+  }
+
+  final Set<String> _achievementsLoading = {};
+
+  /// Called when a game's detail page opens. Achievements aren't part of the
+  /// library fetch, so if they aren't in memory yet this reads the stored copy
+  /// of just that game's `achievements` column and puts it on the local [Game].
+  ///
+  /// Does nothing when they are already in memory, the game isn't in the
+  /// library, or a lookup for it is already running. When the database has
+  /// nothing stored (NULL) the game is left with `achievements == null`, which
+  /// is the UI's cue to offer "Load Steam Achievements" ([syncGameAchievements]).
+  /// Never throws; a failed lookup is logged and treated like "nothing stored".
+  ///
+  /// Does no notifying before its first `await`, so it is safe to call from
+  /// `initState` or right after a frame.
+  Future<void> ensureAchievementsLoaded(String gameId) async {
+    final current = _user;
+    if (current == null) return;
+    final game = maybeGame(gameId);
+    if (game == null || !game.inLibrary || game.achievements != null) return;
+    if (!_achievementsLoading.add(gameId)) return;
+
+    try {
+      final stored = await _repository.fetchGameAchievements(current.id, gameId);
+      if (stored == null || _user?.id != current.id) return;
+
+      // Re-read the game: a Steam sync may have filled it in while we waited.
+      final latest = maybeGame(gameId);
+      if (latest == null || latest.achievements != null) return;
+      _replaceGame(latest.copyWith(achievements: stored));
+    } catch (e, st) {
+      debugPrint('Achievements lookup failed for $gameId: $e\n$st');
+    } finally {
+      _achievementsLoading.remove(gameId);
+    }
+  }
+
+  /// Loads Steam achievements for a single game on demand (via the
+  /// `sync-achievements` Edge Function) and caches them on the local [Game].
+  ///
+  /// Achievements cost one Steam round trip per game, so they are deliberately
+  /// not part of [syncLibrary]. Returns `null` on success, or a message that is
+  /// safe to show to the user.
+  Future<String?> syncGameAchievements(String gameId) async {
+    final steamId = _steamId;
+    if (_user == null ||
+        steamId == null ||
+        !isConnected(ConnectedService.steam)) {
+      return 'Connect your Steam account to load achievements.';
+    }
+    final game = maybeGame(gameId);
+    if (game == null) return 'Game not found.';
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'sync-achievements',
+        body: {'steam_id': steamId, 'game_id': gameId},
+      );
+      final data = response.data;
+      final achievements =
+          data is Map ? Achievement.listFromJson(data['achievements']) : null;
+      if (achievements == null) return 'Steam returned an unexpected response.';
+
+      // Re-read the game: it may have changed while the request was in flight.
+      _replaceGame((maybeGame(gameId) ?? game).copyWith(achievements: achievements));
+      return null;
+    } on FunctionException catch (e) {
+      debugPrint('Achievements sync failed (${e.status}): ${e.details}');
+      // The Edge Function sends actionable messages (e.g. private profile).
+      final details = e.details;
+      final message = details is Map ? details['error'] : null;
+      return message is String && message.isNotEmpty
+          ? message
+          : 'Could not load Steam achievements.';
+    } catch (e) {
+      debugPrint('Achievements sync failed: $e');
+      return 'Could not load Steam achievements.';
     }
   }
 

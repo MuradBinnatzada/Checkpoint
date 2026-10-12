@@ -13,13 +13,12 @@
  *   STEAM_API_KEY, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
  *   (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
  *
- * ── SCHEMA ASSUMPTIONS ────────────────────────────────────────────────────────
- * checkpoint_repository.dart wasn't available when this was written, so column
- * names are inferred from the Dart `Game` model and `upsertUserGame` parameters
- * (snake_case). If your schema differs, every column name lives in
- * `toGameRow` / `newUserGameRow` below, plus:
- *   • `user_games` has a unique constraint on (user_id, game_id)
- *   • `user_games.hours_played` is the column read when comparing hours
+ * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
+ * Column names follow checkpoint_repository.dart (`upsertBaseGame`,
+ * `upsertUserGame`, `Db.*`). If a name in data/db_schema.dart differs from the
+ * snake_case used here, fix it in `toGameRow` / `newUserGameRow`. The games'
+ * cover colours and icon are computed in the app, not stored, so nothing is
+ * written for them.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
@@ -39,12 +38,12 @@ const IGDB_FALLBACK_CAP = 60     // max fuzzy-search fallbacks per sync (rest re
 const IGDB_PACING_MS = 260       // IGDB allows ~4 req/s
 
 /**
- * Extra columns merged into every new `games` row. The Dart model also carries
- * coverColors / coverIcon; if those are real (NOT NULL) columns in `games`,
- * add the same placeholder values `upsertBaseGame` writes, e.g.
- *   { cover_colors: [...], cover_icon: '...' }
+ * Columns of an existing user_games row that are never re-sent when we rewrite
+ * it, because another feature owns them. `achievements` is a (potentially large)
+ * JSONB blob written by sync-achievements: re-sending a stale copy could wipe a
+ * concurrent load, and would ship the blob for nothing.
  */
-const GAME_ROW_EXTRAS: Record<string, unknown> = {}
+const NOT_RESENT_COLUMNS = ['achievements']
 
 class HttpError extends Error {
   status: number
@@ -193,11 +192,9 @@ function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
     release_year: g.first_release_date
       ? new Date(g.first_release_date * 1000).getUTCFullYear()
       : 0,
-    platforms: [],
     genres: (g.genres ?? []).map((x) => x.name).filter((n): n is string => !!n),
-    synopsis: g.summary ?? '',
+    summary: g.summary ?? '',
     cover_url: coverUrl,
-    ...GAME_ROW_EXTRAS,
   }
 }
 
@@ -411,7 +408,7 @@ async function fetchCachedGameIds(admin: SupabaseClient, ids: string[]): Promise
   return found
 }
 
-/** The user's existing `user_games` rows (full rows, keyed by game_id). */
+/** The user's existing `user_games` rows, keyed by game_id (minus NOT_RESENT_COLUMNS). */
 async function fetchExistingUserGames(
   admin: SupabaseClient,
   userId: string,
@@ -425,7 +422,11 @@ async function fetchExistingUserGames(
   )
   for (const { data, error } of results) {
     if (error) throw new Error(`user_games lookup failed: ${error.message}`)
-    for (const row of data ?? []) byGame.set(row.game_id as string, row as Record<string, unknown>)
+    for (const row of data ?? []) {
+      const copy = { ...(row as Record<string, unknown>) }
+      for (const col of NOT_RESENT_COLUMNS) delete copy[col]
+      byGame.set(row.game_id as string, copy)
+    }
   }
   return byGame
 }

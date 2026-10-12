@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/models/achievement.dart';
+
 enum GameStatus {
   playing('Playing', Icons.play_circle_rounded, Color(0xFFBB86FC)),
   toPlay('To Play', Icons.inventory_2_rounded, Color(0xFF4FC3F7)),
@@ -96,6 +98,7 @@ class Game {
     this.purchasePrice = 0,
     this.dateAdded,
     this.isFavorite = false,
+    this.achievements,
   });
 
   final String id;
@@ -120,6 +123,10 @@ class Game {
   final double purchasePrice; // 0 = unknown
   final DateTime? dateAdded;
 
+  /// Steam achievements merged with the user's unlocks. `null` = never loaded;
+  /// an empty list = loaded, but the game has none.
+  final List<Achievement>? achievements;
+
   bool get inLibrary => status != null;
   double get progress =>
       targetHours <= 0 ? 0 : (hoursPlayed / targetHours).clamp(0.0, 1.0).toDouble();
@@ -136,6 +143,7 @@ class Game {
     DateTime? dateAdded,
     String? coverUrl,
     bool? isFavorite,
+    List<Achievement>? achievements,
   }) =>
       Game(
         id: id,
@@ -157,5 +165,6 @@ class Game {
         purchasePrice: purchasePrice ?? this.purchasePrice,
         dateAdded: dateAdded ?? this.dateAdded,
         isFavorite: isFavorite ?? this.isFavorite,
+        achievements: achievements ?? this.achievements,
       );
 }

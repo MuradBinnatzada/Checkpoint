@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -5,10 +6,17 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
+import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
+
+/// `user_games.achievements` (added by 20261012120000_add_achievements_to_user_games.sql).
+/// Only read through [CheckpointRepository.fetchGameAchievements]; the library
+/// queries leave it out on purpose.
+/// Move into `Db` in data/db_schema.dart if you'd rather keep column names there.
+const _achievementsColumn = 'achievements';
 
 class CheckpointRepository {
   CheckpointRepository(this._client);
@@ -151,6 +159,9 @@ class CheckpointRepository {
     return rows.map<Game>(_gameFromCatalogRow).toList(growable: false);
   }
 
+  /// The user's whole library. Columns are listed explicitly (rather than
+  /// `select()`) so the heavy `achievements` JSONB column is never part of this
+  /// payload; load it per game with [fetchGameAchievements] instead.
   Future<List<Game>> fetchUserGames(String userId) async {
     final rows = await _client
         .from(Db.userGames)
@@ -185,6 +196,24 @@ class CheckpointRepository {
         .order(Db.dateAdded, ascending: false);
 
     return rows.map<Game>(_gameFromUserGameRow).toList(growable: false);
+  }
+
+  /// Reads only the `achievements` column of one `user_games` row.
+  ///
+  /// Returns `null` when achievements were never loaded (the column is NULL, or
+  /// the game isn't in the user's library), and an empty list when they were
+  /// loaded but the game has none. See [Achievement.listFromJson].
+  Future<List<Achievement>?> fetchGameAchievements(
+    String userId,
+    String gameId,
+  ) async {
+    final row = await _client
+        .from(Db.userGames)
+        .select(_achievementsColumn)
+        .eq(Db.userId, userId)
+        .eq(Db.gameId, gameId)
+        .maybeSingle();
+    return Achievement.listFromJson(row?[_achievementsColumn]);
   }
 
   Future<List<LogEntry>> fetchLogEntries(String userId) async {
@@ -309,10 +338,45 @@ class CheckpointRepository {
   Stream<List<Map<String, dynamic>>> watchCatalogGames() =>
       _client.from(Db.games).stream(primaryKey: [Db.id]).order(Db.title);
 
-  Stream<List<Map<String, dynamic>>> watchUserGames(String userId) => _client
-      .from(Db.userGames)
-      .stream(primaryKey: [Db.id])
-      .eq(Db.userId, userId);
+  /// Emits an event whenever one of [userId]'s `user_games` rows changes.
+  ///
+  /// This deliberately isn't `.stream()`: that API has no column selection, so
+  /// it would start with a `select *` of the whole library (achievements JSONB
+  /// included). The store only uses this as a "refetch the library" trigger,
+  /// so a plain change subscription with no initial snapshot is enough. Callers
+  /// get the data from [fetchUserGames], which leaves `achievements` out.
+  ///
+  /// Like the stream it replaces, the user_id filter means DELETE events are
+  /// not delivered (Realtime can't filter them); local deletes are applied
+  /// optimistically by the store.
+  Stream<void> watchUserGames(String userId) {
+    late final StreamController<void> controller;
+    RealtimeChannel? channel;
+    controller = StreamController<void>(
+      onListen: () {
+        channel = _client
+            .channel('user_games:$userId')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: Db.userGames,
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: Db.userId,
+                value: userId,
+              ),
+              callback: (_) => controller.add(null),
+            )
+            .subscribe();
+      },
+      onCancel: () async {
+        final c = channel;
+        channel = null;
+        if (c != null) await _client.removeChannel(c);
+      },
+    );
+    return controller.stream;
+  }
 
   Stream<List<Map<String, dynamic>>> watchLogEntries(String userId) => _client
       .from(Db.logEntries)
@@ -403,6 +467,8 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
     purchasePrice: _double(row[Db.purchasePrice]),
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
+    // `achievements` is intentionally not read here: fetchUserGames doesn't
+    // select it. See fetchGameAchievements.
   );
 }
 
