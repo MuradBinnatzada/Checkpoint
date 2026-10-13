@@ -122,7 +122,9 @@ class CheckpointStore extends ChangeNotifier {
 
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
-    _steamId = prefs.getString('steam_id');
+    // The Steam ID now lives on the `profiles` row. Delete any copy that an
+    // older build left on this device; it is deliberately not read or migrated.
+    await prefs.remove('steam_id');
     _psnId = prefs.getString('psn_id');
     _xboxId = prefs.getString('xbox_id');
     _discordId = prefs.getString('discord_id');
@@ -561,16 +563,29 @@ class CheckpointStore extends ChangeNotifier {
     await prefs.setStringList('connected_services', _connected.map((e) => e.name).toList());
   }
 
-  String? _steamId;
-  String? get steamId => _steamId;
+  /// The signed-in user's Steam ID64, read from `profiles.steam_id` along with
+  /// the rest of their profile. `null` when signed out or not set yet.
+  String? get steamId => _profile.steamId;
 
-  void setSteamId(String id) async {
-    _steamId = id;
-    notifyListeners();
-    
-    // Save Steam ID to device
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('steam_id', id);
+  /// Saves [id] to the signed-in user's `profiles` row (not to the device).
+  /// The local copy is updated only after the save succeeds. Returns null on
+  /// success, or a user-facing error message.
+  Future<String?> setSteamId(String id) async {
+    final current = _user;
+    if (current == null) return 'Sign in to connect your Steam account.';
+
+    final trimmed = id.trim();
+    if (trimmed.isEmpty) return 'Enter your Steam ID.';
+
+    try {
+      await _repository.setSteamId(trimmed);
+      _profile = _profile.copyWith(steamId: trimmed);
+      notifyListeners();
+      return null;
+    } catch (e, st) {
+      debugPrint('Saving Steam ID failed: $e\n$st');
+      return 'Could not save your Steam ID. Please try again.';
+    }
   }
 
   String? _psnId;
@@ -582,7 +597,7 @@ class CheckpointStore extends ChangeNotifier {
 
   /// Saves the username for PSN, Xbox or Discord, marks that service as
   /// connected, and persists both the ID and the connected-services list.
-  /// Steam keeps using [setSteamId]; Nintendo has no stored ID.
+  /// Steam uses [setSteamId] (stored on the profile); Nintendo has no stored ID.
   void setServiceId(ConnectedService service, String id) async {
     final String prefKey;
     switch (service) {
@@ -609,7 +624,7 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   Future<void> syncLibrary() async {
-    if (_isSyncing || !isConnected(ConnectedService.steam) || _steamId == null) {
+    if (_isSyncing || !isConnected(ConnectedService.steam) || steamId == null) {
       return;
     }
 
@@ -620,10 +635,9 @@ class CheckpointStore extends ChangeNotifier {
       final current = _user;
       if (current == null) return;
 
-      final response = await Supabase.instance.client.functions.invoke(
-        'sync-steam',
-        body: {'steam_id': _steamId},
-      );
+      // No body: the Edge Function looks up this user's Steam ID on `profiles`
+      // using the authenticated session, and never trusts one sent by the client.
+      final response = await Supabase.instance.client.functions.invoke('sync-steam');
       
       debugPrint('Steam Sync Complete: ${response.data}');
 
@@ -683,7 +697,8 @@ class CheckpointStore extends ChangeNotifier {
   /// not part of [syncLibrary]. Returns `null` on success, or a message that is
   /// safe to show to the user.
   Future<String?> syncGameAchievements(String gameId) async {
-    final steamId = _steamId;
+    // Local check only, to avoid a pointless request. The Edge Function
+    // re-checks against the profile row on the server.
     if (_user == null ||
         steamId == null ||
         !isConnected(ConnectedService.steam)) {
@@ -693,9 +708,12 @@ class CheckpointStore extends ChangeNotifier {
     if (game == null) return 'Game not found.';
 
     try {
+      // Only the game goes in the body. The Edge Function looks up this user's
+      // Steam ID on `profiles` using the authenticated session, and ignores
+      // any `steam_id` sent by the client.
       final response = await Supabase.instance.client.functions.invoke(
         'sync-achievements',
-        body: {'steam_id': steamId, 'game_id': gameId},
+        body: {'game_id': gameId},
       );
       final data = response.data;
       final achievements =

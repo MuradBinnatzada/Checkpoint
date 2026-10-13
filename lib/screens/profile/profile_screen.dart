@@ -255,15 +255,25 @@ class ProfileScreen extends StatelessWidget {
                                       child: const Text('Cancel'),
                                     ),
                                     FilledButton(
-                                      onPressed: () {
+                                      onPressed: () async {
                                         final val = controller.text.trim();
-                                        if (val.isNotEmpty) {
-                                          store.setSteamId(val);
-                                          if (!store.isConnected(s)) {
-                                            context.actions.toggleService(s);
-                                          }
+                                        final navigator = Navigator.of(c);
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        if (val.isEmpty) {
+                                          navigator.pop();
+                                          return;
                                         }
-                                        Navigator.pop(c);
+                                        // The ID is saved on the user's profile in Supabase; only
+                                        // mark Steam as connected once that save has succeeded.
+                                        final error = await store.setSteamId(val);
+                                        if (error != null) {
+                                          messenger
+                                            ..hideCurrentSnackBar()
+                                            ..showSnackBar(SnackBar(content: Text(error)));
+                                        } else if (!store.isConnected(s)) {
+                                          store.toggleService(s);
+                                        }
+                                        navigator.pop();
                                       },
                                       child: const Text('Connect'),
                                     ),

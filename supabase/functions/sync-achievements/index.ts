@@ -1,7 +1,11 @@
 /**
  * sync-achievements — on-demand Steam achievements for ONE game.
  *
- * POST { steam_id, game_id }   (the caller is identified by their Supabase JWT)
+ * POST { game_id }   (the caller is identified by their Supabase JWT)
+ *   The caller's Steam ID64 is read from `profiles.steam_id` for the verified
+ *   user. A `steam_id` sent in the request body is ignored.
+ *
+ *   0. Profile: look up the caller's `profiles.steam_id`
  *   1. game_id (our deterministic UUID) → Steam app id
  *   2. ISteamUserStats/GetSchemaForGame/v2     → the game's global achievement
  *      dictionary (names, descriptions, icons)
@@ -176,6 +180,27 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
   return data.user.id
 }
 
+/**
+ * The caller's Steam ID64, read from their own `profiles` row. `userId` comes
+ * from the verified JWT (`authenticate`), never from the request, so a client
+ * can only ever load achievements for the Steam account saved on its own
+ * profile. (Same lookup as `sync-steam`.)
+ */
+async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<string> {
+  const { data, error } = await admin
+    .from('profiles')
+    .select('steam_id')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(`profiles lookup failed: ${error.message}`)
+
+  const steamId = data?.steam_id
+  if (steamId === null || steamId === undefined || String(steamId).trim() === '') {
+    throw new HttpError(400, 'No Steam ID saved on your profile. Connect your Steam account first.')
+  }
+  return String(steamId).trim()
+}
+
 // ---- Orchestration ---------------------------------------------------------
 async function syncAchievements(
   admin: SupabaseClient,
@@ -248,18 +273,19 @@ serve(async (req) => {
 
     const userId = await authenticate(req, admin)
 
+    // Only `game_id` is read from the body. Any `steam_id` in it is ignored on
+    // purpose: the Steam ID comes from the caller's own profile, so it can't be
+    // swapped for someone else's.
     const body = await req.json().catch(() => ({}))
-    const steamId = body?.steam_id
     const gameId = body?.game_id
-    if (!steamId || (typeof steamId !== 'string' && typeof steamId !== 'number')) {
-      throw new HttpError(400, 'Missing steam_id')
-    }
     if (!gameId || typeof gameId !== 'string') throw new HttpError(400, 'Missing game_id')
 
     const appId = steamAppIdFromGameId(gameId)
     if (appId === null) throw new HttpError(400, 'Not a Steam game')
 
-    const achievements = await syncAchievements(admin, userId, String(steamId), gameId, appId)
+    const steamId = await fetchSteamId(admin, userId)
+
+    const achievements = await syncAchievements(admin, userId, steamId, gameId, appId)
     return json({ success: true, achievements })
   } catch (error) {
     console.error('sync-achievements failed:', error)

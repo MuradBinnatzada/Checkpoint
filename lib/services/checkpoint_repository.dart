@@ -88,6 +88,9 @@ class CheckpointRepository {
   /// match is case-insensitive; the lookup also lowercases for clarity.
   /// [currentUserId]'s own row is excluded, so keeping your current handle
   /// counts as available.
+  ///
+  /// Reads `public_profiles`, not `profiles`: the table only exposes the
+  /// caller's own row, so it can't see whether someone else holds a handle.
   Future<bool> isHandleAvailable(String handle, String currentUserId) async {
     final normalized = handle
         .trim()
@@ -96,7 +99,7 @@ class CheckpointRepository {
     if (normalized.isEmpty) return false;
 
     final rows = await _client
-        .from(Db.profiles)
+        .from(Db.publicProfiles)
         .select(Db.id)
         .eq(Db.handle, normalized)
         .neq(Db.id, currentUserId)
@@ -125,6 +128,18 @@ class CheckpointRepository {
           if (bio != null) Db.bio: bio.trim(),
           if (avatarUrl != null) Db.avatarUrl: avatarUrl,
         })
+        .eq(Db.id, userId);
+  }
+
+  /// Saves the signed-in user's Steam ID64 on their own `profiles` row.
+  /// The `sync-steam` Edge Function reads it back from there, keyed by the
+  /// caller's verified user ID. Read it with [fetchProfile] / [ensureProfile]
+  /// (it comes back as [UserProfile.steamId]).
+  Future<void> setSteamId(String steamId) async {
+    final userId = _requireUserId();
+    await _client
+        .from(Db.profiles)
+        .update({Db.steamId: steamId.trim()})
         .eq(Db.id, userId);
   }
 
@@ -224,10 +239,14 @@ class CheckpointRepository {
     return rows.map<LogEntry>(_logFromRow).toList(growable: false);
   }
 
+  /// Other members, for the Search tab. Reads the `public_profiles` view, which
+  /// only has the public fields; `profiles` itself holds `email` / `steam_id`
+  /// and is readable only for your own row. Keep the column list in sync with
+  /// what [_socialUserFromProfile] reads and with the view.
   Future<List<SocialUser>> fetchSocialUsers(String currentUserId) async {
     final rows = await _client
-        .from(Db.profiles)
-        .select()
+        .from(Db.publicProfiles)
+        .select('id, handle, display_name, avatar_url')
         .neq(Db.id, currentUserId)
         .order(Db.displayName);
     return rows
@@ -411,6 +430,7 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     ),
     bio: _firstText([row[Db.bio]]) ?? '',
     avatarUrl: _firstText([row[Db.avatarUrl]]),
+    steamId: _firstText([row[Db.steamId]]),
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,

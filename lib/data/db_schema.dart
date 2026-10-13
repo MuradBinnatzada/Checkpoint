@@ -1,5 +1,11 @@
 abstract final class Db {
   static const profiles = 'profiles';
+
+  /// View over `profiles` with only the public columns (id, handle,
+  /// display_name, avatar_url). Use it for any query that reads OTHER members;
+  /// `profiles` itself is readable only for the signed-in user's own row.
+  static const publicProfiles = 'public_profiles';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';
@@ -14,6 +20,7 @@ abstract final class Db {
   static const displayName = 'display_name';
   static const bio = 'bio';
   static const avatarUrl = 'avatar_url';
+  static const steamId = 'steam_id';
   static const weeklyGoalHours = 'weekly_goal_hours';
 
   static const igdbId = 'igdb_id';

@@ -1,7 +1,12 @@
 /**
  * sync-steam — bulk Steam → Supabase library sync.
  *
+ * POST (no body needed). The caller is identified by their Supabase JWT, and
+ * their Steam ID64 is read from `profiles.steam_id` for that user. A `steam_id`
+ * sent in the request body is ignored.
+ *
  * Pipeline (all heavy lifting server-side, no per-game round trips):
+ *   0. Profile     look up the caller's `profiles.steam_id`
  *   1. Steam       fetch owned games, drop software junk and test/beta/server
  *                  builds, map appid → deterministic UUID
  *   2. Cache check query `games` for all UUIDs (chunked `in` queries, in parallel)
@@ -839,6 +844,26 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
   return data.user.id
 }
 
+/**
+ * The caller's Steam ID64, read from their own `profiles` row. `userId` comes
+ * from the verified JWT (`authenticate`), never from the request, so a client
+ * can only ever sync the Steam account saved on its own profile.
+ */
+async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<string> {
+  const { data, error } = await admin
+    .from('profiles')
+    .select('steam_id')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error) throw new Error(`profiles lookup failed: ${error.message}`)
+
+  const steamId = data?.steam_id
+  if (steamId === null || steamId === undefined || String(steamId).trim() === '') {
+    throw new HttpError(400, 'No Steam ID saved on your profile. Connect your Steam account first.')
+  }
+  return String(steamId).trim()
+}
+
 /** Which of these game UUIDs already exist in the global `games` catalog? */
 async function fetchCachedGameIds(admin: SupabaseClient, ids: string[]): Promise<Set<string>> {
   const found = new Set<string>()
@@ -993,13 +1018,11 @@ serve(async (req) => {
 
     const userId = await authenticate(req, admin)
 
-    const body = await req.json().catch(() => ({}))
-    const steamId = body?.steam_id
-    if (!steamId || (typeof steamId !== 'string' && typeof steamId !== 'number')) {
-      throw new HttpError(400, 'Missing steam_id')
-    }
+    // The request body is ignored on purpose: the Steam ID is looked up on the
+    // caller's own profile, so it can't be swapped for someone else's.
+    const steamId = await fetchSteamId(admin, userId)
 
-    const result = await syncLibrary(admin, userId, String(steamId))
+    const result = await syncLibrary(admin, userId, steamId)
     return json({ success: true, ...result })
   } catch (error) {
     console.error('sync-steam failed:', error)

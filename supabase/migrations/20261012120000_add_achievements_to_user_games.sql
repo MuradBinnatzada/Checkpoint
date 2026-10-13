@@ -1,23 +1,17 @@
--- On-demand Steam achievements, stored per user per game.
+-- Steam ID64, stored per user on their profile.
 --
--- One JSONB array on the existing user_games row instead of a child table:
--- achievements are only ever read and written as a whole list for a single
--- (user, game), so a relational table would just add thousands of tiny rows
--- and joins for no query benefit.
+-- Previously the Flutter app kept this in local SharedPreferences and sent it to
+-- the `sync-steam` Edge Function in the request body. It now lives here, and
+-- `sync-steam` reads it with the service role, keyed by the verified caller's
+-- user id (profiles.id = auth.users.id), so a client can't pass someone else's.
 --
--- NULL      = achievements have never been loaded for this game
--- '[]'      = loaded; the game has no Steam achievements
--- '[{...}]' = loaded. Each element:
---             { "name": text, "description": text, "icon_url": text,
---               "unlocked": boolean, "unlocked_at": ISO-8601 text | null }
---
--- Written by the `sync-achievements` Edge Function (service role). Existing
--- row-level policies on user_games already cover the new column.
+-- NULL = the user has not connected Steam.
+-- The app writes it with `update profiles set steam_id = ... where id = auth.uid()`,
+-- which the existing own-row update policy on profiles already has to allow
+-- (the profile editor uses the same path for display_name / handle / bio).
 
-alter table public.user_games
-  add column if not exists achievements jsonb default null
-  constraint user_games_achievements_is_array
-    check (achievements is null or jsonb_typeof(achievements) = 'array');
+alter table public.profiles
+  add column if not exists steam_id text default null;
 
-comment on column public.user_games.achievements is
-  'Merged Steam achievement schema + player unlock state. NULL = not loaded yet.';
+comment on column public.profiles.steam_id is
+  'Steam ID64 the user connected. Private: the app never selects it for other members.';
