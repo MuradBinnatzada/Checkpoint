@@ -176,6 +176,22 @@ function toSteamEntries(raw: SteamGame[]): { entries: SteamEntry[]; junk: number
   return { entries: [...byId.values()], junk }
 }
 
+/** `games.release_year` must be NULL or 1950-2100 (`games_release_year_check`). */
+function sanitizeReleaseYear(year: unknown): number | null {
+  return typeof year === 'number' && Number.isInteger(year) && year >= 1950 && year <= 2100
+    ? year
+    : null
+}
+
+/**
+ * IGDB `first_release_date` (UNIX seconds, UTC) -> 4-digit year, or null when the
+ * value is missing, malformed, or falls outside 1950-2100.
+ */
+function releaseYearFromUnixSeconds(seconds: unknown): number | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null
+  return sanitizeReleaseYear(new Date(seconds * 1000).getUTCFullYear())
+}
+
 /** Map an IGDB record to a `games` row. Column names live here. */
 function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
   let coverUrl: string | null = null
@@ -189,9 +205,7 @@ function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
     title: g.name ?? 'Unknown',
     developer: company,
     publisher: company,
-    release_year: g.first_release_date
-      ? new Date(g.first_release_date * 1000).getUTCFullYear()
-      : 0,
+    release_year: releaseYearFromUnixSeconds(g.first_release_date),
     genres: (g.genres ?? []).map((x) => x.name).filter((n): n is string => !!n),
     summary: g.summary ?? '',
     cover_url: coverUrl,

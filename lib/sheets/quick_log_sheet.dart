@@ -54,7 +54,11 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
     super.dispose();
   }
 
-  GamePlatform _defaultPlatform(Game g) => g.playedOn ?? g.platforms.first;
+  // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
+  // Always non-empty (Emulator is always present), so `.first` is safe.
+  List<GamePlatform> _availablePlatforms(Game g) => {...g.platforms, if (g.playedOn != null) g.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
+
+  GamePlatform _defaultPlatform(Game g) => g.playedOn ?? _availablePlatforms(g).first;
 
   void _save(Game game, double hours) {
     final messenger = ScaffoldMessenger.of(context);
@@ -103,7 +107,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           const SizedBox(height: 18),
           const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          PlatformChips(platforms: game.platforms, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
+          PlatformChips(platforms: _availablePlatforms(game), selected: _platform, onSelected: (p) => setState(() => _platform = p)),
         ],
         const SizedBox(height: 18),
         TextField(

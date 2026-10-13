@@ -33,7 +33,6 @@ abstract final class Db {
   static const status = 'status';
   static const rating = 'rating';
   static const hoursPlayed = 'hours_played';
-  static const targetHours = 'target_hours';
   static const playedOn = 'played_on';
   static const purchasePrice = 'purchase_price';
   static const dateAdded = 'date_added';

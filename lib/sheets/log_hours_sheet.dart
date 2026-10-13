@@ -37,6 +37,8 @@ class LogHoursSheet extends StatefulWidget {
 
 class _LogHoursSheetState extends State<LogHoursSheet> {
   late final Game _game = StoreScope.read(context).gameById(widget.gameId);
+  // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
+  late final List<GamePlatform> _availablePlatforms = {..._game.platforms, if (_game.playedOn != null) _game.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
   late final TextEditingController _total = TextEditingController(text: fmtHours(_game.hoursPlayed));
   final _note = TextEditingController();
   late GamePlatform? _platform = _game.playedOn ?? (_game.platforms.isEmpty ? null : _game.platforms.first);
@@ -89,7 +91,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
         const SizedBox(height: 18),
         const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
-        PlatformChips(platforms: _game.platforms, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
+        PlatformChips(platforms: _availablePlatforms, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
         const SizedBox(height: 18),
         TextField(controller: _note, textCapitalization: TextCapitalization.sentences, decoration: fieldDecoration('Note (optional)')),
         const SizedBox(height: 20),
@@ -103,7 +105,6 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
                     context.actions.updateTime(
                       gameId: _game.id,
                       totalHours: total,
-                      targetHours: _game.targetHours,
                       platform: _platform,
                       note: _note.text,
                     );

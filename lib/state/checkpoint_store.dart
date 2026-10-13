@@ -215,7 +215,6 @@ class CheckpointStore extends ChangeNotifier {
     // Revert to a clean catalog state (stripping status, rating, hours)
     catalogById[id] = game.copyWith(
       hoursPlayed: 0,
-      targetHours: 0,
       rating: 0,
     ); // Note: You may need to manually set status to null if your copyWith ignores nulls
 
@@ -1054,7 +1053,7 @@ class CheckpointStore extends ChangeNotifier {
     final current = _user;
     if (current == null) return;
     final g = gameById(gameId);
-    final p = platform ?? g.playedOn ?? g.platforms.first;
+    final p = platform ?? g.playedOn ?? (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
     final next = g.copyWith(
       hoursPlayed: g.hoursPlayed + hours,
       playedOn: p,
@@ -1089,7 +1088,6 @@ class CheckpointStore extends ChangeNotifier {
   Future<void> updateTime({
     required String gameId,
     required double totalHours,
-    required double targetHours,
     GamePlatform? platform,
     String note = '',
   }) async {
@@ -1097,10 +1095,9 @@ class CheckpointStore extends ChangeNotifier {
     if (current == null) return;
     final g = gameById(gameId);
     final delta = totalHours - g.hoursPlayed;
-    final p = platform ?? g.playedOn ?? g.platforms.first;
+    final p = platform ?? g.playedOn ?? (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
     final next = g.copyWith(
       hoursPlayed: totalHours,
-      targetHours: targetHours,
       playedOn: platform ?? g.playedOn,
       status: delta > 0.01
           ? _statusAfterLogging(g.status)
@@ -1162,7 +1159,6 @@ class CheckpointStore extends ChangeNotifier {
         status: game.status!,
         rating: game.rating,
         hoursPlayed: game.hoursPlayed,
-        targetHours: game.targetHours,
         playedOn: game.playedOn,
         purchasePrice: game.purchasePrice,
         dateAdded: game.dateAdded,

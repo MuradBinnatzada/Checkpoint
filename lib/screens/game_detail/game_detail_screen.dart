@@ -31,6 +31,8 @@ class GameDetailScreen extends StatelessWidget {
       return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.error_outline_rounded, title: 'Game not found', message: 'It may have been removed.'));
     }
     final bottom = MediaQuery.paddingOf(context).bottom;
+    // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
+    final availablePlatforms = {...game.platforms, if (game.playedOn != null) game.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
     return Scaffold(
       body: CustomScrollView(slivers: [
         SliverAppBar(
@@ -106,7 +108,7 @@ class GameDetailScreen extends StatelessWidget {
                     title: 'Played on',
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       PlatformChips(
-                        platforms: game.platforms,
+                        platforms: availablePlatforms,
                         selected: game.playedOn,
                         onSelected: (p) => context.actions.setPlayedOn(game.id, p),
                       ),
