@@ -394,12 +394,19 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   int _currentBottomNavIndex = NavTab.home;
-  int _currentLibraryTabIndex = 0;
+
+  /// Selected Library status filter. `null` means "All" (the default).
+  GameStatus? _selectedLibraryStatus;
 
   int get currentBottomNavIndex => _currentBottomNavIndex;
-  int get currentLibraryTabIndex => _currentLibraryTabIndex;
-  GameStatus get currentLibraryStatus =>
-      GameStatus.values[_currentLibraryTabIndex];
+
+  /// Library tab index: 0 is the "All" tab, then one tab per [GameStatus].
+  int get currentLibraryTabIndex => _selectedLibraryStatus == null
+      ? 0
+      : GameStatus.values.indexOf(_selectedLibraryStatus!) + 1;
+
+  /// Selected Library status, or `null` when "All" is selected.
+  GameStatus? get selectedLibraryStatus => _selectedLibraryStatus;
 
   void setBottomNavIndex(int i) {
     if (i == _currentBottomNavIndex) return;
@@ -409,14 +416,15 @@ class CheckpointStore extends ChangeNotifier {
   }
 
   void setLibraryTabIndex(int i) {
-    if (i == _currentLibraryTabIndex) return;
-    _currentLibraryTabIndex = i;
+    final next = i <= 0 ? null : GameStatus.values[i - 1];
+    if (next == _selectedLibraryStatus) return;
+    _selectedLibraryStatus = next;
     notifyListeners();
   }
 
   void openLibraryTab(GameStatus status, {SortField? sortBy}) {
     _currentBottomNavIndex = NavTab.library;
-    _currentLibraryTabIndex = GameStatus.values.indexOf(status);
+    _selectedLibraryStatus = status;
     _platformFilter = null;
     if (sortBy != null) {
       _sortField = sortBy;
@@ -851,8 +859,12 @@ class CheckpointStore extends ChangeNotifier {
     return a.title.compareTo(b.title);
   }
 
-  List<Game> libraryFor(GameStatus s) =>
-      _libraryGames.where((g) => g.status == s && _matchesPlatform(g)).toList()
+  /// Library games for [s]; pass `null` for every status ("All").
+  /// The platform filter applies either way.
+  List<Game> libraryFor(GameStatus? s) =>
+      _libraryGames
+          .where((g) => (s == null || g.status == s) && _matchesPlatform(g))
+          .toList()
         ..sort(_compare);
 
   List<Game> playingNow() {

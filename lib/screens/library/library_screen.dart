@@ -20,7 +20,8 @@ class LibraryScreen extends StatefulWidget {
 }
 
 /// Owns the status-tab `TabController` and keeps it in lock-step with
-/// `store.currentLibraryTabIndex` in both directions:
+/// `store.currentLibraryTabIndex` in both directions (tab 0 is "All", then
+/// one tab per `GameStatus`; `store.selectedLibraryStatus == null` means All):
 ///   user taps/swipes a tab  → controller listener → store.setLibraryTabIndex
 ///   store.openLibraryTab()  → store listener      → controller.index = …
 /// Both sides compare before writing, so the two listeners can never loop.
@@ -36,7 +37,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     super.initState();
     _store = context.actions; // non-subscribing lookup is allowed in initState
     _tabs = TabController(
-      length: GameStatus.values.length,
+      length: GameStatus.values.length + 1, // +1 for the leading "All" tab
       vsync: this,
       initialIndex: _store.currentLibraryTabIndex,
     )..addListener(_onTabsChanged);
@@ -73,6 +74,26 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   Widget build(BuildContext context) {
     final store = context.store;
+    Tab statusTab(String label, int count) => Tab(
+      height: 38,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     return SafeArea(
       bottom: false,
       child: Column(
@@ -135,33 +156,16 @@ class _LibraryScreenState extends State<LibraryScreen>
               border: Border.all(color: Palette.accent.withValues(alpha: 0.5)),
             ),
             tabs: [
+              // "All" is injected at index 0, ahead of the per-status tabs.
+              statusTab('All', store.libraryFor(null).length),
               for (final s in GameStatus.values)
-                Tab(
-                  height: 38,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(s.label),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${store.libraryFor(s).length}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                statusTab(s.label, store.libraryFor(s).length),
             ],
           ),
           const SizedBox(height: 8),
           _LibrarySearchField(
             controller: _searchController,
-            tabLabel: store.currentLibraryStatus.label,
+            tabLabel: store.selectedLibraryStatus?.label ?? 'All',
             hasText: _searchQuery.isNotEmpty,
             onChanged: _onSearchChanged,
             onClear: _clearSearch,
@@ -170,6 +174,11 @@ class _LibraryScreenState extends State<LibraryScreen>
             child: TabBarView(
               controller: _tabs,
               children: [
+                LibraryCollection(
+                  status: null, // "All"
+                  searchQuery: _searchQuery,
+                  onClearSearch: _clearSearch,
+                ),
                 for (final s in GameStatus.values)
                   LibraryCollection(
                     status: s,
@@ -392,7 +401,8 @@ class LibraryCollection extends StatelessWidget {
     this.searchQuery = '',
     this.onClearSearch,
   });
-  final GameStatus status;
+  /// Status shown by this tab; `null` shows every game ("All").
+  final GameStatus? status;
 
   /// Free-text title filter, applied only to this tab's games.
   final String searchQuery;
@@ -415,9 +425,10 @@ class LibraryCollection extends StatelessWidget {
       );
     }
 
+    final s = status; // local copy so null checks promote
     final query = searchQuery.trim().toLowerCase();
     final games = store
-        .libraryFor(status)
+        .libraryFor(s)
         .where((g) => g.title.toLowerCase().contains(query))
         .toList();
     if (games.isEmpty) {
@@ -434,10 +445,14 @@ class LibraryCollection extends StatelessWidget {
         );
       }
       return EmptyState(
-        icon: status.icon,
+        icon: s?.icon ?? Icons.apps_rounded,
         title: p != null
-            ? 'No ${status.label.toLowerCase()} games on ${p.label}'
-            : 'Nothing in ${status.label} yet',
+            ? (s == null
+                  ? 'No games on ${p.label}'
+                  : 'No ${s.label.toLowerCase()} games on ${p.label}')
+            : (s == null
+                  ? 'Your library is empty'
+                  : 'Nothing in ${s.label} yet'),
         message: p != null
             ? 'Clear the platform filter to see everything.'
             : 'Find something new in Discover and add it here.',
@@ -450,8 +465,8 @@ class LibraryCollection extends StatelessWidget {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: store.libraryView == LibraryView.grid
-          ? _PosterGrid(key: ValueKey('grid-${status.name}'), games: games)
-          : _GameList(key: ValueKey('list-${status.name}'), games: games),
+          ? _PosterGrid(key: ValueKey('grid-${s?.name ?? 'all'}'), games: games)
+          : _GameList(key: ValueKey('list-${s?.name ?? 'all'}'), games: games),
     );
   }
 }
