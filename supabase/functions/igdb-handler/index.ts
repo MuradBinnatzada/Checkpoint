@@ -190,7 +190,7 @@ async function requireUser(req: Request): Promise<void> {
     throw new HttpError(401, "Unauthorized");
   }
 
-  const supabaseUrl = Deno.env.get("");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error("SUPABASE_URL / SUPABASE_ANON_KEY are not set");

@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +9,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
+import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
@@ -163,12 +162,8 @@ class _DetailHeaderArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(fit: StackFit.expand, children: [
-      // Blurred cover-art backdrop: image, blur, then a dark scrim.
-      if (game.coverUrl != null) Positioned.fill(child: Image.network(game.coverUrl!, fit: BoxFit.cover)),
-      BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: Container(color: Colors.black.withValues(alpha: 0.6)),
-      ),
+      // Blurred cover-art backdrop (baked in, not a BackdropFilter: see CoverBackdrop).
+      CoverBackdrop(game: game),
       Padding(
         padding: EdgeInsets.fromLTRB(20, topInset + kToolbarHeight, 20, 20),
         child: Align(
