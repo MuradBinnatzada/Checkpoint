@@ -648,7 +648,7 @@ class _AchievementIcon extends StatelessWidget {
             fit: BoxFit.cover,
             cacheWidth: 96, // 2x of the 44 px slot; keeps long lists light on memory
             gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => fallback,
+            errorBuilder: (_, _, _) => fallback,
           );
     if (!a.unlocked) {
       image = Opacity(opacity: 0.55, child: ColorFiltered(colorFilter: _greyscale, child: image));

@@ -51,7 +51,7 @@ class CoverBackdrop extends StatelessWidget {
               duration: const Duration(milliseconds: 300),
               child: child,
             ),
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
           ),
         ColoredBox(color: Colors.black.withValues(alpha: scrim)),
       ],

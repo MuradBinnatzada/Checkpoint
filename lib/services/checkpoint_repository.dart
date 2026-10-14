@@ -126,7 +126,7 @@ class CheckpointRepository {
           Db.displayName: name.trim(),
           Db.handle: handle.trim().replaceFirst(RegExp(r'^@+'), '').toLowerCase(),
           if (bio != null) Db.bio: bio.trim(),
-          if (avatarUrl != null) Db.avatarUrl: avatarUrl,
+          Db.avatarUrl: ?avatarUrl,
         })
         .eq(Db.id, userId);
   }
@@ -140,6 +140,15 @@ class CheckpointRepository {
     await _client
         .from(Db.profiles)
         .update({Db.steamId: steamId.trim()})
+        .eq(Db.id, userId);
+  }
+
+  /// Removes the signed-in user's Steam ID from their own `profiles` row.
+  Future<void> clearSteamId() async {
+    final userId = _requireUserId();
+    await _client
+        .from(Db.profiles)
+        .update({Db.steamId: null})
         .eq(Db.id, userId);
   }
 

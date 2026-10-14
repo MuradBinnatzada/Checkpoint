@@ -207,7 +207,7 @@ class _SearchScreenState extends State<SearchScreen> {
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 32),
                   itemCount: recents.length,
-                  separatorBuilder: (_, __) => const _RowDivider(),
+                  separatorBuilder: (_, _) => const _RowDivider(),
                   itemBuilder: (_, i) => ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                     leading: const Icon(Icons.history_rounded, color: Palette.muted),
@@ -227,7 +227,7 @@ class _SearchScreenState extends State<SearchScreen> {
         child: ListView.separated(
           padding: const EdgeInsets.only(bottom: 32),
           itemCount: _browseItems.length,
-          separatorBuilder: (_, __) => const _RowDivider(),
+          separatorBuilder: (_, _) => const _RowDivider(),
           itemBuilder: (_, i) => ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             title: Text(_browseItems[i], style: const TextStyle(fontWeight: FontWeight.w600)),

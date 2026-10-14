@@ -53,7 +53,7 @@ class ProfileAvatar extends StatelessWidget {
               // Keep the initials visible while loading and if the load fails.
               loadingBuilder: (_, child, progress) =>
                   progress == null ? child : initialsText,
-              errorBuilder: (_, __, ___) => initialsText,
+              errorBuilder: (_, _, _) => initialsText,
             ),
     );
   }

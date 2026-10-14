@@ -274,7 +274,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             ListenableBuilder(
               listenable: _name,
-              builder: (_, __) {
+              builder: (_, _) {
                 final typed = _name.text.trim();
                 return CircleAvatar(
                   radius: radius,

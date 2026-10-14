@@ -31,13 +31,15 @@ class UserProfile {
     String? bio,
     String? avatarUrl,
     String? steamId,
+    // copyWith can't tell "leave it" from "set to null", so clearing is explicit.
+    bool clearSteamId = false,
   }) =>
       UserProfile(
         name: name ?? this.name,
         handle: handle ?? this.handle,
         bio: bio ?? this.bio,
         avatarUrl: avatarUrl ?? this.avatarUrl,
-        steamId: steamId ?? this.steamId,
+        steamId: clearSteamId ? null : (steamId ?? this.steamId),
         joined: joined,
         followers: followers,
         following: following,

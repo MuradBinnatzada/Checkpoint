@@ -125,18 +125,53 @@ class CheckpointStore extends ChangeNotifier {
     // The Steam ID now lives on the `profiles` row. Delete any copy that an
     // older build left on this device; it is deliberately not read or migrated.
     await prefs.remove('steam_id');
-    _psnId = prefs.getString('psn_id');
-    _xboxId = prefs.getString('xbox_id');
-    _discordId = prefs.getString('discord_id');
+    // These used to be saved for the whole device, so they showed up on whichever
+    // account signed in next. They are saved per account now (see
+    // _loadAccountLocalData); delete the old shared copies, which can't be
+    // attributed to anyone.
+    for (final key in const ['psn_id', 'xbox_id', 'discord_id', 'connected_services']) {
+      await prefs.remove(key);
+    }
     _recentSearches = List<String>.of(prefs.getStringList('recent_searches') ?? const []);
     
-    final savedServices = prefs.getStringList('connected_services') ?? [];
-    for (final sName in savedServices) {
-      try {
-        final service = ConnectedService.values.firstWhere((e) => e.name == sName);
+  }
+
+  // ---- Per-account local data: PSN / Xbox / Discord names + connected flags ----
+  // Steam is not stored here. It is connected exactly when the signed-in user's
+  // profile has a Steam ID (see [_steamConnected]).
+
+  static String _scoped(String key, String userId) => '$key.$userId';
+
+  /// Forgets the previous account's service data (memory only; the saved copy
+  /// stays on disk for when that account signs in again).
+  void _clearAccountLocalData() {
+    _psnId = null;
+    _xboxId = null;
+    _discordId = null;
+    _connected.clear();
+  }
+
+  /// Loads the service names and connected flags saved for [userId].
+  Future<void> _loadAccountLocalData(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_user?.id != userId) return; // signed out or switched while we waited
+    _psnId = prefs.getString(_scoped('psn_id', userId));
+    _xboxId = prefs.getString(_scoped('xbox_id', userId));
+    _discordId = prefs.getString(_scoped('discord_id', userId));
+    final saved = prefs.getStringList(_scoped('connected_services', userId)) ?? const <String>[];
+    for (final service in ConnectedService.values) {
+      if (service != ConnectedService.steam && saved.contains(service.name)) {
         _connected.add(service);
-      } catch (_) {} // Ignore if an enum name changed
+      }
     }
+  }
+
+  Future<void> _saveConnectedServices(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _scoped('connected_services', userId),
+      _connected.map((e) => e.name).toList(),
+    );
   }
 
   @override
@@ -151,6 +186,9 @@ class CheckpointStore extends ChangeNotifier {
     // already-loaded achievements stay valid, a different user's do not.
     final sameUser = user != null && user.id == _user?.id;
     _user = user;
+    // A different account (or signing out) must not inherit the previous
+    // account's local service data.
+    if (!sameUser) _clearAccountLocalData();
     _isLoading = true;
     _lastError = null;
     notifyListeners();
@@ -169,6 +207,7 @@ class CheckpointStore extends ChangeNotifier {
         _followersCount = 0;
         _startPublicSubscriptions();
       } else {
+        if (!sameUser) await _loadAccountLocalData(user.id);
         // Creates the profiles row on first login. Only the repository does this:
         // AuthService.ensureProfile wrote an `email` column that `profiles` doesn't
         // have, so every brand-new account failed to load.
@@ -552,17 +591,47 @@ class CheckpointStore extends ChangeNotifier {
   bool _isSyncing = false;
 
   bool get isSyncing => _isSyncing;
-  int get connectedCount => _connected.length;
-  Set<ConnectedService> get connectedServices => Set.unmodifiable(_connected);
-  bool isConnected(ConnectedService s) => _connected.contains(s);
+  /// Steam is connected exactly when the signed-in user's profile has a Steam ID.
+  /// Every other service is a flag saved per account on this device.
+  bool get _steamConnected =>
+      _user != null && (_profile.steamId?.trim().isNotEmpty ?? false);
+
+  int get connectedCount => connectedServices.length;
+  Set<ConnectedService> get connectedServices => Set.unmodifiable({
+    ..._connected,
+    if (_steamConnected) ConnectedService.steam,
+  });
+  bool isConnected(ConnectedService s) =>
+      s == ConnectedService.steam ? _steamConnected : _connected.contains(s);
+
+  /// Clears the Steam ID on the profile, which is what disconnects Steam.
+  /// Returns null on success, or a message that is safe to show.
+  Future<String?> disconnectSteam() async {
+    if (!_steamConnected) return null;
+    try {
+      await _repository.clearSteamId();
+      _profile = _profile.copyWith(clearSteamId: true);
+      notifyListeners();
+      return null;
+    } catch (e, st) {
+      debugPrint('Disconnecting Steam failed: $e\n$st');
+      _lastError = 'Could not disconnect Steam. Please try again.';
+      notifyListeners();
+      return _lastError;
+    }
+  }
 
   void toggleService(ConnectedService s) async {
+    if (s == ConnectedService.steam) {
+      // Toggling Steam off clears its ID. Connecting goes through [setSteamId].
+      unawaited(disconnectSteam());
+      return;
+    }
     if (!_connected.remove(s)) _connected.add(s);
     notifyListeners();
 
-    // Save connected state to device
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('connected_services', _connected.map((e) => e.name).toList());
+    final userId = _user?.id;
+    if (userId != null) await _saveConnectedServices(userId);
   }
 
   /// The signed-in user's Steam ID64, read from `profiles.steam_id` along with
@@ -619,15 +688,21 @@ class CheckpointStore extends ChangeNotifier {
     _connected.add(service);
     notifyListeners();
 
-    // Save the ID and the updated connected list to device
+    // Saved per account, so another account on this device doesn't see it.
+    final userId = _user?.id;
+    if (userId == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(prefKey, id);
-    await prefs.setStringList('connected_services', _connected.map((e) => e.name).toList());
+    await prefs.setString(_scoped(prefKey, userId), id);
+    await _saveConnectedServices(userId);
   }
 
-  Future<void> syncLibrary() async {
-    if (_isSyncing || !isConnected(ConnectedService.steam) || steamId == null) {
-      return;
+  /// Syncs the signed-in user's Steam library. Returns null when a sync ran and
+  /// succeeded, otherwise a message that is safe to show (nothing was synced).
+  Future<String?> syncLibrary() async {
+    if (_user == null) return 'Sign in to sync your library.';
+    if (_isSyncing) return 'A sync is already running.';
+    if (!isConnected(ConnectedService.steam) || steamId == null) {
+      return 'Connect your Steam account first to sync your library.';
     }
 
     _isSyncing = true;
@@ -635,7 +710,7 @@ class CheckpointStore extends ChangeNotifier {
 
     try {
       final current = _user;
-      if (current == null) return;
+      if (current == null) return 'Sign in to sync your library.';
 
       // No body: the Edge Function looks up this user's Steam ID on `profiles`
       // using the authenticated session, and never trusts one sent by the client.
@@ -646,10 +721,12 @@ class CheckpointStore extends ChangeNotifier {
       // Give the database a brief moment to settle broadcasts
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await _refreshCatalogAndLibrary(current);
+      return null;
 
     } catch (e) {
       debugPrint('Error syncing Steam library: $e');
       _lastError = 'Could not sync Steam library.';
+      return _lastError;
     } finally {
       _isSyncing = false;
       notifyListeners();
@@ -791,55 +868,6 @@ class CheckpointStore extends ChangeNotifier {
 
   /// Returns `null` when IGDB has no match or the lookup fails, so callers can
   /// skip the title instead of saving placeholder data.
-  Future<Game?> _enrichGame(String gameId, String title, double hoursPlayed) async {
-    final cleanTitle = _cleanSteamTitle(title);
-    try {
-      var igdbResults = await _apiService.searchGames(cleanTitle);
-      
-      // Second chance: retry with punctuation stripped if initial search fails
-      if (igdbResults.isEmpty) {
-        final looseTitle = _stripPunctuation(cleanTitle);
-        if (looseTitle.isNotEmpty && looseTitle != cleanTitle) {
-          debugPrint('No IGDB match for "$cleanTitle", retrying as "$looseTitle"');
-          await Future<void>.delayed(const Duration(milliseconds: 300));
-          igdbResults = await _apiService.searchGames(looseTitle);
-        }
-      }
-
-      if (igdbResults.isEmpty) {
-        debugPrint('No IGDB match for "$cleanTitle" (Steam title: "$title")');
-        return null;
-      }
-
-      // Prioritize exact name matches to stop sequels (PoE 2) from overriding the original
-      final targetTitle = cleanTitle.toLowerCase();
-      final igdbGame = igdbResults.firstWhere(
-        (g) => g.title.toLowerCase() == targetTitle,
-        orElse: () => igdbResults.first,
-      );
-      // Map IGDB data to a new Game object while injecting our Steam ID and hours
-      return Game(
-        id: gameId,
-        title: igdbGame.title,
-        publisher: igdbGame.publisher,
-        developer: igdbGame.developer,
-        releaseYear: igdbGame.releaseYear,
-        platforms: igdbGame.platforms,
-        genres: igdbGame.genres,
-        synopsis: igdbGame.synopsis,
-        coverColors: igdbGame.coverColors,
-        coverIcon: igdbGame.coverIcon,
-        coverUrl: igdbGame.coverUrl,
-        hoursPlayed: hoursPlayed,
-        status: GameStatus.playing,
-        playedOn: GamePlatform.pc,
-        dateAdded: DateTime.now(),
-      );
-    } catch (e) {
-      debugPrint('IGDB lookup failed for "$cleanTitle" (Steam title: "$title"): $e');
-      return null;
-    }
-  }
 
   List<Game> get games => List.unmodifiable(_games);
   List<Game> get libraryGames => List.unmodifiable(_libraryGames);

@@ -27,7 +27,7 @@ class Panel extends StatelessWidget {
               Expanded(
                 child: Text(title!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
-              if (trailing != null) trailing!,
+              ?trailing,
             ]),
             const SizedBox(height: 14),
           ],

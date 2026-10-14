@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
-import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -270,9 +269,9 @@ class ProfileScreen extends StatelessWidget {
                                           messenger
                                             ..hideCurrentSnackBar()
                                             ..showSnackBar(SnackBar(content: Text(error)));
-                                        } else if (!store.isConnected(s)) {
-                                          store.toggleService(s);
                                         }
+                                        // On success Steam shows as connected by itself: it is
+                                        // connected exactly when the profile has a Steam ID.
                                         navigator.pop();
                                       },
                                       child: const Text('Connect'),
@@ -342,10 +341,11 @@ class ProfileScreen extends StatelessWidget {
                               ? null
                               : () async {
                                   final messenger = ScaffoldMessenger.of(context);
-                                  await context.actions.syncLibrary();
+                                  // null = a sync ran and succeeded; otherwise why nothing was synced.
+                                  final error = await context.actions.syncLibrary();
                                   messenger
                                     ..hideCurrentSnackBar()
-                                    ..showSnackBar(const SnackBar(content: Text('Library synced successfully')));
+                                    ..showSnackBar(SnackBar(content: Text(error ?? 'Library synced successfully')));
                                 },
                           icon: store.isSyncing
                               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -393,7 +393,7 @@ class ProfileScreen extends StatelessWidget {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: top.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
                     itemBuilder: (_, i) => GamePosterCard(game: top[i], width: 104),
                   ),
                 ),

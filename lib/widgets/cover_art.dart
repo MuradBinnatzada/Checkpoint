@@ -54,7 +54,7 @@ class CoverArt extends StatelessWidget {
                   duration: const Duration(milliseconds: 300),
                   child: child,
                 ),
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(), // keep fallback
+                errorBuilder: (_, _, _) => const SizedBox.shrink(), // keep fallback
               ),
 
             // 3 · scrim + title (the scrim only exists to keep the title legible)
