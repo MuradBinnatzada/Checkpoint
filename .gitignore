@@ -1,0 +1,56 @@
+# Flutter & Dart build outputs
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+/doc/api/
+pubspec_overrides.yaml
+
+# Root level stray files
+/main.dart
+
+# Platform-specific ephemeral build folders
+/android/.gradle/
+/android/app/build/
+/android/local.properties
+/linux/flutter/ephemeral/
+/macos/Flutter/ephemeral/
+/windows/flutter/ephemeral/
+/ios/Pods/
+/ios/.symlinks/
+/ios/Runner.xcworkspace/xcuserdata/
+/ios/Runner.xcodeproj/xcuserdata/
+
+# IDEs & Text Editors
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS files & logs
+.DS_Store
+.DS_Store?
+._*
+*.log
+*.swp
+*.class
+*.pyc
+.history
+
+# Secrets & Environment Keys
+.env
+.env.*
+!.env.example
+*.pem
+key.properties
+*.jks
+*.keystore
+
+# Supabase local files
+/supabase/.temp/
+/supabase/.branches/
