@@ -208,9 +208,9 @@ class CheckpointStore extends ChangeNotifier {
         _startPublicSubscriptions();
       } else {
         if (!sameUser) await _loadAccountLocalData(user.id);
-        // Creates the profiles row on first login. Only the repository does this:
-        // AuthService.ensureProfile wrote an `email` column that `profiles` doesn't
-        // have, so every brand-new account failed to load.
+        // Creates the profiles row on first login. This lives only in
+        // CheckpointRepository.ensureProfile; AuthService has no copy of it, so
+        // two code paths can't race to create the same row during sign-in.
         _profile = await _repository.ensureProfile(user);
         await _refreshSignedInData(user, keepLoadedAchievements: sameUser);
         _startSignedInSubscriptions(user);
@@ -815,59 +815,6 @@ class CheckpointStore extends ChangeNotifier {
       return 'Could not load Steam achievements.';
     }
   }
-
-  // ---- Steam title cleanup so IGDB can match the base game ----------------
-  static final RegExp _trademarkRe = RegExp(r'[™®©]');
-  static final RegExp _colonNoSpaceRe = RegExp(r':(?=\p{L})', unicode: true);
-  static final RegExp _separatorsRe = RegExp(r'[:\-–—]');
-  static final RegExp _apostropheRe = RegExp(r"['’]");
-
-  // "Title (Deluxe Edition)" / "Title [Director's Cut]"
-  static final RegExp _bracketedEditionRe = RegExp(
-    r"\s*[\(\[][^\)\]]*\b(?:edition|director['’]?s\s+cut)\b[^\)\]]*[\)\]]",
-    caseSensitive: false,
-  );
-
-  // "Title - Complete Edition"
-  static final RegExp _dashedEditionRe = RegExp(
-    r"\s+[-–—]\s+[^-–—]*\b(?:edition|director['’]?s\s+cut)\b.*$",
-    caseSensitive: false,
-  );
-
-  // "Title Special Edition", "Title: Game of the Year Edition"
-  static final RegExp _trailingEditionRe = RegExp(
-    r"\s*:?\s*(?:(?:game\s+of\s+the\s+year|goty|definitive|complete|enhanced|deluxe|ultimate|gold|special|anniversary|collector['’]?s|legendary|standard|premium|extended|digital)\s+)*(?:edition|director['’]?s\s+cut)\b.*$",
-    caseSensitive: false,
-  );
-
-  static final RegExp _spacesRe = RegExp(r'\s+');
-  static final RegExp _danglingRe = RegExp(r'[\s\-–—:]+$');
-
-  static String _cleanSteamTitle(String raw) {
-    final stripped = raw
-        .replaceAll(_trademarkRe, '')
-        .replaceAllMapped(_colonNoSpaceRe, (_) => ': ')
-        .replaceAll(_spacesRe, ' ')
-        .trim();
-    final cleaned = stripped
-        .replaceAll(_bracketedEditionRe, '')
-        .replaceAll(_dashedEditionRe, '')
-        .replaceAll(_trailingEditionRe, '')
-        .replaceAll(_danglingRe, '')
-        .trim();
-    // Never search for an empty string (e.g. a game literally named "Edition").
-    return cleaned.isEmpty ? stripped : cleaned;
-  }
-
-  /// Colons and hyphens -> spaces, apostrophes removed, whitespace collapsed.
-  static String _stripPunctuation(String s) => s
-      .replaceAll(_apostropheRe, '')
-      .replaceAll(_separatorsRe, ' ')
-      .replaceAll(_spacesRe, ' ')
-      .trim();
-
-  /// Returns `null` when IGDB has no match or the lookup fails, so callers can
-  /// skip the title instead of saving placeholder data.
 
   List<Game> get games => List.unmodifiable(_games);
   List<Game> get libraryGames => List.unmodifiable(_libraryGames);

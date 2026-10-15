@@ -6,8 +6,6 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:checkpoint/data/db_schema.dart';
-
 /// Google OAuth client IDs.
 ///
 /// The WEB client ID (the same one configured under Supabase Authentication >
@@ -26,6 +24,8 @@ const _desktopRedirectPort = 3000;
 const _desktopRedirectUrl = 'http://localhost:$_desktopRedirectPort';
 
 /// All network/auth calls live here so screens and the store stay SDK-light.
+///
+/// Auth only: the `profiles` row is created and read by CheckpointRepository.
 ///
 /// Requires `google_sign_in: ^6.x` in pubspec.yaml.
 class AuthService {
@@ -187,33 +187,6 @@ class AuthService {
         debugPrint('Google sign-out failed: $e');
       }
     }
-  }
-
-  /// The signed-in user's row in `profiles` (null when it doesn't exist yet).
-  Future<Map<String, dynamic>?> fetchProfile(String userId) async {
-    return await _client.from(Db.profiles).select().eq(Db.id, userId).maybeSingle();
-  }
-
-  /// Creates the `profiles` row on first login. Existing rows are left unchanged.
-  Future<Map<String, dynamic>?> ensureProfile(User user) async {
-    final existing = await fetchProfile(user.id);
-    if (existing != null) return existing;
-
-    await _client.from(Db.profiles).upsert({
-      Db.id: user.id,
-      Db.displayName: _displayNameFor(user),
-    });
-    return fetchProfile(user.id);
-  }
-
-  static String _displayNameFor(User user) {
-    final meta = user.userMetadata ?? const <String, dynamic>{};
-    final local = (user.email ?? '').split('@').first.trim();
-    for (final value in [meta['full_name'], meta['name'], meta['display_name'], local]) {
-      final text = value?.toString().trim();
-      if (text != null && text.isNotEmpty) return text;
-    }
-    return 'Player';
   }
 
   /// Text for the UI. Raw exceptions never reach the screen.
