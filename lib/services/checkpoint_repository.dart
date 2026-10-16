@@ -12,7 +12,9 @@ import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
 
-/// `user_games.achievements` (added by 20261012120000_add_achievements_to_user_games.sql).
+/// `user_games.achievements`, added by 20261016120000_unify_game_ids_on_igdb_id.sql.
+/// (20261012120000_add_achievements_to_user_games.sql holds the steam_id migration
+/// by mistake, so it never created this column.)
 /// Only read through [CheckpointRepository.fetchGameAchievements]; the library
 /// queries leave it out on purpose.
 /// Move into `Db` in data/db_schema.dart if you'd rather keep column names there.
@@ -211,6 +213,7 @@ class CheckpointRepository {
           ${Db.games}!inner (
             ${Db.id},
             ${Db.igdbId},
+            ${Db.steamAppId},
             ${Db.slug},
             ${Db.title},
             ${Db.publisher},
@@ -350,14 +353,26 @@ class CheckpointRepository {
 
   /// Adds [game] to the global catalog if it isn't there yet.
   ///
-  /// `ignoreDuplicates` makes this INSERT ... ON CONFLICT DO NOTHING, so a game
-  /// that already exists (added earlier by another user, or by sync-steam) is
-  /// left exactly as it is. That matters because the app no longer holds the
+  /// A game's identity is its IGDB id: `games.igdb_id` is unique and `games.id`
+  /// must be [gameIdForIgdb] of it (database constraint), so the game added here
+  /// from search and the same game imported by Steam sync are one row.
+  ///
+  /// `ignoreDuplicates` makes this INSERT ... ON CONFLICT (igdb_id) DO NOTHING, so
+  /// a game that already exists (added earlier by another user, or by sync-steam)
+  /// is left exactly as it is. That matters because the app no longer holds the
   /// whole catalog in memory to check first, and RLS only lets a user edit the
   /// catalog rows they created; a plain upsert on someone else's row would fail.
   Future<void> upsertBaseGame(Game game) async {
+    final igdbId = game.igdbId;
+    if (igdbId == null) {
+      // Only games read back from the database can lack an IGDB id (legacy
+      // Steam-keyed rows), and those already exist, so they never get here.
+      throw StateError('Cannot add "${game.title}" to the catalog without an IGDB id.');
+    }
+    assert(game.id == gameIdForIgdb(igdbId), 'games.id must be derived from igdb_id');
     await _client.from(Db.games).upsert({
       Db.id: game.id,
+      Db.igdbId: igdbId,
       Db.title: game.title,
       Db.developer: game.developer,
       Db.publisher: game.publisher,
@@ -367,7 +382,7 @@ class CheckpointRepository {
       Db.genres: game.genres,
       Db.summary: game.synopsis,
       Db.coverUrl: game.coverUrl,
-    }, onConflict: Db.id, ignoreDuplicates: true);
+    }, onConflict: Db.igdbId, ignoreDuplicates: true);
   }
 
   Future<void> deleteUserGame(String userId, String gameId) async {
@@ -488,10 +503,12 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
     coverColors: _coverColors(id, title),
     coverIcon: _coverIcon(genres, platforms),
     coverUrl: _firstText([row[Db.coverUrl]]),
+    igdbId: _intOrNull(row[Db.igdbId]),
+    steamAppId: _intOrNull(row[Db.steamAppId]),
   );
 }
 
-  Game _gameFromUserGameRow(Map<String, dynamic> row) {
+Game _gameFromUserGameRow(Map<String, dynamic> row) {
   final nested = row[Db.games];
   final gameRow = nested is Map<String, dynamic>
       ? nested
@@ -572,6 +589,12 @@ double _double(Object? value, {double fallback = 0}) {
 int _int(Object? value, {int fallback = 0}) {
   if (value is num) return value.toInt();
   return int.tryParse('$value') ?? fallback;
+}
+
+int? _intOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  return int.tryParse('$value');
 }
 
 List<Color> _coverColors(String id, String title) {

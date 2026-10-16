@@ -293,14 +293,16 @@ class CheckpointStore extends ChangeNotifier {
     // Remove from local library list
     _libraryGames = List.unmodifiable(_libraryGames.where((g) => g.id != id));
     
-    // Find the catalog version of the game and reset its status
-    final game = gameById(id);
-    final catalogById = <String, Game>{for (final g in _games) g.id: g};
-    // Revert to a clean catalog state (stripping status, rating, hours)
-    catalogById[id] = game.copyWith(
-      hoursPlayed: 0,
-      rating: 0,
-    ); // Note: You may need to manually set status to null if your copyWith ignores nulls
+    // Rebuild the combined list from its sources (popular + library) so the
+    // removed game's library state can't linger in it. The game stays in the
+    // list as a plain catalog entry, so an open detail page doesn't flash
+    // "Game not found" while it closes, and a later search shows it as not in
+    // the library. (Game.copyWith can't clear a status, hence withoutUserState.)
+    final removed = maybeGame(id);
+    final catalogById = <String, Game>{
+      for (final g in _mergeGames(_popularGames, _libraryGames)) g.id: g,
+    };
+    if (removed != null) catalogById.putIfAbsent(id, removed.withoutUserState);
 
     _games = List.unmodifiable(catalogById.values.toList()..sort((a, b) => a.title.compareTo(b.title)));
     notifyListeners();

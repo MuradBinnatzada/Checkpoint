@@ -8,13 +8,7 @@ class GameApiService {
   // IGDB is reached through the `igdb-handler` Supabase Edge Function. The Twitch
   // credentials and OAuth token live server-side and never ship in the app.
 
-  // 1. Pad IGDB integers into strict Supabase UUIDs
-  String _igdbToUuid(int id) {
-    final padded = id.toString().padLeft(12, '0');
-    return '00000000-0000-4000-8000-$padded';
-  }
-
-  // 2. Map IGDB platform IDs to brand families.
+  // 1. Map IGDB platform IDs to brand families.
   //    Every historical console rolls up into its parent brand.
   //    PlayStation: PS5 / PS VR2 -> ps5, PS4 / PS VR -> ps4, older consoles -> generic playstation.
   //    GamePlatform.emulator is intentionally absent: it is a manual user selection
@@ -106,7 +100,12 @@ class GameApiService {
     if (q.isEmpty) return [];
 
     final data = await _invokeSearch(q);
-    return data.map((json) {
+    return data.map<Game?>((json) {
+      // The IGDB id is the game's identity (see gameIdForIgdb). A hit without a
+      // usable one can't be saved consistently, so it is left out of the results.
+      final igdbId = (json['id'] as num?)?.toInt();
+      if (igdbId == null || igdbId <= 0) return null;
+
       String? coverUrl;
       if (json['cover'] != null && json['cover']['url'] != null) {
         coverUrl = 'https:${json['cover']['url']}'.replaceAll('t_thumb', 't_cover_big');
@@ -124,7 +123,8 @@ class GameApiService {
       }
 
       return Game(
-        id: _igdbToUuid(json['id']),
+        id: gameIdForIgdb(igdbId),
+        igdbId: igdbId,
         title: json['name'] ?? 'Unknown',
         developer: company,
         publisher: company,
@@ -136,6 +136,6 @@ class GameApiService {
         coverIcon: Icons.sports_esports_rounded,
         coverUrl: coverUrl,
       );
-    }).toList();
+    }).whereType<Game>().toList();
   }
 }

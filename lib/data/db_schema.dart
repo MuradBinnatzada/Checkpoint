@@ -24,6 +24,7 @@ abstract final class Db {
   static const weeklyGoalHours = 'weekly_goal_hours';
 
   static const igdbId = 'igdb_id';
+  static const steamAppId = 'steam_app_id';
   static const slug = 'slug';
   static const title = 'title';
   static const publisher = 'publisher';

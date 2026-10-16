@@ -116,6 +116,14 @@ int? releaseYearFromUnixSeconds(Object? seconds) {
   return sanitizeReleaseYear(year);
 }
 
+/// The `games.id` for an IGDB game. A game's identity is its IGDB id: the
+/// database makes `games.id` a pure function of `games.igdb_id` (constraint
+/// `games_id_matches_igdb_id`) and `igdb_id` unique, so a game added from search
+/// and the same game imported by Steam sync are one row. Must match
+/// `igdb_game_uuid()` in the migration and `igdbGameUuid` in sync-steam.
+String gameIdForIgdb(int igdbId) =>
+    '00000000-0000-4000-8000-${igdbId.toString().padLeft(12, '0')}';
+
 /// Catalog metadata + the user's tracking state for that game.
 /// `status == null` means "in the catalog, not in my library".
 @immutable
@@ -132,6 +140,8 @@ class Game {
     required this.coverColors,
     required this.coverIcon,
     this.coverUrl,
+    this.igdbId,
+    this.steamAppId,
     this.status,
     this.rating = 0,
     this.hoursPlayed = 0,
@@ -154,6 +164,15 @@ class Game {
   final IconData coverIcon;
   final String? coverUrl;
   final bool isFavorite;
+
+  /// The game's IGDB id (`games.igdb_id`). `null` only for legacy Steam-keyed
+  /// catalog rows that sync-steam hasn't adopted yet; everything the app adds
+  /// from search has one.
+  final int? igdbId;
+
+  /// The Steam app this game is (`games.steam_app_id`), set by Steam sync.
+  /// Achievements can be loaded only for games that have one.
+  final int? steamAppId;
 
   // user state
   final GameStatus? status;
@@ -194,6 +213,8 @@ class Game {
         coverColors: coverColors,
         coverIcon: coverIcon,
         coverUrl: coverUrl ?? this.coverUrl,
+        igdbId: igdbId,
+        steamAppId: steamAppId,
         status: status ?? this.status,
         rating: rating ?? this.rating,
         hoursPlayed: hoursPlayed ?? this.hoursPlayed,
@@ -202,5 +223,24 @@ class Game {
         dateAdded: dateAdded ?? this.dateAdded,
         isFavorite: isFavorite ?? this.isFavorite,
         achievements: achievements ?? this.achievements,
+      );
+
+  /// This game as the catalog knows it, with all of the user's tracking state
+  /// (status, rating, hours, favourite, achievements...) cleared. [copyWith]
+  /// can't do this: a null argument there means "keep the current value".
+  Game withoutUserState() => Game(
+        id: id,
+        title: title,
+        publisher: publisher,
+        developer: developer,
+        releaseYear: releaseYear,
+        platforms: platforms,
+        genres: genres,
+        synopsis: synopsis,
+        coverColors: coverColors,
+        coverIcon: coverIcon,
+        coverUrl: coverUrl,
+        igdbId: igdbId,
+        steamAppId: steamAppId,
       );
 }

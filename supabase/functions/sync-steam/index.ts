@@ -8,9 +8,12 @@
  * Pipeline (all heavy lifting server-side, no per-game round trips):
  *   0. Profile     look up the caller's `profiles.steam_id`
  *   1. Steam       fetch owned games, drop software junk and test/beta/server
- *                  builds, map appid → deterministic UUID
- *   2. Cache check query `games` for all UUIDs (chunked `in` queries, in parallel)
- *   3. IGDB        multi-pass match for the missing games only
+ *                  builds, keep each game's Steam app id
+ *   2. Known apps  which of those apps does the catalog already know? A `games`
+ *                  row with the app id in `steam_app_id` and an `igdb_id` is
+ *                  resolved. A row with an app id but no `igdb_id` is a legacy
+ *                  Steam-keyed row (adopted in step 5).
+ *   3. IGDB        multi-pass match for the unresolved apps only
  *                  (`resolveMissingGames`). The Steam title is cleaned first
  *                  (™/®, edition + "Test Server"/"Open Beta" junk), then:
  *                    Pass 1  cleaned title  → bulk case-insensitive exact match,
@@ -22,13 +25,21 @@
  *                  Fuzzy searches are one `/games` request per term. They must
  *                  NOT go through `/multiquery`: IGDB answers a `search` block
  *                  there with bare ids (or nothing), so no hit has a name to validate.
- *   4. Base games  bulk upsert newly fetched games into `games`
- *   5. Library     bulk upsert `user_games` (new rows get defaults; existing rows
- *                  only ever get a higher `hours_played`)
+ *   4. Base games  bulk insert the games the catalog doesn't have yet. A game's id
+ *                  is derived from its IGDB id (`igdbGameUuid`), the same id the
+ *                  app's search uses, so a game is one row however it was added.
+ *   5. Link        `link_steam_apps` (database function): record the Steam app on
+ *                  its game and fold any legacy Steam-keyed row into it, for every
+ *                  user at once. This is what merges the old duplicates.
+ *   6. Library     bulk upsert `user_games`, one row per game (new rows get
+ *                  defaults; existing rows only ever get a higher `hours_played`)
  *
  * Secrets (set with `supabase secrets set`):
  *   STEAM_API_KEY, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
  *   (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
+ *
+ * Requires the 20261016120000_unify_game_ids_on_igdb_id.sql migration
+ * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`).
  *
  * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
  * Column names follow checkpoint_repository.dart (`upsertBaseGame`,
@@ -49,6 +60,7 @@ const corsHeaders = {
 const STEAM_UUID_PREFIX = '57e40000-0000-0000-0000-'
 const DB_IN_CHUNK = 150          // ids per `.in()` query (keeps the PostgREST URL short)
 const DB_WRITE_CHUNK = 1000      // rows per upsert call
+const LINK_CHUNK = 100           // Steam apps per `link_steam_apps` call (each call is one transaction)
 const IGDB_TITLE_BATCH = 50      // titles per bulk exact-name request
 const IGDB_SEARCH_LIMIT = 30     // hits per fuzzy search (the real game can sit behind DLC / mods)
 const IGDB_SEARCH_BUDGET = 300   // max fuzzy-search requests per sync, shared by passes 1b-3.
@@ -88,7 +100,8 @@ interface SteamGame {
 }
 
 interface SteamEntry {
-  id: string // deterministic Supabase UUID
+  id: string // Steam-derived key (57e40000-…); also the id a legacy catalog row has
+  appid: number
   title: string
   hours: number
 }
@@ -178,6 +191,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const quote = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 
 const steamUuid = (appid: number) => `${STEAM_UUID_PREFIX}${String(appid).padStart(12, '0')}`
+
+/**
+ * The `games.id` for an IGDB game: a pure function of its IGDB id, so Steam sync,
+ * the app's search and the database (`igdb_game_uuid`, enforced by the
+ * `games_id_matches_igdb_id` constraint) always agree. Must match `gameIdForIgdb`
+ * in lib/models/game.dart.
+ */
+const igdbGameUuid = (igdbId: number) => `00000000-0000-4000-8000-${String(igdbId).padStart(12, '0')}`
 
 // ---- Steam title cleanup so IGDB can match the base game (port of Dart) ----
 const TRADEMARK_RE = /[™®©℠]/g
@@ -450,6 +471,7 @@ function toSteamEntries(raw: SteamGame[]): {
     const id = steamUuid(g.appid)
     byId.set(id, {
       id,
+      appid: g.appid,
       title,
       hours: Math.round(((g.playtime_forever ?? 0) / 60) * 100) / 100,
     })
@@ -474,7 +496,7 @@ function releaseYearFromUnixSeconds(seconds: unknown): number | null {
 }
 
 /** Map an IGDB record to a `games` row. Column names live here. */
-function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
+function toGameRow(g: IgdbGame): Record<string, unknown> {
   let coverUrl: string | null = null
   if (g.cover?.url) {
     const url = g.cover.url.startsWith('//') ? `https:${g.cover.url}` : g.cover.url
@@ -482,7 +504,8 @@ function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
   }
   const company = g.involved_companies?.[0]?.company?.name ?? 'Unknown Publisher'
   return {
-    id,
+    id: igdbGameUuid(g.id),
+    igdb_id: g.id,
     title: g.name ?? 'Unknown',
     developer: company,
     publisher: company,
@@ -494,13 +517,18 @@ function toGameRow(id: string, g: IgdbGame): Record<string, unknown> {
 }
 
 /** Defaults for a game the user doesn't have yet. Column names live here. */
-function newUserGameRow(userId: string, e: SteamEntry, nowIso: string): Record<string, unknown> {
+function newUserGameRow(
+  userId: string,
+  gameId: string,
+  hours: number,
+  nowIso: string,
+): Record<string, unknown> {
   return {
     user_id: userId,
-    game_id: e.id,
+    game_id: gameId,
     status: 'playing',
     played_on: 'pc',
-    hours_played: e.hours,
+    hours_played: hours,
     date_added: nowIso,
   }
 }
@@ -864,8 +892,68 @@ async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<stri
   return String(steamId).trim()
 }
 
+interface KnownApp {
+  id: string // games.id
+  igdbId: number | null // null = legacy Steam-keyed row
+}
+
+/**
+ * The catalog rows already linked to these Steam app ids, keyed by app id. If an
+ * app has both a legacy row and an IGDB-keyed one (mid-migration), the IGDB-keyed
+ * row wins.
+ */
+async function fetchKnownSteamApps(
+  admin: SupabaseClient,
+  appIds: number[],
+): Promise<Map<number, KnownApp>> {
+  const byApp = new Map<number, KnownApp>()
+  const results = await Promise.all(
+    chunk(appIds, DB_IN_CHUNK).map((part) =>
+      admin.from('games').select('id, igdb_id, steam_app_id').in('steam_app_id', part),
+    ),
+  )
+  for (const { data, error } of results) {
+    if (error) throw new Error(`games lookup by steam_app_id failed: ${error.message}`)
+    for (const row of data ?? []) {
+      const app = Number(row.steam_app_id)
+      const igdbId = row.igdb_id === null || row.igdb_id === undefined ? null : Number(row.igdb_id)
+      const prev = byApp.get(app)
+      if (!prev || (prev.igdbId === null && igdbId !== null)) {
+        byApp.set(app, { id: row.id as string, igdbId })
+      }
+    }
+  }
+  return byApp
+}
+
+interface LinkRow {
+  app_id: number
+  game_id: string // the IGDB-keyed games.id
+  legacy_id: string | null // the 57e40000-… row to fold into it, if there is one
+}
+
+/**
+ * Records each Steam app on its IGDB-keyed game and folds the legacy row (if any)
+ * into it. Runs in the database (`link_steam_apps`, service role only) because
+ * folding moves every user's library and log rows for that game in one transaction.
+ */
+async function linkSteamApps(
+  admin: SupabaseClient,
+  links: LinkRow[],
+): Promise<{ linked: number; merged: number }> {
+  let linked = 0
+  let merged = 0
+  for (const part of chunk(links, LINK_CHUNK)) {
+    const { data, error } = await admin.rpc('link_steam_apps', { links: part })
+    if (error) throw new Error(`link_steam_apps failed: ${error.message}`)
+    linked += Number(data?.linked ?? 0)
+    merged += Number(data?.merged ?? 0)
+  }
+  return { linked, merged }
+}
+
 /** Which of these game UUIDs already exist in the global `games` catalog? */
-async function fetchCachedGameIds(admin: SupabaseClient, ids: string[]): Promise<Set<string>> {
+async function fetchExistingGameIds(admin: SupabaseClient, ids: string[]): Promise<Set<string>> {
   const found = new Set<string>()
   const results = await Promise.all(
     chunk(ids, DB_IN_CHUNK).map((part) => admin.from('games').select('id').in('id', part)),
@@ -905,11 +993,15 @@ async function upsertChunked(
   table: string,
   rows: Record<string, unknown>[],
   onConflict: string,
+  ignoreDuplicates = false,
 ) {
   for (const part of chunk(rows, DB_WRITE_CHUNK)) {
     // defaultToNull:false → columns missing from a row use the column default
     // instead of NULL (new rows and existing rows have different key sets).
-    const { error } = await admin.from(table).upsert(part, { onConflict, defaultToNull: false })
+    // ignoreDuplicates → ON CONFLICT DO NOTHING instead of DO UPDATE.
+    const { error } = await admin
+      .from(table)
+      .upsert(part, { onConflict, defaultToNull: false, ignoreDuplicates })
     if (error) throw new Error(`${table} upsert failed: ${error.message}`)
   }
 }
@@ -921,51 +1013,105 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
   // 1. Steam
   const owned = await fetchSteamGames(steamId)
   const { entries, junk, nonGames } = toSteamEntries(owned)
-  const ids = entries.map((e) => e.id)
 
-  // 2. Global cache check + the user's current library, in parallel.
-  const [cachedIds, existingByGame] = ids.length
-    ? await Promise.all([
-        fetchCachedGameIds(admin, ids),
-        fetchExistingUserGames(admin, userId, ids),
-      ])
-    : [new Set<string>(), new Map<string, Record<string, unknown>>()]
-  const missing = entries.filter((e) => !cachedIds.has(e.id))
-
-  // 3. Multi-pass IGDB match for the missing games only.
-  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(missing, warnings)
-
-  // 4. Bulk insert newly fetched base games.
-  if (matched.size > 0) {
-    const rows = [...matched.entries()].map(([id, g]) => toGameRow(id, g))
-    await upsertChunked(admin, 'games', rows, 'id')
+  // 2. What does the catalog already know about these Steam apps? An app is
+  //    resolved once a `games` row carries its id in `steam_app_id` AND has an
+  //    `igdb_id`. A row with an app id but no igdb_id is a legacy Steam-keyed row
+  //    from before game ids were unified on IGDB: it is matched again below, then
+  //    folded into the IGDB-keyed row by `link_steam_apps`.
+  const known = await fetchKnownSteamApps(admin, entries.map((e) => e.appid))
+  const gameIdByEntry = new Map<string, string>() // SteamEntry.id -> games.id
+  const legacyIdByEntry = new Map<string, string>() // SteamEntry.id -> legacy games.id
+  const toMatch: SteamEntry[] = []
+  for (const e of entries) {
+    const k = known.get(e.appid)
+    if (k && k.igdbId !== null) {
+      gameIdByEntry.set(e.id, k.id)
+      continue
+    }
+    if (k) legacyIdByEntry.set(e.id, k.id)
+    toMatch.push(e)
   }
-  const availableIds = new Set<string>([...cachedIds, ...matched.keys()])
 
-  // 5. Smart library upsert.
+  // 3. Multi-pass IGDB match for the apps that aren't resolved yet.
+  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, warnings)
+
+  // 4. Add the matched games the catalog doesn't have. A game's id comes from its
+  //    IGDB id, so one that another user already added (through in-app search,
+  //    say) is the same row and is simply found here.
+  const matchedGameIds = [...new Set([...matched.values()].map((g) => igdbGameUuid(g.id)))]
+  const existingGameIds = matchedGameIds.length
+    ? await fetchExistingGameIds(admin, matchedGameIds)
+    : new Set<string>()
+  const newGameRows: Record<string, unknown>[] = []
+  const queued = new Set<string>()
+  for (const g of matched.values()) {
+    const id = igdbGameUuid(g.id)
+    if (existingGameIds.has(id) || queued.has(id)) continue
+    queued.add(id)
+    newGameRows.push(toGameRow(g))
+  }
+  // ON CONFLICT (igdb_id) DO NOTHING: if another sync inserted the same game a
+  // moment ago, that row wins and nothing is overwritten.
+  await upsertChunked(admin, 'games', newGameRows, 'igdb_id', true)
+
+  // 5. Record each matched Steam app on its game, and fold legacy rows into it.
+  const entryById = new Map(entries.map((e) => [e.id, e]))
+  const links: LinkRow[] = []
+  for (const [entryId, g] of matched) {
+    const entry = entryById.get(entryId)
+    if (!entry) continue
+    const gameId = igdbGameUuid(g.id)
+    gameIdByEntry.set(entryId, gameId)
+    links.push({
+      app_id: entry.appid,
+      game_id: gameId,
+      legacy_id: legacyIdByEntry.get(entryId) ?? null,
+    })
+  }
+  const { linked, merged } = await linkSteamApps(admin, links)
+  // A legacy row that IGDB couldn't match this time keeps working as it did: its
+  // hours still update. It is adopted on a later sync.
+  for (const [entryId, legacyId] of legacyIdByEntry) {
+    if (!gameIdByEntry.has(entryId)) gameIdByEntry.set(entryId, legacyId)
+  }
+
+  // 6. Smart library upsert, one row per game. Two Steam apps can resolve to the
+  //    same IGDB game (a base game and its "Complete Edition"); they become one
+  //    library entry with their playtime added together.
+  const hoursByGame = new Map<string, number>()
+  for (const e of entries) {
+    const gameId = gameIdByEntry.get(e.id)
+    if (!gameId) continue // no IGDB match and no legacy row → skip rather than save a stub
+    hoursByGame.set(gameId, Math.round(((hoursByGame.get(gameId) ?? 0) + e.hours) * 100) / 100)
+  }
+  // Read AFTER step 5: folding a legacy row moves the user's library row to the new id.
+  const existingByGame = hoursByGame.size
+    ? await fetchExistingUserGames(admin, userId, [...hoursByGame.keys()])
+    : new Map<string, Record<string, unknown>>()
+
   const nowIso = new Date().toISOString()
   const libraryRows: Record<string, unknown>[] = []
   let added = 0
   let updated = 0
   let unchanged = 0
 
-  for (const e of entries) {
-    const existing = existingByGame.get(e.id)
+  for (const [gameId, hours] of hoursByGame) {
+    const existing = existingByGame.get(gameId)
     if (existing) {
       // Already in the library: only ever raise hours_played. We re-send the
       // row we just read with that single field changed, so status / rating /
       // is_favorite / etc. are written back exactly as they are.
       const current = Number(existing.hours_played) || 0
-      if (e.hours > current) {
-        libraryRows.push({ ...existing, hours_played: e.hours })
+      if (hours > current) {
+        libraryRows.push({ ...existing, hours_played: hours })
         updated++
       } else {
         unchanged++
       }
       continue
     }
-    if (!availableIds.has(e.id)) continue // no IGDB match → skip rather than save a stub
-    libraryRows.push(newUserGameRow(userId, e, nowIso))
+    libraryRows.push(newUserGameRow(userId, gameId, hours, nowIso))
     added++
   }
 
@@ -979,8 +1125,10 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
       junk_filtered: junk,
       non_game_filtered: nonGames.length,
       candidates: entries.length,
-      cached: entries.length - missing.length,
+      cached: entries.length - toMatch.length,
       fetched_from_igdb: matched.size,
+      steam_apps_linked: linked,
+      legacy_rows_merged: merged,
       matched_by_pass: byPass,
       added,
       updated,

@@ -421,15 +421,16 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
   }
 
   /// Steam account connected, game in the library and played on PC or Steam
-  /// Deck. The id prefix check keeps this to games synced from Steam: only
-  /// those carry the deterministic id the Edge Function decodes into a Steam
-  /// app id.
+  /// Deck. The game must also be a Steam game: `steamAppId` is set (by Steam
+  /// sync) on every game the Edge Function can load achievements for. The
+  /// `57e40000-` id prefix covers legacy Steam-keyed rows that sync-steam hasn't
+  /// adopted yet; the Edge Function still decodes the app id from those.
   bool _canLoad(BuildContext context) {
     final g = widget.game;
     return context.store.isConnected(ConnectedService.steam) &&
         g.inLibrary &&
         (g.playedOn == GamePlatform.pc || g.playedOn == GamePlatform.steamDeck) &&
-        g.id.startsWith('57e40000-');
+        (g.steamAppId != null || g.id.startsWith('57e40000-'));
   }
 
   Future<void> _load() async {

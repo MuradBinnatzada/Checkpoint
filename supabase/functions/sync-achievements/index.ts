@@ -6,7 +6,8 @@
  *   user. A `steam_id` sent in the request body is ignored.
  *
  *   0. Profile: look up the caller's `profiles.steam_id`
- *   1. game_id (our deterministic UUID) → Steam app id
+ *   1. game_id → Steam app id: `games.steam_app_id`, or (a legacy Steam-keyed
+ *      row that sync-steam hasn't adopted yet) decoded from its `57e40000-…` id
  *   2. ISteamUserStats/GetSchemaForGame/v2     → the game's global achievement
  *      dictionary (names, descriptions, icons)
  *   3. ISteamUserStats/GetPlayerAchievements/v0001 → this player's unlock flags
@@ -22,7 +23,10 @@
  * Secrets: STEAM_API_KEY. (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
  * injected automatically.)
  *
- * Requires the 20261012120000_add_achievements_to_user_games.sql migration.
+ * Requires the 20261012120000_add_achievements_to_user_games.sql migration
+ * (note: that file currently holds the steam_id migration; 20261016120000 adds
+ * the `achievements` column if it is missing) and
+ * 20261016120000_unify_game_ids_on_igdb_id.sql (`games.steam_app_id`).
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
@@ -44,8 +48,12 @@ class HttpError extends Error {
 
 // ---- BEGIN PURE HELPERS ----------------------------------------------------
 
-/** `57e40000-0000-0000-0000-000000001086` → app id `1086`. */
+/**
+ * Legacy rows only: `57e40000-0000-0000-0000-000000001086` → app id `1086`.
+ * Games are now keyed by IGDB id and carry their app id in `games.steam_app_id`.
+ */
 const STEAM_UUID_RE = /^57e40000-0000-0000-0000-(\d{12})$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface SchemaAchievement {
   name: string // API name, the join key with the player's achievements
@@ -202,6 +210,26 @@ async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<stri
 }
 
 // ---- Orchestration ---------------------------------------------------------
+
+/**
+ * The Steam app a game is: `games.steam_app_id` (set by sync-steam), falling back
+ * to decoding a legacy `57e40000-…` id. `null` when the game isn't linked to a
+ * Steam app (for example one added through in-app search that no Steam sync has
+ * matched yet).
+ */
+async function steamAppIdForGame(admin: SupabaseClient, gameId: string): Promise<number | null> {
+  const { data, error } = await admin
+    .from('games')
+    .select('steam_app_id')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (error) throw new Error(`games lookup failed: ${error.message}`)
+
+  const stored = Number(data?.steam_app_id)
+  if (Number.isInteger(stored) && stored > 0) return stored
+  return steamAppIdFromGameId(gameId)
+}
+
 async function syncAchievements(
   admin: SupabaseClient,
   userId: string,
@@ -280,8 +308,15 @@ serve(async (req) => {
     const gameId = body?.game_id
     if (!gameId || typeof gameId !== 'string') throw new HttpError(400, 'Missing game_id')
 
-    const appId = steamAppIdFromGameId(gameId)
-    if (appId === null) throw new HttpError(400, 'Not a Steam game')
+    if (!UUID_RE.test(gameId)) throw new HttpError(400, 'Invalid game_id')
+
+    const appId = await steamAppIdForGame(admin, gameId)
+    if (appId === null) {
+      throw new HttpError(
+        400,
+        'This game is not linked to a Steam app yet. Sync your Steam library first.',
+      )
+    }
 
     const steamId = await fetchSteamId(admin, userId)
 
