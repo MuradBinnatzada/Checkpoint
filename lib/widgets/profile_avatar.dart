@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/theme/palette.dart';
@@ -45,15 +46,18 @@ class ProfileAvatar extends StatelessWidget {
       ),
       child: url == null || url.isEmpty
           ? initialsText
-          : Image.network(
-              url,
+          : CachedNetworkImage(
+              imageUrl: url,
               width: size,
               height: size,
               fit: BoxFit.cover,
+              // Uploaded photos can be any size: decode at the size it is drawn.
+              memCacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
               // Keep the initials visible while loading and if the load fails.
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : initialsText,
-              errorBuilder: (_, _, _) => initialsText,
+              placeholder: (_, _) => initialsText,
+              errorWidget: (_, _, _) => initialsText,
             ),
     );
   }

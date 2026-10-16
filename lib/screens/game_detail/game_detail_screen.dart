@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -643,12 +644,12 @@ class _AchievementIcon extends StatelessWidget {
     );
     Widget image = a.iconUrl.isEmpty
         ? fallback
-        : Image.network(
-            a.iconUrl,
+        : CachedNetworkImage(
+            imageUrl: a.iconUrl,
             fit: BoxFit.cover,
-            cacheWidth: 96, // 2x of the 44 px slot; keeps long lists light on memory
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => fallback,
+            memCacheWidth: 96, // 2x of the 44 px slot; keeps long lists light on memory
+            fadeInDuration: Duration.zero,
+            errorWidget: (_, _, _) => fallback,
           );
     if (!a.unlocked) {
       image = Opacity(opacity: 0.55, child: ColorFiltered(colorFilter: _greyscale, child: image));

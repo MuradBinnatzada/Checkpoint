@@ -178,8 +178,16 @@ class CheckpointRepository {
     return storage.getPublicUrl(path);
   }
 
-  Future<List<Game>> fetchCatalogGames() async {
-    final rows = await _client.from(Db.games).select().order(Db.title);
+  /// A small slice of the global catalog for the Home carousels: the newest
+  /// [limit] rows of `games`. This replaces the old "download every game"
+  /// fetch, so the payload stays the same size however big the catalog grows.
+  /// Anything else (library games, search results) is loaded on demand.
+  Future<List<Game>> fetchPopularGames({int limit = 20}) async {
+    final rows = await _client
+        .from(Db.games)
+        .select()
+        .order(Db.createdAt, ascending: false)
+        .limit(limit);
     return rows.map<Game>(_gameFromCatalogRow).toList(growable: false);
   }
 
@@ -340,6 +348,13 @@ class CheckpointRepository {
     });
   }
 
+  /// Adds [game] to the global catalog if it isn't there yet.
+  ///
+  /// `ignoreDuplicates` makes this INSERT ... ON CONFLICT DO NOTHING, so a game
+  /// that already exists (added earlier by another user, or by sync-steam) is
+  /// left exactly as it is. That matters because the app no longer holds the
+  /// whole catalog in memory to check first, and RLS only lets a user edit the
+  /// catalog rows they created; a plain upsert on someone else's row would fail.
   Future<void> upsertBaseGame(Game game) async {
     await _client.from(Db.games).upsert({
       Db.id: game.id,
@@ -352,7 +367,7 @@ class CheckpointRepository {
       Db.genres: game.genres,
       Db.summary: game.synopsis,
       Db.coverUrl: game.coverUrl,
-    });
+    }, onConflict: Db.id, ignoreDuplicates: true);
   }
 
   Future<void> deleteUserGame(String userId, String gameId) async {
@@ -361,9 +376,6 @@ class CheckpointRepository {
     // Delete the game from the user's library
     await _client.from(Db.userGames).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
   }
-
-  Stream<List<Map<String, dynamic>>> watchCatalogGames() =>
-      _client.from(Db.games).stream(primaryKey: [Db.id]).order(Db.title);
 
   /// Emits an event whenever one of [userId]'s `user_games` rows changes.
   ///

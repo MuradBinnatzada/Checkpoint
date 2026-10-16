@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
@@ -5,9 +6,15 @@ import 'package:checkpoint/models/game.dart';
 /// Poster art (2:3). Loads the catalog cover when present; the gradient + glyph
 /// underneath is the loading / offline fallback.
 class CoverArt extends StatelessWidget {
-  const CoverArt({super.key, required this.game, this.radius = 12, this.showTitle = true});
+  const CoverArt({super.key, required this.game, this.radius = 12, this.showTitle = true, this.memCacheWidth = 300});
   final Game game;
   final double radius;
+
+  /// Widest the cover is decoded into memory, in pixels. Every poster in the app
+  /// is drawn well under 150 logical px wide, so 300 is plenty and keeps a large
+  /// source image from being decoded at full size. (IGDB's `t_cover_big` is only
+  /// 264 px wide, so today this is a ceiling rather than a saving.)
+  final int memCacheWidth;
 
   /// Whether the title may be drawn over the poster. Even when true, the title
   /// is only a stand-in for missing art: it is never drawn over a game that has
@@ -43,18 +50,16 @@ class CoverArt extends StatelessWidget {
             ),
             if (!drawTitle) Center(child: Icon(game.coverIcon, size: w * 0.5, color: Colors.white70)),
 
-            // 2 · network poster, fades in over the fallback
-            if (game.coverUrl case final url?)
-              Image(
-                image: NetworkImage(url),
+            // 2 · network poster, fades in over the fallback. Cached on disk, so
+            // covers aren't re-downloaded on every launch.
+            if (game.coverUrl case final url? when url.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: url,
                 fit: BoxFit.cover,
-                gaplessPlayback: true,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) => AnimatedOpacity(
-                  opacity: (wasSynchronouslyLoaded || frame != null) ? 1 : 0,
-                  duration: const Duration(milliseconds: 300),
-                  child: child,
-                ),
-                errorBuilder: (_, _, _) => const SizedBox.shrink(), // keep fallback
+                memCacheWidth: memCacheWidth,
+                fadeInDuration: const Duration(milliseconds: 300),
+                fadeOutDuration: Duration.zero,
+                errorWidget: (_, _, _) => const SizedBox.shrink(), // keep fallback
               ),
 
             // 3 · scrim + title (the scrim only exists to keep the title legible)

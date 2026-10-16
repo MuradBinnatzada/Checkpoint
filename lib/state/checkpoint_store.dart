@@ -89,7 +89,18 @@ class CheckpointStore extends ChangeNotifier {
 
   User? _user;
   UserProfile _profile;
-  List<Game> _catalogGames = const [];
+  /// A small, fixed-size slice of the catalog for the Home carousels. This is
+  /// not the whole `games` table: that is no longer downloaded (see
+  /// [CheckpointRepository.fetchPopularGames]).
+  List<Game> _popularGames = const [];
+
+  /// Ids the server is known to have in `games`: everything it returned for the
+  /// library or the popular list, plus rows this session inserted. Deliberately
+  /// not fed from local edits ([_replaceGame] puts a game in the library before
+  /// it is saved), so it only ever holds confirmed rows.
+  final Set<String> _gamesInDb = {};
+
+  /// Library + popular games, for [maybeGame] and the Quick Log picker.
   List<Game> _games = const [];
   List<Game> _libraryGames = const [];
   List<LogEntry> _logs = const [];
@@ -196,16 +207,16 @@ class CheckpointStore extends ChangeNotifier {
     await _cancelDataSubscriptions();
 
     try {
-      _catalogGames = await _repository.fetchCatalogGames();
       if (user == null) {
+        // Signed out: only the Home carousels to load, and nothing to subscribe to.
+        _popularGames = await _fetchPopularGamesSafe();
         _profile = _guestProfile();
-        _games = List.unmodifiable(_catalogGames);
+        _games = List.unmodifiable(_popularGames);
         _libraryGames = const [];
         _logs = const [];
         _socialUsers = const [];
         _followingIds = {};
         _followersCount = 0;
-        _startPublicSubscriptions();
       } else {
         if (!sameUser) await _loadAccountLocalData(user.id);
         // Creates the profiles row on first login. This lives only in
@@ -229,20 +240,50 @@ class CheckpointStore extends ChangeNotifier {
     User user, {
     bool keepLoadedAchievements = false,
   }) async {
-    final fetched = await _repository.fetchUserGames(user.id);
-    final userGames = keepLoadedAchievements
-        ? _withLoadedAchievements(fetched)
-        : fetched;
+    // Six independent reads, started together, so launch waits for the slowest
+    // one instead of the sum of all of them. Nothing is assigned until every
+    // read has finished, so a failure leaves the previous state untouched. (If
+    // any read fails, the record `.wait` throws a ParallelWaitError once all of
+    // them are done; the caller already treats any error as "load failed".)
+    final (fetched, logs, socialUsers, followingIds, followersCount, popular) =
+        await (
+          _repository.fetchUserGames(user.id),
+          _repository.fetchLogEntries(user.id),
+          _repository.fetchSocialUsers(user.id),
+          _repository.fetchFollowingIds(user.id),
+          _repository.fetchFollowersCount(user.id),
+          _fetchPopularGamesSafe(),
+        ).wait;
+
+    _popularGames = popular;
+    _applyUserGames(
+      keepLoadedAchievements ? _withLoadedAchievements(fetched) : fetched,
+    );
+    _logs = List.unmodifiable(logs);
+    _socialUsers = List.unmodifiable(socialUsers);
+    _followingIds = followingIds;
+    _followersCount = followersCount;
+  }
+
+  /// Makes [userGames] the library, records their ids as known to exist in
+  /// `games`, and rebuilds the combined [_games] list.
+  void _applyUserGames(List<Game> userGames) {
     _libraryGames = List.unmodifiable(userGames);
-    _games = List.unmodifiable(
-      _mergeCatalogAndUserGames(_catalogGames, userGames),
-    );
-    _logs = List.unmodifiable(await _repository.fetchLogEntries(user.id));
-    _socialUsers = List.unmodifiable(
-      await _repository.fetchSocialUsers(user.id),
-    );
-    _followingIds = await _repository.fetchFollowingIds(user.id);
-    _followersCount = await _repository.fetchFollowersCount(user.id);
+    _gamesInDb.addAll(userGames.map((g) => g.id));
+    _games = List.unmodifiable(_mergeGames(_popularGames, userGames));
+  }
+
+  /// The Home carousels are a nicety, so a failure here must not fail the whole
+  /// load. Keeps whatever was loaded before and logs the error.
+  Future<List<Game>> _fetchPopularGamesSafe() async {
+    try {
+      final games = await _repository.fetchPopularGames();
+      _gamesInDb.addAll(games.map((g) => g.id));
+      return games;
+    } catch (e, st) {
+      debugPrint('Popular games load failed: $e\n$st');
+      return _popularGames;
+    }
   }
 
   Future<void> removeFromLibrary(String id) async {
@@ -308,11 +349,8 @@ class CheckpointStore extends ChangeNotifier {
     ];
   }
 
-  List<Game> _mergeCatalogAndUserGames(
-    List<Game> catalog,
-    List<Game> userGames,
-  ) {
-    final byId = <String, Game>{for (final game in catalog) game.id: game};
+  List<Game> _mergeGames(List<Game> popular, List<Game> userGames) {
+    final byId = <String, Game>{for (final game in popular) game.id: game};
     for (final game in userGames) {
       byId[game.id] = game;
     }
@@ -321,25 +359,12 @@ class CheckpointStore extends ChangeNotifier {
     return merged;
   }
 
-  void _startPublicSubscriptions() {
-    _dataSubscriptions.add(
-      _repository.watchCatalogGames().listen((_) async {
-        await _refreshCatalogOnly();
-      }),
-    );
-  }
-
   void _startSignedInSubscriptions(User user) {
     _dataSubscriptions
       ..add(
-        _repository.watchCatalogGames().listen(
-          (_) async => _refreshCatalogAndLibrary(user),
-        ),
-      )
-      ..add(
         _repository
             .watchUserGames(user.id)
-            .listen((_) async => _refreshCatalogAndLibrary(user)),
+            .listen((_) async => _refreshLibrary(user)),
       )
       ..add(
         _repository
@@ -365,21 +390,11 @@ class CheckpointStore extends ChangeNotifier {
     _dataSubscriptions.clear();
   }
 
-  Future<void> _refreshCatalogOnly() async {
-    try {
-      _catalogGames = await _repository.fetchCatalogGames();
-      if (_user == null) _games = List.unmodifiable(_catalogGames);
-      notifyListeners();
-    } catch (e, st) {
-      debugPrint('Catalog refresh failed: $e\n$st');
-    }
-  }
-
   int _pendingSaves = 0;
   bool _refreshQueued = false;
   Timer? _refreshDebounce;
 
-  Future<void> _refreshCatalogAndLibrary(User user) async {
+  Future<void> _refreshLibrary(User user) async {
     if (_pendingSaves > 0) {
       _refreshQueued = true; // Pause refresh until local writes finish
       return;
@@ -390,13 +405,8 @@ class CheckpointStore extends ChangeNotifier {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 300), () async {
       try {
-        _catalogGames = await _repository.fetchCatalogGames();
-        final userGames = _withLoadedAchievements(
-          await _repository.fetchUserGames(user.id),
-        );
-        _libraryGames = List.unmodifiable(userGames);
-        _games = List.unmodifiable(
-          _mergeCatalogAndUserGames(_catalogGames, userGames),
+        _applyUserGames(
+          _withLoadedAchievements(await _repository.fetchUserGames(user.id)),
         );
         notifyListeners();
       } catch (e, st) {
@@ -571,9 +581,8 @@ class CheckpointStore extends ChangeNotifier {
       g.id.codeUnits.fold<int>(7, (s, c) => (s * 31 + c) & 0x7fffffff);
 
   List<Game> get popularThisMonth {
-    final list = List.of(
-      _catalogGames,
-    )..sort((a, b) => ((_seed(b) * 37) % 101).compareTo((_seed(a) * 37) % 101));
+    final list = List.of(_popularGames)
+      ..sort((a, b) => ((_seed(b) * 37) % 101).compareTo((_seed(a) * 37) % 101));
     return list.take(10).toList();
   }
 
@@ -720,7 +729,7 @@ class CheckpointStore extends ChangeNotifier {
 
       // Give the database a brief moment to settle broadcasts
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      await _refreshCatalogAndLibrary(current);
+      await _refreshLibrary(current);
       return null;
 
     } catch (e) {
@@ -1155,9 +1164,12 @@ class CheckpointStore extends ChangeNotifier {
     _pendingSaves++;
     
     try {
-      // Optimization: Only upsert to the global catalog if it's a brand new game
-      if (!_catalogGames.any((g) => g.id == game.id)) {
+      // Only touch the global catalog for a game the server hasn't confirmed yet
+      // (typically a fresh search result). The insert is ON CONFLICT DO NOTHING,
+      // so if another user added it first this is a harmless no-op.
+      if (!_gamesInDb.contains(game.id)) {
         await _repository.upsertBaseGame(game);
+        _gamesInDb.add(game.id);
       }
 
       await _repository.upsertUserGame(
@@ -1179,7 +1191,7 @@ class CheckpointStore extends ChangeNotifier {
       _pendingSaves--;
       if (_pendingSaves == 0 && _refreshQueued) {
         _refreshQueued = false;
-        await _refreshCatalogAndLibrary(current);
+        await _refreshLibrary(current);
       }
     }
   }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
@@ -38,20 +39,16 @@ class CoverBackdrop extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         if (url != null && url.isNotEmpty)
-          Image.network(
-            _smallUrl(url),
-            fit: BoxFit.cover,
-            cacheWidth: _decodeWidth,
-            filterQuality: FilterQuality.high, // smooth (bicubic) upscale = the blur
-            gaplessPlayback: true,
-            excludeFromSemantics: true,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
-                AnimatedOpacity(
-              opacity: (wasSynchronouslyLoaded || frame != null) ? 1 : 0,
-              duration: const Duration(milliseconds: 300),
-              child: child,
+          ExcludeSemantics(
+            child: CachedNetworkImage(
+              imageUrl: _smallUrl(url),
+              fit: BoxFit.cover,
+              memCacheWidth: _decodeWidth,
+              filterQuality: FilterQuality.high, // smooth (bicubic) upscale = the blur
+              fadeInDuration: const Duration(milliseconds: 300),
+              fadeOutDuration: Duration.zero,
+              errorWidget: (_, _, _) => const SizedBox.shrink(),
             ),
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
           ),
         ColoredBox(color: Colors.black.withValues(alpha: scrim)),
       ],
