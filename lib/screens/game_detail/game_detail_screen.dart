@@ -6,6 +6,8 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -25,8 +27,7 @@ class GameDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
-    final game = store.maybeGame(gameId);
+    final game = context.watch<LibraryStore>().maybeGame(gameId);
     if (game == null) {
       return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.error_outline_rounded, title: 'Game not found', message: 'It may have been removed.'));
     }
@@ -53,7 +54,7 @@ class GameDetailScreen extends StatelessWidget {
                   child: _RoundIconButton(
                     icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     color: game.isFavorite ? Palette.danger : Colors.white,
-                    onTap: () => context.actions.toggleFavorite(game.id),
+                    onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
                   ),
                 ),
               ),
@@ -110,7 +111,7 @@ class GameDetailScreen extends StatelessWidget {
                       PlatformChips(
                         platforms: availablePlatforms,
                         selected: game.playedOn,
-                        onSelected: (p) => context.actions.setPlayedOn(game.id, p),
+                        onSelected: (p) => context.read<LibraryStore>().setPlayedOn(game.id, p),
                       ),
                       if (game.playedOn == null) ...[
                         const SizedBox(height: 10),
@@ -243,10 +244,10 @@ class _RatingPanel extends StatelessWidget {
     return Panel(
       title: 'Your rating',
       trailing: game.rating > 0
-          ? TextButton(onPressed: () => context.actions.setRating(game.id, 0), child: const Text('Clear'))
+          ? TextButton(onPressed: () => context.read<LibraryStore>().setRating(game.id, 0), child: const Text('Clear'))
           : null,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        StarRating(rating: game.rating, size: 44, onChanged: (v) => context.actions.setRating(game.id, v)),
+        StarRating(rating: game.rating, size: 44, onChanged: (v) => context.read<LibraryStore>().setRating(game.id, v)),
         const SizedBox(height: 8),
         Text(
           game.rating > 0 ? '${fmtHours(game.rating)} / 5' : 'Tap or drag across the stars (half-stars supported)',
@@ -263,7 +264,7 @@ class _StatusActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.actions;
+    final store = context.read<LibraryStore>();
     final messenger = ScaffoldMessenger.of(context);
 
     void change(GameStatus next, String message) {
@@ -326,7 +327,7 @@ class _SessionsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logs = context.store.logsFor(gameId);
+    final logs = context.watch<LibraryStore>().logsFor(gameId);
     if (logs.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -415,7 +416,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
 
   Future<void> _checkStored() async {
     if (!mounted) return;
-    final store = context.actions;
+    final store = context.read<LibraryStore>();
     await store.ensureAchievementsLoaded(widget.game.id);
     if (mounted) setState(() => _checking = false);
   }
@@ -427,7 +428,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
   /// adopted yet; the Edge Function still decodes the app id from those.
   bool _canLoad(BuildContext context) {
     final g = widget.game;
-    return context.store.isConnected(ConnectedService.steam) &&
+    return context.watch<ProfileStore>().isConnected(ConnectedService.steam) &&
         g.inLibrary &&
         (g.playedOn == GamePlatform.pc || g.playedOn == GamePlatform.steamDeck) &&
         (g.steamAppId != null || g.id.startsWith('57e40000-'));
@@ -439,7 +440,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
       _loading = true;
       _error = null;
     });
-    final error = await context.actions.syncGameAchievements(widget.game.id);
+    final error = await context.read<LibraryStore>().syncGameAchievements(widget.game.id);
     if (!mounted) return;
     setState(() {
       _loading = false;

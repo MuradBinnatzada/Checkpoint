@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
@@ -8,7 +10,7 @@ import 'package:checkpoint/widgets/sheet_frame.dart';
 
 /// Read-only guard: returns true (and shows a hint) when logged out.
 bool _blockedByReadOnly(BuildContext context) {
-  if (context.actions.isLoggedIn) return false;
+  if (context.read<AuthStore>().isLoggedIn) return false;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(const SnackBar(content: Text('Log in to track games')));
@@ -44,7 +46,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
   void initState() {
     super.initState();
     _gameId = widget.initialGameId;
-    if (_gameId != null) _platform = _defaultPlatform(StoreScope.read(context).gameById(_gameId!));
+    if (_gameId != null) _platform = _defaultPlatform(context.read<LibraryStore>().gameById(_gameId!));
   }
 
   @override
@@ -62,7 +64,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
 
   void _save(Game game, double hours) {
     final messenger = ScaffoldMessenger.of(context);
-    context.actions.logSession(gameId: game.id, hours: hours, platform: _platform, note: _note.text);
+    context.read<LibraryStore>().logSession(gameId: game.id, hours: hours, platform: _platform, note: _note.text);
     Navigator.pop(context);
     messenger
       ..hideCurrentSnackBar()
@@ -71,7 +73,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
+    final store = context.watch<LibraryStore>();
     final game = _gameId == null ? null : store.maybeGame(_gameId!);
     final hours = parseNum(_hours.text);
     final canSave = game != null && hours != null && hours > 0;

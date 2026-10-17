@@ -1,22 +1,65 @@
 import 'package:flutter/material.dart';
 
-import 'package:checkpoint/state/checkpoint_store.dart';
+import 'package:checkpoint/state/app_stores.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/search_store.dart';
 
-class StoreScope extends InheritedNotifier<CheckpointStore> {
-  const StoreScope({super.key, required CheckpointStore store, required super.child})
+/// Makes one store available to the widgets below it. There is one scope per
+/// store, each rebuilding only the widgets that [StoreContext.watch] that store,
+/// so a search result arriving doesn't rebuild the Library tab.
+class StoreScope<T extends ChangeNotifier> extends InheritedNotifier<T> {
+  const StoreScope({super.key, required T store, required super.child})
       : super(notifier: store);
-
-  /// Subscribes the caller to changes.
-  static CheckpointStore of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<StoreScope>()!.notifier!;
-
-  /// No subscription — for event handlers and initState.
-  static CheckpointStore read(BuildContext context) =>
-      (context.getElementForInheritedWidgetOfExactType<StoreScope>()!.widget as StoreScope)
-          .notifier!;
 }
 
 extension StoreContext on BuildContext {
-  CheckpointStore get store => StoreScope.of(this);
-  CheckpointStore get actions => StoreScope.read(this);
+  /// The [T] store, subscribing the caller to its changes. For `build`.
+  T watch<T extends ChangeNotifier>() {
+    final scope = dependOnInheritedWidgetOfExactType<StoreScope<T>>();
+    assert(scope != null, 'No StoreScope<$T> above this context.');
+    return scope!.notifier!;
+  }
+
+  /// The [T] store with no subscription: for event handlers and `initState`.
+  T read<T extends ChangeNotifier>() {
+    final element = getElementForInheritedWidgetOfExactType<StoreScope<T>>();
+    assert(element != null, 'No StoreScope<$T> above this context.');
+    return (element!.widget as StoreScope<T>).notifier!;
+  }
+}
+
+/// Provides every store of [stores] to [child]. It sits above `MaterialApp` so
+/// pushed routes and sheets can reach them.
+class AppStoresScope extends StatelessWidget {
+  const AppStoresScope({super.key, required this.stores, required this.child});
+
+  final AppStores stores;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return StoreScope<AuthStore>(
+      store: stores.auth,
+      child: StoreScope<NavStore>(
+        store: stores.nav,
+        child: StoreScope<ProfileStore>(
+          store: stores.profile,
+          child: StoreScope<LibraryStore>(
+            store: stores.library,
+            child: StoreScope<LibraryViewStore>(
+              store: stores.libraryView,
+              child: StoreScope<SearchStore>(
+                store: stores.search,
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

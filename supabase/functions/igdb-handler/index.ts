@@ -3,9 +3,11 @@
 // Proxies game searches to IGDB so the Twitch credentials never ship in the app.
 // Only logged-in Supabase users may call it.
 //
-// Request  (POST, JSON): { "query": "zelda", "limit": 20 }   // limit optional, 1-50
+// Request  (POST, JSON): { "query": "zelda", "limit": 20, "offset": 0 }
+//                        limit optional, 1-50; offset optional, for paging
 //          Header:       Authorization: Bearer <user access token>
 // Response (JSON):       the raw IGDB /v4/games array, or { "error": "..." }
+//                        An offset at or past MAX_RESULTS answers `[]`.
 //
 // Secrets (set with `supabase secrets set`):
 //   TWITCH_CLIENT_ID
@@ -33,6 +35,9 @@ const GAME_FIELDS = [
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MAX_QUERY_LENGTH = 100;
+// How deep a search may be paged. IGDB's relevance ranking is noise long before
+// this, and every page costs a request against the Twitch/IGDB quota.
+const MAX_RESULTS = 200;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -152,9 +157,18 @@ function parseLimit(value: unknown): number {
   return Math.min(n, MAX_LIMIT);
 }
 
-async function searchGames(term: string, limit: number): Promise<unknown> {
+function parseOffset(value: unknown): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+async function searchGames(
+  term: string,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
   const apicalypse =
-    `search "${term}"; fields ${GAME_FIELDS}; limit ${limit};`;
+    `search "${term}"; fields ${GAME_FIELDS}; limit ${limit}; offset ${offset};`;
 
   let token = await getToken();
   let res = await igdbRequest(apicalypse, token);
@@ -233,7 +247,12 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "A non-empty `query` string is required" }, 400);
     }
 
-    const games = await searchGames(term, parseLimit(payload?.limit));
+    const offset = parseOffset(payload?.offset);
+    // Past the paging ceiling there is nothing more to give; answer without
+    // spending an IGDB request.
+    if (offset >= MAX_RESULTS) return jsonResponse([]);
+
+    const games = await searchGames(term, parseLimit(payload?.limit), offset);
     return jsonResponse(games);
   } catch (err) {
     if (err instanceof HttpError) {

@@ -6,6 +6,10 @@ import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -26,15 +30,16 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
-    final p = store.profile;
-    final byPlatform = store.hoursByPlatform.entries.toList();
+    final profileStore = context.watch<ProfileStore>();
+    final library = context.watch<LibraryStore>();
+    final p = profileStore.profile;
+    final byPlatform = library.hoursByPlatform.entries.toList();
     final maxH = byPlatform.isEmpty ? 1.0 : byPlatform.first.value;
-    final top = store.topRated;
-    final favorites = store.libraryGames.where((g) => g.isFavorite).toList();
+    final top = library.topRated;
+    final favorites = library.libraryGames.where((g) => g.isFavorite).toList();
     final hasBio = p.bio != null && p.bio!.trim().isNotEmpty;
-    final connectedServices = store.connectedServices;
-    final steamId = store.steamId;
+    final connectedServices = profileStore.connectedServices;
+    final steamId = profileStore.steamId;
     final steamUrl = steamId != null && steamId.isNotEmpty ? Uri.https('steamcommunity.com', '/profiles/$steamId') : null;
 
     Future<bool> openLink(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
@@ -48,15 +53,15 @@ class ProfileScreen extends StatelessWidget {
           if (steamUrl == null) return null;
           return (tooltip: 'Open Steam profile', onTap: () => openLink(steamUrl));
         case ConnectedService.xbox:
-          final id = store.xboxId;
+          final id = profileStore.xboxId;
           if (id == null || id.isEmpty) return null;
           return (tooltip: 'Open Xbox profile', onTap: () => openLink(Uri.https('xboxgamertag.com', '/search/$id')));
         case ConnectedService.psn:
-          final id = store.psnId;
+          final id = profileStore.psnId;
           if (id == null || id.isEmpty) return null;
           return (tooltip: 'Open PSN profile', onTap: () => openLink(Uri.https('psnprofiles.com', '/$id')));
         case ConnectedService.discord:
-          final id = store.discordId;
+          final id = profileStore.discordId;
           if (id == null || id.isEmpty) return null;
           return (
             tooltip: 'Copy Discord username',
@@ -96,7 +101,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Log out (mock)',
-                  onPressed: context.actions.logOut,
+                  onPressed: context.read<AuthStore>().logOut,
                   icon: const Icon(Icons.logout_rounded, color: Palette.muted),
                 ),
               ]),
@@ -125,9 +130,9 @@ class ProfileScreen extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
               Row(children: [
-                _CountStat(value: fmtCount(store.followersCount), label: 'Followers'),
+                _CountStat(value: fmtCount(profileStore.followersCount), label: 'Followers'),
                 const SizedBox(width: 28),
-                _CountStat(value: fmtCount(store.followingCount), label: 'Following'),
+                _CountStat(value: fmtCount(profileStore.followingCount), label: 'Following'),
               ]),
               const SizedBox(height: 14),
               SizedBox(
@@ -143,7 +148,7 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 20),
               // Plain, non-interactive total playtime above the stat cards.
               Text(
-                'Total Playtime: ${fmtHours(store.totalHours)} hours',
+                'Total Playtime: ${fmtHours(library.totalHours)} hours',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
@@ -151,18 +156,18 @@ class ProfileScreen extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     icon: Icons.play_arrow_rounded,
-                    value: '${store.count(GameStatus.playing)}',
+                    value: '${library.count(GameStatus.playing)}',
                     label: 'Playing',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.playing),
+                    onTap: () => context.read<LibraryViewStore>().openTab(GameStatus.playing),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: StatTile(
                     icon: Icons.verified_rounded,
-                    value: '${store.count(GameStatus.completed)}',
+                    value: '${library.count(GameStatus.completed)}',
                     label: 'Completed',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.completed),
+                    onTap: () => context.read<LibraryViewStore>().openTab(GameStatus.completed),
                   ),
                 ),
               ]),
@@ -171,18 +176,18 @@ class ProfileScreen extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     icon: Icons.inventory_2_rounded,
-                    value: '${store.count(GameStatus.toPlay)}',
+                    value: '${library.count(GameStatus.toPlay)}',
                     label: 'To Play',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.toPlay),
+                    onTap: () => context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: StatTile(
                     icon: Icons.block_rounded,
-                    value: '${store.count(GameStatus.dropped)}',
+                    value: '${library.count(GameStatus.dropped)}',
                     label: 'Dropped',
-                    onTap: () => context.actions.openLibraryTab(GameStatus.dropped),
+                    onTap: () => context.read<LibraryViewStore>().openTab(GameStatus.dropped),
                   ),
                 ),
               ]),
@@ -223,11 +228,11 @@ class ProfileScreen extends StatelessWidget {
                       Expanded(
                         child: _ServiceTile(
                           service: s,
-                          connected: store.isConnected(s),
+                          connected: profileStore.isConnected(s),
                           onTap: () {
                             // 1. If already connected, tapping it disconnects immediately
-                            if (store.isConnected(s)) {
-                              context.actions.toggleService(s);
+                            if (profileStore.isConnected(s)) {
+                              context.read<ProfileStore>().toggleService(s);
                               return;
                             }
 
@@ -264,7 +269,7 @@ class ProfileScreen extends StatelessWidget {
                                         }
                                         // The ID is saved on the user's profile in Supabase; only
                                         // mark Steam as connected once that save has succeeded.
-                                        final error = await store.setSteamId(val);
+                                        final error = await profileStore.setSteamId(val);
                                         if (error != null) {
                                           messenger
                                             ..hideCurrentSnackBar()
@@ -285,11 +290,11 @@ class ProfileScreen extends StatelessWidget {
                                 context: context,
                                 builder: (_) => _UsernameDialog(service: s),
                               ).then((id) {
-                                if (id != null) store.setServiceId(s, id);
+                                if (id != null) profileStore.setServiceId(s, id);
                               });
                             } else if (s.supportsSync) {
                               // 4. Direct toggle for any other sync-capable service
-                              context.actions.toggleService(s);
+                              context.read<ProfileStore>().toggleService(s);
                             } else {
                               // 5. Profile-link dialog for Nintendo
                               final controller = TextEditingController();
@@ -311,8 +316,8 @@ class ProfileScreen extends StatelessWidget {
                                     ),
                                     FilledButton(
                                       onPressed: () {
-                                        if (controller.text.trim().isNotEmpty && !store.isConnected(s)) {
-                                          context.actions.toggleService(s);
+                                        if (controller.text.trim().isNotEmpty && !profileStore.isConnected(s)) {
+                                          context.read<ProfileStore>().toggleService(s);
                                         }
                                         Navigator.pop(c);
                                       },
@@ -334,23 +339,23 @@ class ProfileScreen extends StatelessWidget {
                       builder: (context) {
                         // 3. Only enable Sync if at least one connected service supports syncing
                         final hasSyncableService = ConnectedService.values
-                            .any((s) => s.supportsSync && store.isConnected(s));
+                            .any((s) => s.supportsSync && profileStore.isConnected(s));
 
                         return FilledButton.tonalIcon(
-                          onPressed: !hasSyncableService || store.isSyncing
+                          onPressed: !hasSyncableService || library.isSyncing
                               ? null
                               : () async {
                                   final messenger = ScaffoldMessenger.of(context);
                                   // null = a sync ran and succeeded; otherwise why nothing was synced.
-                                  final error = await context.actions.syncLibrary();
+                                  final error = await context.read<LibraryStore>().syncLibrary();
                                   messenger
                                     ..hideCurrentSnackBar()
                                     ..showSnackBar(SnackBar(content: Text(error ?? 'Library synced successfully')));
                                 },
-                          icon: store.isSyncing
+                          icon: library.isSyncing
                               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.sync_rounded),
-                          label: Text(store.isSyncing ? 'Syncing…' : 'Sync Library'),
+                          label: Text(library.isSyncing ? 'Syncing…' : 'Sync Library'),
                         );
                       }
                     ),

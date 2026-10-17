@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
 
@@ -193,13 +194,20 @@ class CheckpointRepository {
     return rows.map<Game>(_gameFromCatalogRow).toList(growable: false);
   }
 
-  /// The user's whole library. Columns are listed explicitly (rather than
-  /// `select()`) so the heavy `achievements` JSONB column is never part of this
-  /// payload; load it per game with [fetchGameAchievements] instead.
-  Future<List<Game>> fetchUserGames(String userId) async {
-    final rows = await _client
-        .from(Db.userGames)
-        .select('''
+  /// Rows per request for the paged reads below ([_readAllPages]). It has to stay
+  /// under the API's row cap (`max_rows` in supabase/config.toml and in the
+  /// project's API settings, 1000 by default): a request for more is silently cut
+  /// to the cap, and a library past it would load incomplete.
+  static const int _pageSize = 500;
+
+  /// Members per page of the Users tab.
+  static const int _socialUsersPageSize = 30;
+
+  /// Columns of a library row: its own fields and the catalog game it points at.
+  /// Listed explicitly (rather than `select()`) so the heavy `achievements` JSONB
+  /// column is never part of this payload; load it per game with
+  /// [fetchGameAchievements] instead.
+  static final String _userGameColumns = '''
           ${Db.id},
           ${Db.userId},
           ${Db.gameId},
@@ -225,11 +233,54 @@ class CheckpointRepository {
             ${Db.coverUrl},
             ${Db.createdAt}
           )
-        ''')
-        .eq(Db.userId, userId)
-        .order(Db.dateAdded, ascending: false);
+        ''';
 
-    return rows.map<Game>(_gameFromUserGameRow).toList(growable: false);
+  /// The user's whole library, read [_pageSize] rows at a time so that no single
+  /// request is large or runs into the API's row cap. Pages are keyed on
+  /// `game_id` (unique per user, and the lead of an existing index), not on an
+  /// offset, so rows added or removed while it runs can't shift later pages and
+  /// skip or repeat a game. The pages are joined and returned together: the
+  /// library the store shows is never a partial one.
+  Future<List<Game>> fetchUserGames(String userId) async {
+    final rows = await _readAllPages(Db.gameId, (after) {
+      final query = _client
+          .from(Db.userGames)
+          .select(_userGameColumns)
+          .eq(Db.userId, userId);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId)
+          .limit(_pageSize);
+    });
+    // Newest first, the order the old single ordered query returned.
+    return rows.map<Game>(_gameFromUserGameRow).toList()..sort(_newestFirst);
+  }
+
+  static int _newestFirst(Game a, Game b) {
+    final x = a.dateAdded;
+    final y = b.dateAdded;
+    if (x == null || y == null) {
+      return x == null ? (y == null ? 0 : 1) : -1;
+    }
+    return y.compareTo(x);
+  }
+
+  /// Reads every row a query matches. [readPage] must return the page of up to
+  /// [_pageSize] rows that follows the cursor `after` (null for the first page),
+  /// ordered by [cursorColumn], a column whose values are unique within the query.
+  /// Stops at the first page that comes back short.
+  Future<List<Map<String, dynamic>>> _readAllPages(
+    String cursorColumn,
+    Future<List<Map<String, dynamic>>> Function(Object? after) readPage,
+  ) async {
+    final all = <Map<String, dynamic>>[];
+    Object? after;
+    while (true) {
+      final rows = await readPage(after);
+      all.addAll(rows);
+      if (rows.length < _pageSize) return all;
+      after = rows.last[cursorColumn];
+      if (after == null) return all; // can't continue without a cursor
+    }
   }
 
   /// Reads only the `achievements` column of one `user_games` row.
@@ -250,29 +301,89 @@ class CheckpointRepository {
     return Achievement.listFromJson(row?[_achievementsColumn]);
   }
 
-  Future<List<LogEntry>> fetchLogEntries(String userId) async {
-    final rows = await _client
-        .from(Db.logEntries)
-        .select()
-        .eq(Db.userId, userId)
-        .order(Db.loggedAt, ascending: false);
-    return rows.map<LogEntry>(_logFromRow).toList(growable: false);
+  /// Imports the signed-in user's Steam library through the `sync-steam` Edge
+  /// Function. There is no body: the function looks up this user's Steam ID on
+  /// `profiles` using the authenticated session, and never trusts one sent by
+  /// the client. Returns the function's response data.
+  Future<Object?> syncSteamLibrary() async {
+    final response = await _client.functions.invoke('sync-steam');
+    return response.data;
   }
 
-  /// Other members, for the Search tab. Reads the `public_profiles` view, which
-  /// only has the public fields; `profiles` itself holds `email` / `steam_id`
-  /// and is readable only for your own row. Keep the column list in sync with
-  /// what [_socialUserFromProfile] reads and with the view.
-  Future<List<SocialUser>> fetchSocialUsers(String currentUserId) async {
-    final rows = await _client
+  /// Loads one game's Steam achievements through the `sync-achievements` Edge
+  /// Function. Only the game goes in the body; the function reads the Steam ID
+  /// from `profiles` and ignores any `steam_id` sent by the client. Throws
+  /// [FunctionException] when the function answers with an error. Returns the
+  /// function's response data.
+  Future<Object?> syncGameAchievements(String gameId) async {
+    final response = await _client.functions.invoke(
+      'sync-achievements',
+      body: {'game_id': gameId},
+    );
+    return response.data;
+  }
+
+  /// Every play session of the user, newest first. Read in pages like
+  /// [fetchUserGames]: a long-time player passes the API's row cap.
+  Future<List<LogEntry>> fetchLogEntries(String userId) async {
+    final rows = await _readAllPages(Db.id, (after) {
+      final query = _client
+          .from(Db.logEntries)
+          .select()
+          .eq(Db.userId, userId);
+      return (after == null ? query : query.gt(Db.id, after))
+          .order(Db.id)
+          .limit(_pageSize);
+    });
+    return rows.map<LogEntry>(_logFromRow).toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  }
+
+  /// One page of other members, for the Users tab: [limit] members starting at
+  /// [offset], by display name. A non-empty [query] keeps those whose name or
+  /// @handle contains it (case-insensitive). The search runs in the database, so
+  /// the app never holds the whole member list.
+  ///
+  /// Reads the `public_profiles` view, which only has the public fields;
+  /// `profiles` itself holds `email` / `steam_id` and is readable only for your
+  /// own row. Keep the column list in sync with what [_socialUserFromProfile]
+  /// reads and with the view.
+  Future<ResultsPage<SocialUser>> searchSocialUsers(
+    String currentUserId, {
+    String query = '',
+    int offset = 0,
+    int limit = _socialUsersPageSize,
+  }) async {
+    var request = _client
         .from(Db.publicProfiles)
         .select('id, handle, display_name, avatar_url')
-        .neq(Db.id, currentUserId)
-        .order(Db.displayName);
-    return rows
+        .neq(Db.id, currentUserId);
+    final term = _likeTerm(query);
+    if (term.isNotEmpty) {
+      request = request.or(
+        '${Db.displayName}.ilike.%$term%,${Db.handle}.ilike.%$term%',
+      );
+    }
+    // `id` breaks ties between equal names, so a page boundary is stable.
+    final rows = await request
+        .order(Db.displayName)
+        .order(Db.id)
+        .range(offset, offset + limit - 1);
+    final users = rows
         .map<SocialUser>((row) => _socialUserFromProfile(row))
         .toList(growable: false);
+    // A full page means there may be another.
+    return ResultsPage<SocialUser>(users, hasMore: users.length >= limit);
   }
+
+  /// Makes [query] safe to put inside a PostgREST `or(...)` filter and an
+  /// `ilike` pattern: a leading "@" is dropped, and the characters that would end
+  /// the value or act as wildcards become spaces.
+  static String _likeTerm(String query) => query
+      .trim()
+      .replaceFirst(RegExp(r'^@+'), '')
+      .replaceAll(RegExp(r'[,()"\\%*]'), ' ')
+      .trim();
 
   Future<Set<String>> fetchFollowingIds(String userId) async {
     final rows = await _client
@@ -500,8 +611,8 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
     platforms: platforms.isEmpty ? const [GamePlatform.pc] : platforms,
     genres: genres,
     synopsis: _firstText([row[Db.summary]]) ?? '',
-    coverColors: _coverColors(id, title),
-    coverIcon: _coverIcon(genres, platforms),
+    coverColors: coverColorsFor(id, title),
+    coverIcon: coverIconFor(genres, platforms),
     coverUrl: _firstText([row[Db.coverUrl]]),
     igdbId: _intOrNull(row[Db.igdbId]),
     steamAppId: _intOrNull(row[Db.steamAppId]),
@@ -597,27 +708,3 @@ int? _intOrNull(Object? value) {
   return int.tryParse('$value');
 }
 
-List<Color> _coverColors(String id, String title) {
-  final hash = '$id$title'.codeUnits.fold<int>(
-    17,
-    (value, code) => (value * 31 + code) & 0x7fffffff,
-  );
-  final hue = (hash % 360).toDouble();
-  return [
-    HSLColor.fromAHSL(1, hue, 0.62, 0.46).toColor(),
-    HSLColor.fromAHSL(1, (hue + 42) % 360, 0.52, 0.16).toColor(),
-  ];
-}
-
-IconData _coverIcon(List<String> genres, List<GamePlatform> platforms) {
-  final hay = genres.join(' ').toLowerCase();
-  if (hay.contains('rpg')) return Icons.auto_awesome_rounded;
-  if (hay.contains('strategy') || hay.contains('tactic')) {
-    return Icons.extension_rounded;
-  }
-  if (hay.contains('platform')) return Icons.bolt_rounded;
-  if (hay.contains('racing')) return Icons.sports_motorsports_rounded;
-  if (hay.contains('horror')) return Icons.nights_stay_rounded;
-  if (platforms.contains(GamePlatform.mobile)) return Icons.smartphone_rounded;
-  return Icons.sports_esports_rounded;
-}

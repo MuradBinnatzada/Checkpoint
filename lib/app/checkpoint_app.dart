@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/app_shell.dart';
-import 'package:checkpoint/state/checkpoint_store.dart';
+import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
 
@@ -16,27 +16,25 @@ class CheckpointApp extends StatefulWidget {
 }
 
 class _CheckpointAppState extends State<CheckpointApp> {
-  late final CheckpointStore _store = CheckpointStore.supabase(
-    Supabase.instance.client,
-  );
+  late final AppStores _stores = AppStores.supabase(Supabase.instance.client);
 
   @override
   void initState() {
     super.initState();
-    unawaited(_store.initialize());
+    unawaited(_stores.initialize());
   }
 
   @override
   void dispose() {
-    _store.dispose();
+    _stores.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // StoreScope sits above MaterialApp so pushed routes and sheets can read it.
-    return StoreScope(
-      store: _store,
+    // The scopes sit above MaterialApp so pushed routes and sheets can read them.
+    return AppStoresScope(
+      stores: _stores,
       child: MaterialApp(
         title: 'Checkpoint',
         debugShowCheckedModeBanner: false,

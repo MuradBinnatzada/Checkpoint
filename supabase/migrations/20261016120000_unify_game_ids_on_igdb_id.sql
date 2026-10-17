@@ -47,9 +47,22 @@ $$;
 
 -- 2. Columns -----------------------------------------------------------------
 -- igdb_id already exists (the app has always selected it); normalise it to
--- bigint, which is a no-op if it already is one.
+-- bigint. Only when it isn't one yet: ALTER ... TYPE refuses to run on a column
+-- that a trigger or view depends on (games_fill_igdb_id, below) even when the
+-- type would not change, so an unconditional ALTER makes this file fail when it
+-- is applied a second time.
 alter table public.games add column if not exists igdb_id bigint;
-alter table public.games alter column igdb_id type bigint using igdb_id::bigint;
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'games'
+      and column_name = 'igdb_id' and data_type <> 'bigint'
+  ) then
+    alter table public.games alter column igdb_id type bigint using igdb_id::bigint;
+  end if;
+end;
+$$;
 
 alter table public.games add column if not exists steam_app_id bigint;
 

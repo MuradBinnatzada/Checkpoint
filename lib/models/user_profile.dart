@@ -13,6 +13,17 @@ class UserProfile {
     this.following = 120,
   });
 
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+        name: json['name'] as String,
+        handle: json['handle'] as String,
+        bio: json['bio'] as String?,
+        avatarUrl: json['avatarUrl'] as String?,
+        steamId: json['steamId'] as String?,
+        joined: DateTime.parse(json['joined'] as String).toLocal(),
+        followers: (json['followers'] as num).toInt(),
+        following: (json['following'] as num).toInt(),
+      );
+
   final String name;
   final String handle;
   final String? bio;
@@ -24,6 +35,19 @@ class UserProfile {
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
+
+  /// What the offline cache keeps of the signed-in user's profile; read back by
+  /// [UserProfile.fromJson].
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'handle': handle,
+        'bio': bio,
+        'avatarUrl': avatarUrl,
+        'steamId': steamId,
+        'joined': joined.toUtc().toIso8601String(),
+        'followers': followers,
+        'following': following,
+      };
 
   UserProfile copyWith({
     String? name,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -64,7 +65,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // not overwrite what the user is typing.
     if (_initialized) return;
     _initialized = true;
-    final profile = context.store.profile;
+    final profile = context.watch<ProfileStore>().profile;
     _profileName = profile.name;
     _originalHandle = profile.handle
         .replaceFirst(RegExp(r'^@+'), '')
@@ -139,7 +140,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _checkHandle(String handle) async {
     if (!mounted) return;
-    final actions = context.actions;
+    final actions = context.read<ProfileStore>();
     final seq = ++_checkSeq;
     try {
       final available = await actions.isHandleAvailable(handle);
@@ -162,7 +163,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _pickAvatar() async {
     if (_uploadingAvatar || _saving) return;
-    final actions = context.actions;
+    final actions = context.read<ProfileStore>();
     final messenger = ScaffoldMessenger.of(context);
 
     try {
@@ -204,7 +205,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
-    final actions = context.actions;
+    final actions = context.read<ProfileStore>();
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final handle = _handle.text.trim();

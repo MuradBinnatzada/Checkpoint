@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/search_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -52,23 +56,34 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _onQueryChanged(String v) {
-    final store = context.store;
+    final store = context.read<SearchStore>();
     setState(() => _query = v);
     // Emptied the box: drop the previous results so they can't flash back.
     if (v.trim().isEmpty) store.clearSearch();
+    _debounce?.cancel();
     if (_kind == SearchKind.games) {
-      _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 600), () {
         if (v.trim().isNotEmpty) store.searchExternalGames(v);
+      });
+    } else {
+      // Members are searched on the server, so wait for a pause in typing. An
+      // emptied box goes back to the "Suggested people" list.
+      _debounce = Timer(const Duration(milliseconds: 350), () {
+        unawaited(store.findUsers(v));
       });
     }
   }
 
   /// Keyboard "search" key: don't wait for the debounce.
   void _submitSearch(String v) {
-    if (_kind != SearchKind.games || v.trim().isEmpty) return;
+    if (_kind == SearchKind.games && v.trim().isEmpty) return;
     _debounce?.cancel();
-    context.store.searchExternalGames(v);
+    final store = context.read<SearchStore>();
+    if (_kind == SearchKind.games) {
+      store.searchExternalGames(v);
+    } else {
+      unawaited(store.findUsers(v));
+    }
   }
 
   /// Clears the box and puts the cursor back in it, which brings up Recent Searches.
@@ -76,7 +91,9 @@ class _SearchScreenState extends State<SearchScreen> {
     _debounce?.cancel();
     _controller.clear();
     setState(() => _query = '');
-    context.store.clearSearch();
+    final store = context.read<SearchStore>();
+    store.clearSearch();
+    if (_kind == SearchKind.users) unawaited(store.findUsers(''));
     _searchFocus.requestFocus();
   }
 
@@ -89,34 +106,57 @@ class _SearchScreenState extends State<SearchScreen> {
     );
     setState(() => _query = query);
     _searchFocus.unfocus();
-    context.store.searchExternalGames(query);
+    context.read<SearchStore>().searchExternalGames(query);
   }
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
+    final store = context.watch<SearchStore>();
     final isUsers = _kind == SearchKind.users;
     final hasQuery = _query.trim().isNotEmpty;
 
     final Widget body;
     if (isUsers) {
-      // People search keeps its original behavior: suggestions until you type.
-      final users = store.searchUsers(_query);
+      // People search shows suggestions until you type. Both are one server-side
+      // query, paged as the list is scrolled.
+      if (store.userSearchStale) {
+        // Nothing loaded for this account yet (first visit, or the account
+        // changed under an open tab): load once this frame is done.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final search = context.read<SearchStore>();
+          if (mounted && search.userSearchStale) {
+            unawaited(search.findUsers(_query));
+          }
+        });
+      }
+      final users = store.userResults;
       body = _ResultsPane(
-        label: hasQuery ? '${users.length} result${users.length == 1 ? '' : 's'}' : 'Suggested people',
+        label: store.userLoading
+            ? 'Searching…'
+            : hasQuery
+                ? _countLabel(users.length, store.userHasMore)
+                : 'Suggested people',
         count: users.length,
-        empty: EmptyState(
-          icon: Icons.person_search_rounded,
-          title: 'No users found',
-          message: 'Try a different name or @handle.',
-        ),
+        empty: store.userLoading || store.userSearchStale
+            ? const Center(child: CircularProgressIndicator())
+            : EmptyState(
+                icon: Icons.person_search_rounded,
+                title: 'No users found',
+                message: 'Try a different name or @handle.',
+              ),
         itemBuilder: (_, i) => _UserTile(user: users[i]),
+        hasMore: store.userHasMore,
+        loadingMore: store.userLoadingMore,
+        loadMoreFailed: store.userLoadMoreFailed,
+        onLoadMore: store.loadMoreUsers,
       );
     } else if (hasQuery) {
       // State A: active search.
-      final games = [for (final g in store.searchResults) store.maybeGame(g.id) ?? g];
+      // A result already in the library shows its library state (status pill).
+      final library = context.watch<LibraryStore>();
+      final games = [for (final g in store.searchResults) library.maybeGame(g.id) ?? g];
       body = _ResultsPane(
-        label: '${games.length} result${games.length == 1 ? '' : 's'}',
+        label: _countLabel(games.length, store.searchHasMore),
         count: games.length,
         empty: EmptyState(
           icon: Icons.search_off_rounded,
@@ -124,6 +164,10 @@ class _SearchScreenState extends State<SearchScreen> {
           message: 'Try a different title, studio or genre.',
         ),
         itemBuilder: (_, i) => _SearchTile(game: games[i]),
+        hasMore: store.searchHasMore,
+        loadingMore: store.searchLoadingMore,
+        loadMoreFailed: store.searchLoadMoreFailed,
+        onLoadMore: store.loadMoreSearchResults,
       );
     } else if (_searchFocus.hasFocus) {
       // State B: empty box, field focused.
@@ -175,7 +219,15 @@ class _SearchScreenState extends State<SearchScreen> {
                 ButtonSegment(value: SearchKind.users, icon: Icon(Icons.people_alt_rounded), label: Text('Users')),
               ],
               selected: {_kind},
-              onSelectionChanged: (s) => setState(() => _kind = s.first),
+              onSelectionChanged: (s) {
+                setState(() => _kind = s.first);
+                _debounce?.cancel();
+                // Members are fetched on demand, so (re)load them for whatever is
+                // typed in the box.
+                if (_kind == SearchKind.users) {
+                  unawaited(context.read<SearchStore>().findUsers(_query));
+                }
+              },
               style: SegmentedButton.styleFrom(
                 backgroundColor: Palette.surfaceHigh,
                 foregroundColor: Colors.white70,
@@ -264,16 +316,39 @@ class _RowDivider extends StatelessWidget {
   Widget build(BuildContext context) => const Divider(height: 1, indent: 20, endIndent: 20, color: Colors.white10);
 }
 
+/// "12 results", or "20+ results" while more can still be loaded.
+String _countLabel(int count, bool hasMore) =>
+    hasMore ? '$count+ results' : '$count result${count == 1 ? '' : 's'}';
+
 /// A label plus a scrolling list of results (or [empty] when there are none).
+///
+/// While [hasMore] the list ends in a footer that asks for the next page as soon
+/// as it is built, which happens when the user scrolls close to the end (or the
+/// list is too short to fill the screen). A failed page stops that and shows a
+/// retry button instead.
 class _ResultsPane extends StatelessWidget {
-  const _ResultsPane({required this.label, required this.count, required this.empty, required this.itemBuilder});
+  const _ResultsPane({
+    required this.label,
+    required this.count,
+    required this.empty,
+    required this.itemBuilder,
+    this.hasMore = false,
+    this.loadingMore = false,
+    this.loadMoreFailed = false,
+    this.onLoadMore,
+  });
   final String label;
   final int count;
   final Widget empty;
   final IndexedWidgetBuilder itemBuilder;
+  final bool hasMore;
+  final bool loadingMore;
+  final bool loadMoreFailed;
+  final VoidCallback? onLoadMore;
 
   @override
   Widget build(BuildContext context) {
+    final showFooter = hasMore || loadingMore || loadMoreFailed;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _SectionLabel(label),
       Expanded(
@@ -282,11 +357,83 @@ class _ResultsPane extends StatelessWidget {
             : ListView.builder(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
-                itemCount: count,
-                itemBuilder: itemBuilder,
+                itemCount: count + (showFooter ? 1 : 0),
+                itemBuilder: (context, i) {
+                  if (i < count) return itemBuilder(context, i);
+                  return _LoadMoreFooter(
+                    loading: loadingMore,
+                    failed: loadMoreFailed,
+                    onLoadMore: onLoadMore,
+                  );
+                },
               ),
       ),
     ]);
+  }
+}
+
+/// End-of-list row of a paged [_ResultsPane]. Being built means the end of the
+/// list is near, so it asks for the next page (after the current frame, never
+/// during build). The store ignores the call when a page is already on its way.
+class _LoadMoreFooter extends StatefulWidget {
+  const _LoadMoreFooter({
+    required this.loading,
+    required this.failed,
+    required this.onLoadMore,
+  });
+  final bool loading;
+  final bool failed;
+  final VoidCallback? onLoadMore;
+
+  @override
+  State<_LoadMoreFooter> createState() => _LoadMoreFooterState();
+}
+
+class _LoadMoreFooterState extends State<_LoadMoreFooter> {
+  @override
+  void initState() {
+    super.initState();
+    _requestNextPage();
+  }
+
+  @override
+  void didUpdateWidget(_LoadMoreFooter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A page just landed and the footer is still in view: keep going.
+    _requestNextPage();
+  }
+
+  void _requestNextPage() {
+    if (widget.loading || widget.failed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !widget.loading && !widget.failed) widget.onLoadMore?.call();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.failed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: TextButton.icon(
+            onPressed: widget.onLoadMore,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Couldn’t load more. Tap to retry'),
+          ),
+        ),
+      );
+    }
+    return const SizedBox(
+      height: 56,
+      child: Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      ),
+    );
   }
 }
 
@@ -296,17 +443,17 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
-    final following = store.isFollowing(user.id);
+    final profile = context.watch<ProfileStore>();
+    final following = profile.isFollowing(user.id);
 
     void toggle() {
-      if (!store.isLoggedIn) {
+      if (!context.read<AuthStore>().isLoggedIn) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(const SnackBar(content: Text('Log in to follow people')));
         return;
       }
-      context.actions.toggleFollow(user.id);
+      profile.toggleFollow(user.id);
     }
 
     return Padding(
@@ -367,7 +514,7 @@ class _SearchTile extends StatelessWidget {
             ]),
           ),
           const SizedBox(width: 8),
-          if (!context.store.isLoggedIn)
+          if (!context.watch<AuthStore>().isLoggedIn)
             const SizedBox.shrink()
           else if (game.status != null)
             StatusPill(game.status!)
@@ -376,7 +523,7 @@ class _SearchTile extends StatelessWidget {
               tooltip: 'Add to library',
               icon: const Icon(Icons.add_circle_outline_rounded, color: Palette.accent, size: 28),
               onSelected: (s) {
-                context.actions.addToLibrary(game.id, s);
+                context.read<LibraryStore>().addToLibrary(game.id, s);
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
                   ..showSnackBar(SnackBar(content: Text('${game.title} added to ${s.label}')));

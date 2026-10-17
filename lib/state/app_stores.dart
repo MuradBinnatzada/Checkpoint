@@ -1,0 +1,82 @@
+import 'dart:async';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:checkpoint/services/auth_service.dart';
+import 'package:checkpoint/services/checkpoint_repository.dart';
+import 'package:checkpoint/services/game_api_service.dart';
+import 'package:checkpoint/services/local_cache.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/search_store.dart';
+
+/// The app's stores and how they depend on each other. Dependencies point one
+/// way, with no cycles:
+///  * [ProfileStore], [LibraryStore] and [SearchStore] follow [AuthStore] for who
+///    is signed in, and load or drop their data when it changes;
+///  * [LibraryStore] reads [ProfileStore] for the Steam connection, and
+///    [SearchStore] for a search result being opened or added;
+///  * [SearchStore] and [LibraryViewStore] use [NavStore] (leaving the Search tab
+///    clears its results; opening a Library tab switches to it).
+class AppStores {
+  AppStores({
+    required CheckpointRepository repository,
+    required AuthService authService,
+    LocalCache? cache,
+    GameApiService? apiService,
+  }) {
+    final localCache = cache ?? LocalCache();
+    auth = AuthStore(authService);
+    nav = NavStore();
+    profile = ProfileStore(repository: repository, auth: auth, cache: localCache);
+    search = SearchStore(
+      repository: repository,
+      auth: auth,
+      nav: nav,
+      apiService: apiService,
+    );
+    library = LibraryStore(
+      repository: repository,
+      auth: auth,
+      profile: profile,
+      cache: localCache,
+      externalGame: search.resultById,
+    );
+    libraryView = LibraryViewStore(nav: nav);
+  }
+
+  factory AppStores.supabase(SupabaseClient client) => AppStores(
+    repository: CheckpointRepository(client),
+    authService: AuthService(client),
+  );
+
+  late final AuthStore auth;
+  late final NavStore nav;
+  late final ProfileStore profile;
+  late final SearchStore search;
+  late final LibraryStore library;
+  late final LibraryViewStore libraryView;
+
+  /// Starts following the session and loads each store. [AuthStore] goes first:
+  /// the others read the signed-in user from it.
+  Future<void> initialize() async {
+    auth.initialize();
+    await Future.wait([
+      profile.initialize(),
+      library.initialize(),
+      search.initialize(),
+    ]);
+  }
+
+  void dispose() {
+    search.dispose();
+    library.dispose();
+    libraryView.dispose();
+    profile.dispose();
+    nav.dispose();
+    auth.dispose();
+  }
+}

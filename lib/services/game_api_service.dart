@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/results_page.dart';
 
 class GameApiService {
   // IGDB is reached through the `igdb-handler` Supabase Edge Function. The Twitch
   // credentials and OAuth token live server-side and never ship in the app.
+
+  /// Results per request. The Edge Function allows up to 50.
+  static const int searchPageSize = 20;
 
   // 1. Map IGDB platform IDs to brand families.
   //    Every historical console rolls up into its parent brand.
@@ -78,29 +82,41 @@ class GameApiService {
     return result.toList();
   }
 
-  // 3. Calls the Edge Function; returns the raw IGDB array (empty on any failure).
-  Future<List<dynamic>> _invokeSearch(String query) async {
+  // 3. Calls the Edge Function; returns the raw IGDB array, or null when the
+  //    request failed (a non-list body is the function's `{ "error": ... }`).
+  Future<List<dynamic>?> _invokeSearch(
+    String query, {
+    required int offset,
+    required int limit,
+  }) async {
     try {
       final res = await Supabase.instance.client.functions.invoke(
         'igdb-handler',
-        body: {'query': query, 'limit': 20},
+        body: {'query': query, 'limit': limit, 'offset': offset},
       );
       final raw = res.data;
       final decoded = raw is String ? json.decode(raw) : raw;
-      return decoded is List ? decoded : const [];
+      return decoded is List ? decoded : null;
     } catch (e) {
       debugPrint('igdb-handler request failed: $e');
-      return const [];
+      return null;
     }
   }
 
-  // 4. Search games
-  Future<List<Game>> searchGames(String query) async {
+  // 4. Search games, one page at a time; null when the request failed. [offset]
+  //    counts IGDB hits (the previous pages' [ResultsPage.fetched] added up), not
+  //    the games kept: hits without a usable IGDB id are left out of the page.
+  Future<ResultsPage<Game>?> searchGames(
+    String query, {
+    int offset = 0,
+    int limit = searchPageSize,
+  }) async {
     final q = query.trim();
-    if (q.isEmpty) return [];
+    if (q.isEmpty) return ResultsPage<Game>(const [], hasMore: false);
 
-    final data = await _invokeSearch(q);
-    return data.map<Game?>((json) {
+    final data = await _invokeSearch(q, offset: offset, limit: limit);
+    if (data == null) return null;
+    final games = data.map<Game?>((json) {
       // The IGDB id is the game's identity (see gameIdForIgdb). A hit without a
       // usable one can't be saved consistently, so it is left out of the results.
       final igdbId = (json['id'] as num?)?.toInt();
@@ -137,5 +153,11 @@ class GameApiService {
         coverUrl: coverUrl,
       );
     }).whereType<Game>().toList();
+
+    return ResultsPage<Game>(
+      games,
+      hasMore: data.length >= limit, // IGDB filled the page: another may exist
+      fetched: data.length,
+    );
   }
 }

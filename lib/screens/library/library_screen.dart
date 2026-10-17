@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/game.dart';
-import 'package:checkpoint/state/checkpoint_store.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -20,14 +23,14 @@ class LibraryScreen extends StatefulWidget {
 }
 
 /// Owns the status-tab `TabController` and keeps it in lock-step with
-/// `store.currentLibraryTabIndex` in both directions (tab 0 is "All", then
-/// one tab per `GameStatus`; `store.selectedLibraryStatus == null` means All):
-///   user taps/swipes a tab  → controller listener → store.setLibraryTabIndex
-///   store.openLibraryTab()  → store listener      → controller.index = …
+/// `LibraryViewStore.currentTabIndex` in both directions (tab 0 is "All", then
+/// one tab per `GameStatus`; `selectedStatus == null` means All):
+///   user taps/swipes a tab  → controller listener → viewStore.setTabIndex
+///   viewStore.openTab()     → store listener      → controller.index = …
 /// Both sides compare before writing, so the two listeners can never loop.
 class _LibraryScreenState extends State<LibraryScreen>
     with SingleTickerProviderStateMixin {
-  late final CheckpointStore _store;
+  late final LibraryViewStore _viewStore;
   late final TabController _tabs;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -35,18 +38,18 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   void initState() {
     super.initState();
-    _store = context.actions; // non-subscribing lookup is allowed in initState
+    _viewStore = context.read<LibraryViewStore>(); // non-subscribing lookup is allowed in initState
     _tabs = TabController(
       length: GameStatus.values.length + 1, // +1 for the leading "All" tab
       vsync: this,
-      initialIndex: _store.currentLibraryTabIndex,
+      initialIndex: _viewStore.currentTabIndex,
     )..addListener(_onTabsChanged);
-    _store.addListener(_onStoreChanged);
+    _viewStore.addListener(_onStoreChanged);
   }
 
   @override
   void dispose() {
-    _store.removeListener(_onStoreChanged);
+    _viewStore.removeListener(_onStoreChanged);
     _tabs
       ..removeListener(_onTabsChanged)
       ..dispose();
@@ -56,11 +59,11 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   void _onTabsChanged() {
     final i = _tabs.index;
-    if (i != _store.currentLibraryTabIndex) _store.setLibraryTabIndex(i);
+    if (i != _viewStore.currentTabIndex) _viewStore.setTabIndex(i);
   }
 
   void _onStoreChanged() {
-    final i = _store.currentLibraryTabIndex;
+    final i = _viewStore.currentTabIndex;
     if (i != _tabs.index) _tabs.index = i;
   }
 
@@ -73,7 +76,8 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
+    final library = context.watch<LibraryStore>();
+    final view = context.watch<LibraryViewStore>();
     Tab statusTab(String label, int count) => Tab(
       height: 38,
       child: Padding(
@@ -111,13 +115,13 @@ class _LibraryScreenState extends State<LibraryScreen>
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                   ),
                 ),
-                _PlatformFilterButton(selected: store.platformFilter),
+                _PlatformFilterButton(selected: view.platformFilter),
                 _SortButton(
-                  field: store.sortField,
-                  descending: store.sortDescending,
+                  field: view.sortField,
+                  descending: view.sortDescending,
                 ),
                 const SizedBox(width: 4),
-                _ViewToggle(view: store.libraryView),
+                _ViewToggle(view: view.view),
                 const SizedBox(width: 8),
               ],
             ),
@@ -125,11 +129,20 @@ class _LibraryScreenState extends State<LibraryScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
             child: Text(
-              'Sorted by ${store.sortField.label} · ${store.sortDescending ? 'high to low' : 'low to high'}'
-              '${store.platformFilter != null ? ' · ${store.platformFilter!.label}' : ''}',
+              'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}'
+              '${view.platformFilter != null ? ' · ${view.platformFilter!.label}' : ''}',
               style: const TextStyle(color: Palette.muted, fontSize: 12.5),
             ),
           ),
+          if (library.isOffline)
+            _OfflineBanner(
+              syncedAt: library.lastSyncedAt,
+              retrying: library.isRefreshing,
+              onRetry: () {
+                library.refresh();
+                context.read<ProfileStore>().refresh();
+              },
+            ),
           TabBar(
             controller: _tabs,
             isScrollable: true,
@@ -157,15 +170,15 @@ class _LibraryScreenState extends State<LibraryScreen>
             ),
             tabs: [
               // "All" is injected at index 0, ahead of the per-status tabs.
-              statusTab('All', store.libraryFor(null).length),
+              statusTab('All', view.count(library.libraryGames, null)),
               for (final s in GameStatus.values)
-                statusTab(s.label, store.libraryFor(s).length),
+                statusTab(s.label, view.count(library.libraryGames, s)),
             ],
           ),
           const SizedBox(height: 8),
           _LibrarySearchField(
             controller: _searchController,
-            tabLabel: store.selectedLibraryStatus?.label ?? 'All',
+            tabLabel: view.selectedStatus?.label ?? 'All',
             hasText: _searchQuery.isNotEmpty,
             onChanged: _onSearchChanged,
             onClear: _clearSearch,
@@ -189,6 +202,53 @@ class _LibraryScreenState extends State<LibraryScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown while the library on screen is the copy saved on this device because
+/// the server couldn't be reached.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({
+    required this.syncedAt,
+    required this.retrying,
+    required this.onRetry,
+  });
+  final DateTime? syncedAt;
+  final bool retrying;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final synced = syncedAt;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+        decoration: BoxDecoration(
+          color: Palette.surfaceHigh,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_rounded, size: 18, color: Palette.muted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                synced == null
+                    ? 'Can\'t reach Checkpoint. Showing your saved library.'
+                    : 'Can\'t reach Checkpoint. Showing your saved library, '
+                          'updated ${timeAgo(synced)}.',
+                style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+              ),
+            ),
+            TextButton(
+              onPressed: retrying ? null : onRetry,
+              child: Text(retrying ? 'Retrying…' : 'Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -263,7 +323,7 @@ class _ViewToggle extends StatelessWidget {
         message: tooltip,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => context.actions.setLibraryView(v),
+          onTap: () => context.read<LibraryViewStore>().setView(v),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             width: 38,
@@ -311,7 +371,7 @@ class _SortButton extends StatelessWidget {
     return PopupMenuButton<SortField>(
       tooltip: 'Sort',
       icon: const Icon(Icons.sort_rounded),
-      onSelected: context.actions.setSort,
+      onSelected: context.read<LibraryViewStore>().setSort,
       itemBuilder: (_) => [
         for (final f in SortField.values)
           PopupMenuItem(
@@ -358,7 +418,9 @@ class _PlatformFilterButton extends StatelessWidget {
         color: selected != null ? Palette.accent : null,
       ),
       onSelected: (v) =>
-          context.actions.setPlatformFilter(v is GamePlatform ? v : null),
+          context.read<LibraryViewStore>().setPlatformFilter(
+            v is GamePlatform ? v : null,
+          ),
       itemBuilder: (_) => [
         PopupMenuItem<Object>(
           value: 'all',
@@ -410,29 +472,33 @@ class LibraryCollection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
-    if (store.isLoading) {
+    final library = context.watch<LibraryStore>();
+    final view = context.watch<LibraryViewStore>();
+    if (library.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final error = store.lastError;
+    final error = library.loadError;
     if (error != null) {
       return EmptyState(
         icon: Icons.cloud_off_rounded,
         title: 'Could not load library',
         message: error,
         actionLabel: 'Retry',
-        onAction: () => context.actions.refresh(),
+        onAction: () {
+          library.refresh();
+          context.read<ProfileStore>().refresh();
+        },
       );
     }
 
     final s = status; // local copy so null checks promote
     final query = searchQuery.trim().toLowerCase();
-    final games = store
-        .libraryFor(s)
+    final games = view
+        .visible(library.libraryGames, s)
         .where((g) => g.title.toLowerCase().contains(query))
         .toList();
     if (games.isEmpty) {
-      final p = store.platformFilter;
+      final p = view.platformFilter;
       if (query.isNotEmpty) {
         return EmptyState(
           icon: Icons.search_off_rounded,
@@ -458,13 +524,13 @@ class LibraryCollection extends StatelessWidget {
             : 'Find something new in Discover and add it here.',
         actionLabel: p != null ? 'Clear filter' : 'Discover games',
         onAction: () => p != null
-            ? context.actions.setPlatformFilter(null)
-            : context.actions.setBottomNavIndex(NavTab.search),
+            ? context.read<LibraryViewStore>().setPlatformFilter(null)
+            : context.read<NavStore>().select(NavTab.search),
       );
     }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
-      child: store.libraryView == LibraryView.grid
+      child: view.view == LibraryView.grid
           ? _PosterGrid(key: ValueKey('grid-${s?.name ?? 'all'}'), games: games)
           : _GameList(key: ValueKey('list-${s?.name ?? 'all'}'), games: games),
     );

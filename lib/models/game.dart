@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/achievement.dart';
+import 'package:checkpoint/models/game_cover.dart';
 
 enum GameStatus {
   playing('Playing', Icons.play_circle_rounded, Color(0xFFBB86FC)),
@@ -185,6 +186,67 @@ class Game {
   /// Steam achievements merged with the user's unlocks. `null` = never loaded;
   /// an empty list = loaded, but the game has none.
   final List<Achievement>? achievements;
+
+  /// Rebuilds a game from [toJson]'s output (the offline cache). The cover
+  /// colours and icon are derived from the other fields, as when a game is read
+  /// from the database, so they are not stored.
+  factory Game.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    final title = json['title'] as String;
+    final genres = [for (final g in json['genres'] as List) '$g'];
+    final platforms = [
+      for (final p in json['platforms'] as List)
+        ?gamePlatformFromDb(p),
+    ];
+    final dateAdded = json['dateAdded'];
+    return Game(
+      id: id,
+      title: title,
+      publisher: json['publisher'] as String,
+      developer: json['developer'] as String,
+      releaseYear: (json['releaseYear'] as num).toInt(),
+      platforms: platforms,
+      genres: genres,
+      synopsis: json['synopsis'] as String,
+      coverColors: coverColorsFor(id, title),
+      coverIcon: coverIconFor(genres, platforms),
+      coverUrl: json['coverUrl'] as String?,
+      igdbId: (json['igdbId'] as num?)?.toInt(),
+      steamAppId: (json['steamAppId'] as num?)?.toInt(),
+      status: gameStatusFromDb(json['status']),
+      rating: (json['rating'] as num).toDouble(),
+      hoursPlayed: (json['hoursPlayed'] as num).toDouble(),
+      playedOn: gamePlatformFromDb(json['playedOn']),
+      purchasePrice: (json['purchasePrice'] as num).toDouble(),
+      dateAdded: dateAdded == null ? null : DateTime.tryParse('$dateAdded')?.toLocal(),
+      isFavorite: json['isFavorite'] == true,
+    );
+  }
+
+  /// What the offline cache keeps of this game. [achievements] are left out on
+  /// purpose: the library queries don't load them either (they are fetched per
+  /// game, on demand), so the cache only ever holds what the server returned
+  /// for the library.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'publisher': publisher,
+        'developer': developer,
+        'releaseYear': releaseYear,
+        'platforms': [for (final p in platforms) gamePlatformToDb(p)],
+        'genres': genres,
+        'synopsis': synopsis,
+        'coverUrl': coverUrl,
+        'igdbId': igdbId,
+        'steamAppId': steamAppId,
+        'status': status == null ? null : gameStatusToDb(status!),
+        'rating': rating,
+        'hoursPlayed': hoursPlayed,
+        'playedOn': playedOn == null ? null : gamePlatformToDb(playedOn!),
+        'purchasePrice': purchasePrice,
+        'dateAdded': dateAdded?.toUtc().toIso8601String(),
+        'isFavorite': isFavorite,
+      };
 
   bool get inLibrary => status != null;
   double? get costPerHour =>

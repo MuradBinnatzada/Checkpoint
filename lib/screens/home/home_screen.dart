@@ -4,6 +4,10 @@ import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -21,7 +25,8 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
+    final library = context.watch<LibraryStore>();
+    final profile = context.watch<ProfileStore>().profile;
     return SafeArea(
       bottom: false,
       child: ListView(
@@ -43,7 +48,7 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        store.profile.name.split(' ').first,
+                        profile.name.split(' ').first,
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
@@ -54,8 +59,8 @@ class HomeScreen extends StatelessWidget {
                 ),
                 GestureDetector(
                   onTap: () =>
-                      context.actions.setBottomNavIndex(NavTab.profile),
-                  child: ProfileAvatar(name: store.profile.name, size: 44, imageUrl: store.profile.avatarUrl),
+                      context.read<NavStore>().select(NavTab.profile),
+                  child: ProfileAvatar(name: profile.name, size: 44, imageUrl: profile.avatarUrl),
                 ),
               ],
             ),
@@ -63,9 +68,9 @@ class HomeScreen extends StatelessWidget {
           SectionHeader(
             'Currently Playing',
             actionLabel: 'See all',
-            onAction: () => context.actions.openLibraryTab(GameStatus.playing),
+            onAction: () => context.read<LibraryViewStore>().openTab(GameStatus.playing),
           ),
-          _HeroBanner(games: store.playingNow()),
+          _HeroBanner(games: library.playingNow()),
           const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -74,9 +79,9 @@ class HomeScreen extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     icon: Icons.schedule_rounded,
-                    value: fmtHours(store.totalHours),
+                    value: fmtHours(library.totalHours),
                     label: 'Hours logged',
-                    onTap: () => context.actions.openLibraryTab(
+                    onTap: () => context.read<LibraryViewStore>().openTab(
                       GameStatus.playing,
                       sortBy: SortField.hoursPlayed,
                     ),
@@ -86,20 +91,20 @@ class HomeScreen extends StatelessWidget {
                 Expanded(
                   child: StatTile(
                     icon: Icons.verified_rounded,
-                    value: '${store.count(GameStatus.completed)}',
+                    value: '${library.count(GameStatus.completed)}',
                     label: 'Completed',
                     onTap: () =>
-                        context.actions.openLibraryTab(GameStatus.completed),
+                        context.read<LibraryViewStore>().openTab(GameStatus.completed),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: StatTile(
                     icon: Icons.inventory_2_rounded,
-                    value: '${store.count(GameStatus.toPlay)}',
+                    value: '${library.count(GameStatus.toPlay)}',
                     label: 'To Play',
                     onTap: () =>
-                        context.actions.openLibraryTab(GameStatus.toPlay),
+                        context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
                   ),
                 ),
               ],
@@ -109,16 +114,16 @@ class HomeScreen extends StatelessWidget {
           const _RecentActivityRow(),
           const SectionHeader('Popular This Month'),
           _GameCarousel(
-            games: store.popularThisMonth,
+            games: library.popularThisMonth,
             icon: Icons.local_fire_department_rounded,
-            caption: store.playersLabel,
+            caption: library.playersLabel,
           ),
           const SectionHeader('Trending Among Friends'),
           _GameCarousel(
-            games: store.trendingAmongFriends,
+            games: library.trendingAmongFriends,
             icon: Icons.group_rounded,
             caption: (g) {
-              final n = store.friendsPlaying(g);
+              final n = library.friendsPlaying(g);
               return '$n friend${n == 1 ? '' : 's'} playing';
             },
           ),
@@ -195,7 +200,7 @@ class _HeroBannerState extends State<_HeroBanner> {
               ),
               TextButton(
                 onPressed: () =>
-                    context.actions.openLibraryTab(GameStatus.toPlay),
+                    context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
                 child: const Text('To Play'),
               ),
             ],
@@ -329,8 +334,8 @@ class _RecentActivityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.store;
-    final entries = store.recentActivity(limit: 10);
+    final library = context.watch<LibraryStore>();
+    final entries = library.recentActivity(limit: 10);
     if (entries.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 20),
@@ -353,7 +358,7 @@ class _RecentActivityRow extends StatelessWidget {
         itemBuilder: (context, i) {
           final e = entries[i];
           return GamePosterCard(
-            game: store.gameById(e.gameId),
+            game: library.gameById(e.gameId),
             width: w,
             subtitle: '+${fmtHours(e.hours)}h · ${timeAgo(e.timestamp)}',
             subtitleIcon: e.platform.icon,

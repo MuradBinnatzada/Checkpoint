@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -9,7 +11,7 @@ import 'package:checkpoint/widgets/sheet_frame.dart';
 
 /// Read-only guard: returns true (and shows a hint) when logged out.
 bool _blockedByReadOnly(BuildContext context) {
-  if (context.actions.isLoggedIn) return false;
+  if (context.read<AuthStore>().isLoggedIn) return false;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(const SnackBar(content: Text('Log in to track games')));
@@ -36,7 +38,7 @@ class LogHoursSheet extends StatefulWidget {
 }
 
 class _LogHoursSheetState extends State<LogHoursSheet> {
-  late final Game _game = StoreScope.read(context).gameById(widget.gameId);
+  late final Game _game = context.read<LibraryStore>().gameById(widget.gameId);
   // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
   late final List<GamePlatform> _availablePlatforms = {..._game.platforms, if (_game.playedOn != null) _game.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
   late final TextEditingController _total = TextEditingController(text: fmtHours(_game.hoursPlayed));
@@ -102,7 +104,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
             onPressed: !valid
                 ? null
                 : () {
-                    context.actions.updateTime(
+                    context.read<LibraryStore>().updateTime(
                       gameId: _game.id,
                       totalHours: total,
                       platform: _platform,

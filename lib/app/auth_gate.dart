@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
@@ -12,7 +13,7 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final loggedIn = context.store.isLoggedIn;
+    final loggedIn = context.watch<AuthStore>().isLoggedIn;
     return Stack(children: [
       Positioned.fill(child: child),
       if (!loggedIn)
@@ -25,7 +26,7 @@ class AuthGate extends StatelessWidget {
                 title: 'Log in to track games',
                 message: 'You can still browse and search. Log in to build your library and log your hours.',
                 actionLabel: 'Log in',
-                onAction: context.actions.logIn,
+                onAction: context.read<AuthStore>().logIn,
               ),
             ),
           ),
