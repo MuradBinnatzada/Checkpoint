@@ -134,15 +134,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               style: const TextStyle(color: Palette.muted, fontSize: 12.5),
             ),
           ),
-          if (library.isOffline)
-            _OfflineBanner(
-              syncedAt: library.lastSyncedAt,
-              retrying: library.isRefreshing,
-              onRetry: () {
-                library.refresh();
-                context.read<ProfileStore>().refresh();
-              },
-            ),
+          const _SyncBanner(),
           TabBar(
             controller: _tabs,
             isScrollable: true,
@@ -207,14 +199,44 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 }
 
+/// The banner's own scope, so a follow being queued or sent rebuilds only this
+/// and not the whole library.
+class _SyncBanner extends StatelessWidget {
+  const _SyncBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final library = context.watch<LibraryStore>();
+    final profile = context.watch<ProfileStore>();
+    // Follows made while offline wait for the server too, so they count here
+    // (this is the one place that says "changes will sync").
+    final pending = library.pendingCount + profile.pendingCount;
+    if (!library.isOffline && pending == 0) return const SizedBox.shrink();
+    return _OfflineBanner(
+      offline: library.isOffline,
+      pendingCount: pending,
+      syncedAt: library.lastSyncedAt,
+      retrying: library.isRefreshing,
+      onRetry: () {
+        library.refresh();
+        profile.refresh();
+      },
+    );
+  }
+}
+
 /// Shown while the library on screen is the copy saved on this device because
-/// the server couldn't be reached.
+/// the server couldn't be reached, and while edits are waiting to be sent.
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner({
+    required this.offline,
+    required this.pendingCount,
     required this.syncedAt,
     required this.retrying,
     required this.onRetry,
   });
+  final bool offline;
+  final int pendingCount;
   final DateTime? syncedAt;
   final bool retrying;
   final VoidCallback onRetry;
@@ -222,6 +244,9 @@ class _OfflineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final synced = syncedAt;
+    final pending = pendingCount == 0
+        ? ''
+        : ' $pendingCount ${pendingCount == 1 ? 'change' : 'changes'} will sync when you\'re back online.';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Container(
@@ -236,10 +261,12 @@ class _OfflineBanner extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                synced == null
-                    ? 'Can\'t reach Checkpoint. Showing your saved library.'
+                !offline
+                    ? '$pendingCount ${pendingCount == 1 ? 'change is' : 'changes are'} waiting to sync…'
+                    : synced == null
+                    ? 'Can\'t reach Checkpoint. Showing your saved library.$pending'
                     : 'Can\'t reach Checkpoint. Showing your saved library, '
-                          'updated ${timeAgo(synced)}.',
+                          'updated ${timeAgo(synced)}.$pending',
                 style: const TextStyle(color: Palette.muted, fontSize: 12.5),
               ),
             ),

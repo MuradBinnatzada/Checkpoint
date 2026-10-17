@@ -17,6 +17,7 @@ void main() {
     final stores = AppStores(
       repository: FakeRepository(),
       authService: FakeAuthService(),
+      connectivity: FakeConnectivity(),
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());
@@ -67,6 +68,7 @@ void main() {
     final stores = AppStores(
       repository: FakeRepository(),
       authService: FakeAuthService(),
+      connectivity: FakeConnectivity(),
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox());

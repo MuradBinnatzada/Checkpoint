@@ -41,7 +41,20 @@ class SocialSnapshot {
 /// Nothing here throws: a missing, unreadable or outdated entry reads as `null`,
 /// and a failed write is logged and skipped. A broken cache must never break
 /// the app.
+///
+/// The library entry is the one that grows with the user, so reads and writes of
+/// it are timed. Nothing is printed unless one takes [slowAfter] or longer, and
+/// then the line says how long, where the time went (storage or JSON) and how big
+/// the entry is: the numbers to look at before deciding that `shared_preferences`
+/// is too slow for big libraries.
 class LocalCache {
+  LocalCache({this.slowAfter = slowThreshold});
+
+  /// When a library read or write is slow enough to be logged.
+  static const slowThreshold = Duration(milliseconds: 50);
+
+  final Duration slowAfter;
+
   /// Bump when the JSON written below changes shape. Entries with another version
   /// read as missing and are deleted.
   static const _version = 1;
@@ -54,22 +67,25 @@ class LocalCache {
   static const _popularKey = '$_prefix.popular';
 
   Future<Cached<List<Game>>?> readLibrary(String userId) =>
-      _readList(_libraryKey(userId), Game.fromJson);
+      _readList(_libraryKey(userId), Game.fromJson, timedAs: 'library');
 
-  Future<void> writeLibrary(String userId, List<Game> games) =>
-      _write(_libraryKey(userId), [for (final g in games) g.toJson()]);
+  Future<void> writeLibrary(String userId, List<Game> games) => _write(
+    _libraryKey(userId),
+    () => [for (final g in games) g.toJson()],
+    timedAs: 'library',
+  );
 
   Future<Cached<List<LogEntry>>?> readLogs(String userId) =>
       _readList(_logsKey(userId), LogEntry.fromJson);
 
   Future<void> writeLogs(String userId, List<LogEntry> logs) =>
-      _write(_logsKey(userId), [for (final l in logs) l.toJson()]);
+      _write(_logsKey(userId), () => [for (final l in logs) l.toJson()]);
 
   Future<Cached<UserProfile>?> readProfile(String userId) =>
       _read(_profileKey(userId), (data) => UserProfile.fromJson(_asMap(data)));
 
   Future<void> writeProfile(String userId, UserProfile profile) =>
-      _write(_profileKey(userId), profile.toJson());
+      _write(_profileKey(userId), profile.toJson);
 
   Future<Cached<SocialSnapshot>?> readSocial(String userId) =>
       _read(_socialKey(userId), (data) {
@@ -81,7 +97,7 @@ class LocalCache {
       });
 
   Future<void> writeSocial(String userId, SocialSnapshot social) =>
-      _write(_socialKey(userId), {
+      _write(_socialKey(userId), () => {
         'following': social.followingIds.toList(),
         'followers': social.followersCount,
       });
@@ -92,7 +108,7 @@ class LocalCache {
       _readList(_popularKey, Game.fromJson);
 
   Future<void> writePopular(List<Game> games) =>
-      _write(_popularKey, [for (final g in games) g.toJson()]);
+      _write(_popularKey, () => [for (final g in games) g.toJson()]);
 
   /// Drops [gameId] and its play sessions from [userId]'s saved library. Used
   /// after a delete the server accepted: deletes are not announced by Realtime, so
@@ -137,21 +153,35 @@ class LocalCache {
 
   Future<Cached<List<T>>?> _readList<T>(
     String key,
-    T Function(Map<String, dynamic>) decode,
-  ) => _read(key, (data) => [for (final item in data as List) decode(_asMap(item))]);
+    T Function(Map<String, dynamic>) decode, {
+    String? timedAs,
+  }) => _read(
+    key,
+    (data) => [for (final item in data as List) decode(_asMap(item))],
+    timedAs: timedAs,
+  );
 
-  Future<Cached<T>?> _read<T>(String key, T Function(Object? data) decode) async {
+  /// With [timedAs], a slow read is logged under that name (see [slowAfter]).
+  Future<Cached<T>?> _read<T>(
+    String key,
+    T Function(Object? data) decode, {
+    String? timedAs,
+  }) async {
     try {
+      final watch = Stopwatch()..start();
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(key);
       if (raw == null) return null;
+      final storage = watch.elapsed;
       try {
         final envelope = _asMap(jsonDecode(raw));
         if (envelope['v'] != _version) throw const FormatException('version');
-        return Cached(
+        final cached = Cached(
           decode(envelope['data']),
           DateTime.parse(envelope['savedAt'] as String).toLocal(),
         );
+        _logIfSlow(timedAs, 'read', watch.elapsed, storage, raw.length);
+        return cached;
       } catch (e) {
         // Unreadable (cut short, older shape): worse than nothing, so delete it.
         debugPrint('Dropping unreadable cache entry $key: $e');
@@ -164,19 +194,45 @@ class LocalCache {
     }
   }
 
-  Future<void> _write(String key, Object data) async {
+  /// [build] makes the JSON-ready value, inside the timed and guarded part. With
+  /// [timedAs], a slow write is logged under that name (see [slowAfter]).
+  Future<void> _write(
+    String key,
+    Object Function() build, {
+    String? timedAs,
+  }) async {
     try {
+      final watch = Stopwatch()..start();
+      final raw = jsonEncode({
+        'v': _version,
+        'savedAt': DateTime.now().toUtc().toIso8601String(),
+        'data': build(),
+      });
+      final encoding = watch.elapsed;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        key,
-        jsonEncode({
-          'v': _version,
-          'savedAt': DateTime.now().toUtc().toIso8601String(),
-          'data': data,
-        }),
-      );
+      await prefs.setString(key, raw);
+      final total = watch.elapsed;
+      _logIfSlow(timedAs, 'write', total, total - encoding, raw.length);
     } catch (e, st) {
       debugPrint('Writing the cache failed ($key): $e\n$st');
     }
+  }
+
+  /// [storage] is the time spent in `shared_preferences`; the rest of [total] was
+  /// turning the entry into or from JSON and [Game]s. [chars] is the entry's
+  /// length as stored, close enough to bytes (the JSON is almost all ASCII).
+  void _logIfSlow(
+    String? name,
+    String what,
+    Duration total,
+    Duration storage,
+    int chars,
+  ) {
+    if (name == null || total < slowAfter) return;
+    debugPrint(
+      'LocalCache: $what of $name took ${total.inMilliseconds} ms '
+      '(storage ${storage.inMilliseconds} ms, JSON ${(total - storage).inMilliseconds} ms) '
+      'for ${(chars / 1024).round()} KB',
+    );
   }
 }

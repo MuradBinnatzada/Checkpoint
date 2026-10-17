@@ -54,3 +54,14 @@ key.properties
 # Supabase local files
 /supabase/.temp/
 /supabase/.branches/
+# Firebase / Google service configs (per-developer)
+google-services.json
+GoogleService-Info.plist
+*.p12
+*.mobileprovision
+
+# Flutter misc
+/ios/Flutter/ephemeral/
+/linux/flutter/ephemeral/
+.fvm/
+*.env

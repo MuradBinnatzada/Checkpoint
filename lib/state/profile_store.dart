@@ -8,23 +8,37 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
+import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
+import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/state/auth_store.dart';
 
 /// The signed-in user as a person: their profile, who they follow, and the
 /// gaming accounts they have connected. Reloads when the account changes, shows
 /// the copy saved on the device first, and keeps it when the network is down.
+///
+/// Follows and unfollows made while the server can't be reached are kept on the
+/// device ([PendingEdits.follows]), shown as if saved, and sent when the
+/// connection is back ([flushPending]). One the server refuses is reverted
+/// instead.
 class ProfileStore extends ChangeNotifier {
   ProfileStore({
     required this._repository,
     required this._auth,
+    this._connectivity,
     LocalCache? cache,
+    PendingEditsStorage? pendingStorage,
   }) : _cache = cache ?? LocalCache(),
+       _pendingStorage =
+           pendingStorage ?? PendingEditsStorage(PendingScope.follows),
        _profile = _guestProfile();
 
   final CheckpointRepository _repository;
   final AuthStore _auth;
   final LocalCache _cache;
+  final PendingEditsStorage _pendingStorage;
+  final ConnectivityService? _connectivity;
 
   User? _user;
 
@@ -36,10 +50,28 @@ class ProfileStore extends ChangeNotifier {
   bool _hydrated = false;
 
   UserProfile _profile;
+
+  /// Who the user follows as shown: what the server (or the saved copy) says,
+  /// with the follows that haven't reached the server applied on top.
   Set<String> _followingIds = {};
   int _followersCount = 0;
 
+  /// Follows the server hasn't accepted yet, for the account in [_pendingFor].
+  PendingEdits _pending = PendingEdits();
+  String? _pendingFor;
+
+  /// The replay of [_pending] that is running, if any. A new follow waits for it,
+  /// so the two can't cross on their way to the server.
+  Future<void>? _replay;
+
+  String? _notice;
+
   StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<bool>? _connectivitySubscription;
+
+  /// The last load did not finish (the server could not be reached), so what is
+  /// shown may be the saved copy.
+  bool _incomplete = false;
   final List<StreamSubscription<dynamic>> _dataSubscriptions = [];
 
   /// Bumped by every account event, so a load that was overtaken (another
@@ -57,6 +89,21 @@ class ProfileStore extends ChangeNotifier {
 
   UserProfile get profile => _profile;
 
+  /// How many follows and unfollows are waiting for the server (see
+  /// [flushPending]).
+  int get pendingCount => _pending.count;
+
+  /// A message about something that just went wrong with a follow. The app shell
+  /// shows it once and calls [clearNotice].
+  String? get notice => _notice;
+
+  void clearNotice() => _notice = null;
+
+  void _setNotice(String message) {
+    _notice = message;
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     // The Steam ID now lives on the `profiles` row. Delete any copy that an
@@ -72,12 +119,22 @@ class ProfileStore extends ChangeNotifier {
     _authSubscription = _auth.userChanges.listen((user) {
       unawaited(_onUser(user));
     });
+    _connectivitySubscription = _connectivity?.onlineChanges.listen((online) {
+      if (!online || _user == null) return;
+      // A reload ends with the replay; without one there is only the replay to do.
+      if (_incomplete) {
+        unawaited(refresh());
+      } else {
+        unawaited(flushPending());
+      }
+    });
     await _onUser(_auth.user);
   }
 
   @override
   void dispose() {
     unawaited(_authSubscription?.cancel());
+    unawaited(_connectivitySubscription?.cancel());
     unawaited(_cancelDataSubscriptions());
     super.dispose();
   }
@@ -101,6 +158,8 @@ class ProfileStore extends ChangeNotifier {
       _profile = _guestProfile();
       _followingIds = {};
       _followersCount = 0;
+      _pending = PendingEdits();
+      _pendingFor = null;
       // The previous account's saved copy goes too (it stays valid only while
       // that account stays signed in).
       if (previous != null) unawaited(_cache.clearAccount(previous.id));
@@ -115,10 +174,25 @@ class ProfileStore extends ChangeNotifier {
       if (seq != _loadSeq) return;
       _localDataFor = user.id;
     }
+    // Their own copy, not the saved server copy: these follows exist nowhere else
+    // (and stay on the device when the account signs out).
+    if (_pendingFor != user.id) {
+      final saved = await _pendingStorage.read(user.id);
+      if (seq != _loadSeq) return;
+      _pending = saved;
+      _pendingFor = user.id;
+    }
     if (!_hydrated) {
       await _hydrateFromCache(user.id, seq);
       if (seq != _loadSeq) return;
       _hydrated = true;
+    }
+
+    // No live session (the app started offline): the saved copy is all there is
+    // until the session is restored, which announces itself as an auth event.
+    if (_auth.isSessionPending) {
+      _incomplete = true;
+      return;
     }
 
     // Independent reads, started together. Each falls back to the saved copy on
@@ -126,7 +200,11 @@ class ProfileStore extends ChangeNotifier {
     final (profileLoaded, socialLoaded) =
         await (_loadProfile(user, seq), _loadSocial(user.id, seq)).wait;
     if (seq != _loadSeq) return;
-    if (profileLoaded && socialLoaded) _startSubscriptions(user);
+    _incomplete = !(profileLoaded && socialLoaded);
+    if (!_incomplete) _startSubscriptions(user);
+    // The follows table answered, so whatever was queued while it couldn't be
+    // reached goes now.
+    if (socialLoaded) unawaited(flushPending());
   }
 
   /// Puts the copy saved on this device on screen while the network answers.
@@ -134,12 +212,12 @@ class ProfileStore extends ChangeNotifier {
     final profile = await _cache.readProfile(userId);
     final social = await _cache.readSocial(userId);
     if (seq != _loadSeq) return;
-    if (profile == null && social == null) return;
+    if (profile == null && social == null && _pending.follows.isEmpty) return;
     if (profile != null) _profile = profile.value;
-    if (social != null) {
-      _followingIds = social.value.followingIds;
-      _followersCount = social.value.followersCount;
-    }
+    if (social != null) _followersCount = social.value.followersCount;
+    _followingIds = _withPendingFollows(
+      social?.value.followingIds ?? _followingIds,
+    );
     notifyListeners();
   }
 
@@ -168,10 +246,10 @@ class ProfileStore extends ChangeNotifier {
         _repository.fetchFollowersCount(userId),
       ).wait;
       if (seq != _loadSeq) return true;
-      _followingIds = following;
+      _followingIds = _withPendingFollows(following);
       _followersCount = followers;
       notifyListeners();
-      unawaited(_writeSocialCache(userId));
+      unawaited(_writeSocialCache(userId, following, followers));
       return true;
     } catch (e, st) {
       debugPrint('Social load failed: $e\n$st');
@@ -179,12 +257,15 @@ class ProfileStore extends ChangeNotifier {
     }
   }
 
-  Future<void> _writeSocialCache(String userId) => _cache.writeSocial(
+  /// Saves what the server returned, not what is on screen: a follow that hasn't
+  /// reached the server is in [_pending], and goes on top again when this is read.
+  Future<void> _writeSocialCache(
+    String userId,
+    Set<String> following,
+    int followers,
+  ) => _cache.writeSocial(
     userId,
-    SocialSnapshot(
-      followingIds: _followingIds,
-      followersCount: _followersCount,
-    ),
+    SocialSnapshot(followingIds: following, followersCount: followers),
   );
 
   void _startSubscriptions(User user) {
@@ -229,10 +310,10 @@ class ProfileStore extends ChangeNotifier {
         _repository.fetchFollowersCount(userId),
       ).wait;
       if (_user?.id != userId) return;
-      _followingIds = following;
+      _followingIds = _withPendingFollows(following);
       _followersCount = followers;
       notifyListeners();
-      unawaited(_writeSocialCache(userId));
+      unawaited(_writeSocialCache(userId, following, followers));
     } catch (e, st) {
       debugPrint('Social refresh failed: $e\n$st');
     }
@@ -282,27 +363,137 @@ class ProfileStore extends ChangeNotifier {
   int get followersCount => _followersCount;
   int get followingCount => _followingIds.length;
 
+  /// [fetched] with the follows and unfollows that haven't reached the server
+  /// applied, so a refresh never undoes them.
+  Set<String> _withPendingFollows(Set<String> fetched) {
+    if (_pending.follows.isEmpty) return fetched;
+    final ids = {...fetched};
+    _pending.follows.forEach((id, following) {
+      if (following) {
+        ids.add(id);
+      } else {
+        ids.remove(id);
+      }
+    });
+    return ids;
+  }
+
+  void _showFollowing(String userId, bool following) {
+    _followingIds = following
+        ? {..._followingIds, userId}
+        : ({..._followingIds}..remove(userId));
+    notifyListeners();
+  }
+
+  /// Follows [userId], or unfollows them if they are followed. Shown at once. If
+  /// the server can't be reached it is kept and sent later; if it refuses, the
+  /// change is undone and a [notice] says so.
   Future<void> toggleFollow(String userId) async {
     final current = _user;
     if (current == null) return;
-    final wasFollowing = _followingIds.contains(userId);
-    if (wasFollowing) {
-      _followingIds = {..._followingIds}..remove(userId);
-    } else {
-      _followingIds = {..._followingIds, userId};
+    final following = !_followingIds.contains(userId);
+    _showFollowing(userId, following);
+
+    await _replay;
+    if (_user?.id != current.id) return;
+
+    // Already queued, so this undoes it: nothing has reached the server, and
+    // sending now would jump ahead of the queue.
+    if (_pending.follows.containsKey(userId)) {
+      _pending.putFollow(userId, following: following);
+      _savePending();
+      notifyListeners();
+      return;
     }
-    notifyListeners();
 
     try {
-      if (wasFollowing) {
-        await _repository.unfollow(followerId: current.id, followeeId: userId);
-      } else {
-        await _repository.follow(followerId: current.id, followeeId: userId);
-      }
-      await _refreshSocial(current.id);
+      _auth.requireSession();
+      await _send(current.id, userId, following: following);
     } catch (e, st) {
       debugPrint('Follow update failed: $e\n$st');
-      await _refreshSocial(current.id);
+      if (_user?.id != current.id) return;
+      if (isConnectionFailure(e)) {
+        _pending.putFollow(userId, following: following);
+        _savePending();
+        _setNotice(queuedNotice);
+      } else {
+        _showFollowing(userId, !following);
+        _setNotice(
+          following ? 'Could not follow that user.' : 'Could not unfollow that user.',
+        );
+        await _refreshSocial(current.id);
+      }
+      return;
+    }
+    await _refreshSocial(current.id);
+  }
+
+  Future<void> _send(
+    String followerId,
+    String userId, {
+    required bool following,
+  }) async {
+    if (!following) {
+      await _repository.unfollow(followerId: followerId, followeeId: userId);
+      return;
+    }
+    try {
+      await _repository.follow(followerId: followerId, followeeId: userId);
+    } on PostgrestException catch (e) {
+      // Already following (the table's key): what was asked for is true.
+      if (e.code != '23505') rethrow;
+    }
+  }
+
+  void _savePending() {
+    final userId = _pendingFor;
+    if (userId != null) unawaited(_pendingStorage.write(userId, _pending));
+  }
+
+  /// Sends the queued follows and unfollows. Stops at the first one the server
+  /// can't be reached for (the rest stay queued); one it refuses is dropped, with
+  /// a notice. Safe to call any time: it does nothing without a live session,
+  /// with nothing queued, or while already running.
+  Future<void> flushPending() {
+    final running = _replay;
+    if (running != null) return running;
+    final user = _user;
+    if (user == null || _pending.follows.isEmpty || _auth.isSessionPending) {
+      return Future.value();
+    }
+    return _replay = _sendPending(user).whenComplete(() {
+      _replay = null;
+    });
+  }
+
+  Future<void> _sendPending(User user) async {
+    var sent = 0;
+    var refused = 0;
+    try {
+      for (final MapEntry(key: id, value: following) in [..._pending.follows.entries]) {
+        if (_user?.id != user.id) return;
+        try {
+          await _send(user.id, id, following: following);
+          sent++;
+        } catch (e, st) {
+          debugPrint('Sending a queued follow failed: $e\n$st');
+          if (isConnectionFailure(e)) return;
+          refused++;
+        }
+        if (_user?.id != user.id) return;
+        _pending.follows.remove(id);
+      }
+    } finally {
+      if (_user?.id == user.id) {
+        _savePending();
+        if (refused > 0) {
+          _setNotice('Some offline follow changes could not be saved.');
+        } else {
+          notifyListeners();
+        }
+        // Pull in what the server has now, anything still queued applied on top.
+        if (sent + refused > 0) unawaited(_refreshSocial(user.id));
+      }
     }
   }
 

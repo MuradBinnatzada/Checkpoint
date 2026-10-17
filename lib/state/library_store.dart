@@ -7,7 +7,10 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
+import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
+import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 
@@ -17,21 +20,29 @@ import 'package:checkpoint/state/profile_store.dart';
 /// Opening the app paints the copy saved on the device first ([LocalCache]), then
 /// refreshes from the server. When the server can't be reached the saved copy
 /// stays on screen and [isOffline] turns on; only an account with nothing saved
-/// gets [loadError]. Edits are not queued offline: they apply locally, fail to
-/// save, and the next successful refresh brings back what the server has.
+/// gets [loadError].
+///
+/// Edits made while the server can't be reached are kept on the device
+/// ([PendingEdits]), shown as if saved, and sent when the connection is back
+/// ([flushPending]). An edit the server refuses is reverted instead.
 class LibraryStore extends ChangeNotifier {
   LibraryStore({
     required this._repository,
     required this._auth,
     required this._profile,
     LocalCache? cache,
+    PendingEditsStorage? pendingStorage,
+    this._connectivity,
     this._externalGame,
-  }) : _cache = cache ?? LocalCache();
+  }) : _cache = cache ?? LocalCache(),
+       _pendingStorage = pendingStorage ?? PendingEditsStorage();
 
   final CheckpointRepository _repository;
   final AuthStore _auth;
   final ProfileStore _profile;
   final LocalCache _cache;
+  final PendingEditsStorage _pendingStorage;
+  final ConnectivityService? _connectivity;
 
   /// Finds a game that isn't in the library or the catalog slice, e.g. a search
   /// result being opened or added.
@@ -39,7 +50,13 @@ class LibraryStore extends ChangeNotifier {
 
   User? _user;
   StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<bool>? _connectivitySubscription;
   final List<StreamSubscription<dynamic>> _dataSubscriptions = [];
+
+  /// Edits the server hasn't accepted yet, for the account in [_pendingFor].
+  PendingEdits _pending = PendingEdits();
+  String? _pendingFor;
+  bool _flushing = false;
 
   /// Bumped by every account event, so a load that was overtaken (another
   /// account signed in, or a retry started) can tell and stop.
@@ -100,6 +117,9 @@ class LibraryStore extends ChangeNotifier {
 
   void clearNotice() => _notice = null;
 
+  /// How many edits are waiting for the server (see [flushPending]).
+  int get pendingCount => _pending.count;
+
   void _setNotice(String message) {
     _notice = message;
     notifyListeners();
@@ -109,21 +129,62 @@ class LibraryStore extends ChangeNotifier {
     _authSubscription = _auth.userChanges.listen((user) {
       unawaited(_onUser(user));
     });
-    await _onUser(_auth.user);
+    _connectivitySubscription = _connectivity?.onlineChanges.listen(_onOnline);
+    await _onUser(_auth.user, force: true);
+  }
+
+  void _onOnline(bool online) {
+    if (_user == null) return;
+    if (!online) {
+      if (_loaded && !_offline) {
+        _offline = true;
+        notifyListeners();
+      }
+      return;
+    }
+    if (_offline ||
+        _loadError != null ||
+        _pending.isNotEmpty ||
+        _auth.isSessionPending) {
+      unawaited(refresh());
+    }
   }
 
   @override
   void dispose() {
     unawaited(_authSubscription?.cancel());
+    unawaited(_connectivitySubscription?.cancel());
     unawaited(_cancelDataSubscriptions());
     _refreshDebounce?.cancel();
     super.dispose();
   }
 
-  /// Loads everything again for the signed-in user (the Retry buttons).
-  Future<void> refresh() => _onUser(_user);
+  /// Loads everything again for the signed-in user (the Retry buttons, and the
+  /// connection coming back). When the session is still waiting to be restored,
+  /// restoring it comes first; its auth event then does the loading.
+  Future<void> refresh() async {
+    if (_auth.isSessionPending && await _auth.restoreSession()) return;
+    await _onUser(_user, force: true);
+  }
 
-  Future<void> _onUser(User? user) async {
+  /// A library fetched this recently is current enough for a repeat auth event
+  /// (resuming the app, a token refresh) not to fetch it all again.
+  static const _freshFor = Duration(minutes: 15);
+
+  Future<void> _onUser(User? user, {bool force = false}) async {
+    if (!force &&
+        user != null &&
+        user.id == _user?.id &&
+        _loaded &&
+        !_loading &&
+        !_offline &&
+        _loadError == null &&
+        !_auth.isSessionPending &&
+        _dataSubscriptions.isNotEmpty &&
+        _syncedAt != null &&
+        DateTime.now().difference(_syncedAt!) < _freshFor) {
+      return;
+    }
     final seq = ++_loadSeq;
     // Token refreshes and pull-to-retry re-enter here for the same user; their
     // already-loaded achievements stay valid, a different user's do not.
@@ -138,6 +199,8 @@ class LibraryStore extends ChangeNotifier {
       _loaded = false;
       _offline = false;
       _syncedAt = null;
+      _pending = PendingEdits();
+      _pendingFor = null;
       // The previous account's saved copy goes too (it stays valid only while
       // that account stays signed in).
       if (previous != null) unawaited(_cache.clearAccount(previous.id));
@@ -161,8 +224,17 @@ class LibraryStore extends ChangeNotifier {
         // Keyed on what is on screen, not on "a different user": a load that was
         // overtaken by a second auth event never got to read the saved copy, and
         // the load that overtook it sees the same user.
+        if (_pendingFor != user.id) {
+          final saved = await _pendingStorage.read(user.id);
+          if (seq != _loadSeq) return;
+          _pending = saved;
+          _pendingFor = user.id;
+        }
         if (!_loaded) await _hydrateFromCache(user.id, seq);
         if (seq != _loadSeq) return;
+        // No live session (the app started offline): the saved copy is all
+        // there is until the session is restored.
+        if (_auth.isSessionPending) throw const SessionPending();
         await _refreshSignedInData(user, seq, keepLoadedAchievements: sameUser);
         if (seq != _loadSeq) return;
         _startSubscriptions(user);
@@ -183,6 +255,8 @@ class LibraryStore extends ChangeNotifier {
       if (seq == _loadSeq) {
         _loading = false;
         notifyListeners();
+        // Whatever was queued while the server was out of reach goes now.
+        if (!_offline && _loadError == null) unawaited(flushPending());
       }
     }
   }
@@ -205,11 +279,11 @@ class LibraryStore extends ChangeNotifier {
     if (seq != _loadSeq) return;
     if (library == null && logs == null) return;
     if (library != null) {
-      _applyUserGames(library.value);
+      _applyUserGames(_withPendingEdits(library.value));
       _syncedAt = library.savedAt;
       _loaded = true;
     }
-    if (logs != null) _logs = List.unmodifiable(logs.value);
+    if (logs != null) _logs = List.unmodifiable(_withPendingLogs(logs.value));
     notifyListeners();
   }
 
@@ -232,10 +306,11 @@ class LibraryStore extends ChangeNotifier {
     if (seq != _loadSeq) return;
 
     _popularGames = popular;
+    final shown = _withPendingEdits(fetched);
     _applyUserGames(
-      keepLoadedAchievements ? _withLoadedAchievements(fetched) : fetched,
+      keepLoadedAchievements ? _withLoadedAchievements(shown) : shown,
     );
-    _logs = List.unmodifiable(logs);
+    _logs = List.unmodifiable(_withPendingLogs(logs));
     _loaded = true;
     _offline = false;
     _syncedAt = DateTime.now();
@@ -295,11 +370,19 @@ class LibraryStore extends ChangeNotifier {
     notifyListeners();
 
     try {
+      _auth.requireSession();
       await _repository.deleteUserGame(current.id, id);
+      _pending.removed.remove(id);
+      if (_pending.games.remove(id) != null) _savePending();
       // Realtime doesn't announce deletes, so the saved copy is told directly.
       unawaited(_cache.removeGame(current.id, id));
     } catch (e) {
       debugPrint('Delete failed: $e');
+      if (isConnectionFailure(e)) {
+        _pending.markRemoved(id);
+        _savePending();
+        _queuedNotice();
+      }
     }
   }
 
@@ -382,6 +465,8 @@ class LibraryStore extends ChangeNotifier {
       return;
     }
 
+    if (_auth.isSessionPending) return; // nothing to ask the server yet
+
     // Cancel any waiting refresh, and start a new 300ms countdown.
     // This absorbs "refresh storms" from bulk server inserts into a single UI update.
     _refreshDebounce?.cancel();
@@ -389,7 +474,7 @@ class LibraryStore extends ChangeNotifier {
       try {
         final fetched = await _repository.fetchUserGames(user.id);
         if (_user?.id != user.id) return; // signed out or switched while we waited
-        _applyUserGames(_withLoadedAchievements(fetched));
+        _applyUserGames(_withLoadedAchievements(_withPendingEdits(fetched)));
         _loaded = true;
         _offline = false;
         _syncedAt = DateTime.now();
@@ -407,9 +492,10 @@ class LibraryStore extends ChangeNotifier {
 
   Future<void> _refreshLogs(String userId) async {
     try {
+      if (_auth.isSessionPending) return;
       final logs = await _repository.fetchLogEntries(userId);
       if (_user?.id != userId) return;
-      _logs = List.unmodifiable(logs);
+      _logs = List.unmodifiable(_withPendingLogs(logs));
       notifyListeners();
       unawaited(_cache.writeLogs(userId, logs));
     } catch (e, st) {
@@ -705,9 +791,10 @@ class LibraryStore extends ChangeNotifier {
       dateAdded: g.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);
+    final logId = 'local-${DateTime.now().microsecondsSinceEpoch}';
     _logs = [
       LogEntry(
-        id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+        id: logId,
         gameId: gameId,
         timestamp: DateTime.now(),
         hours: hours,
@@ -719,14 +806,15 @@ class LibraryStore extends ChangeNotifier {
     notifyListeners();
 
     await _saveUserGame(next);
-    await _repository.insertLogEntry(
+    final inserted = await _insertLog(
       userId: current.id,
+      localId: logId,
       gameId: gameId,
       hours: hours,
       platform: p,
       note: note,
     );
-    await _refreshLogs(current.id);
+    if (inserted) await _refreshLogs(current.id);
   }
 
   Future<void> updateTime({
@@ -752,14 +840,15 @@ class LibraryStore extends ChangeNotifier {
     await _saveUserGame(next);
 
     if (delta > 0.01) {
-      await _repository.insertLogEntry(
+      final inserted = await _insertLog(
         userId: current.id,
+        localId: 'local-${DateTime.now().microsecondsSinceEpoch}',
         gameId: gameId,
         hours: delta,
         platform: p,
         note: note,
       );
-      await _refreshLogs(current.id);
+      if (inserted) await _refreshLogs(current.id);
     }
   }
 
@@ -785,6 +874,31 @@ class LibraryStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Writes [game] to the server: its catalog row first if needed, then the
+  /// user's row for it. Throws when that fails.
+  Future<void> _persistGame(String userId, Game game) async {
+    _auth.requireSession();
+    // Only touch the global catalog for a game the server hasn't confirmed yet
+    // (typically a fresh search result). The insert is ON CONFLICT DO NOTHING,
+    // so if another user added it first this is a harmless no-op.
+    if (!_gamesInDb.contains(game.id)) {
+      await _repository.upsertBaseGame(game);
+      _gamesInDb.add(game.id);
+    }
+
+    await _repository.upsertUserGame(
+      userId: userId,
+      gameId: game.id,
+      status: game.status!,
+      rating: game.rating,
+      hoursPlayed: game.hoursPlayed,
+      playedOn: game.playedOn,
+      purchasePrice: game.purchasePrice,
+      dateAdded: game.dateAdded,
+      isFavorite: game.isFavorite,
+    );
+  }
+
   Future<void> _saveUserGame(Game game) async {
     final current = _user;
     if (current == null || game.status == null) return;
@@ -793,34 +907,179 @@ class LibraryStore extends ChangeNotifier {
     _pendingSaves++;
 
     try {
-      // Only touch the global catalog for a game the server hasn't confirmed yet
-      // (typically a fresh search result). The insert is ON CONFLICT DO NOTHING,
-      // so if another user added it first this is a harmless no-op.
-      if (!_gamesInDb.contains(game.id)) {
-        await _repository.upsertBaseGame(game);
-        _gamesInDb.add(game.id);
-      }
-
-      await _repository.upsertUserGame(
-        userId: current.id,
-        gameId: game.id,
-        status: game.status!,
-        rating: game.rating,
-        hoursPlayed: game.hoursPlayed,
-        playedOn: game.playedOn,
-        purchasePrice: game.purchasePrice,
-        dateAdded: game.dateAdded,
-        isFavorite: game.isFavorite,
-      );
+      await _persistGame(current.id, game);
+      // This is newer than anything queued for the same game.
+      if (_pending.games.remove(game.id) != null) _savePending();
     } catch (e, st) {
       debugPrint('User game save failed: $e\n$st');
-      _setNotice('Could not save that game update.');
-      _refreshQueued = true; // Revert to server truth once writes settle
+      if (isConnectionFailure(e)) {
+        // Keep the edit on screen and on the device; it is sent later.
+        _pending.putGame(game);
+        _savePending();
+        _queuedNotice();
+      } else {
+        _setNotice('Could not save that game update.');
+        _refreshQueued = true; // Revert to server truth once writes settle
+      }
     } finally {
       _pendingSaves--;
       if (_pendingSaves == 0 && _refreshQueued) {
         _refreshQueued = false;
         await _refreshLibrary(current);
+      }
+    }
+  }
+
+  // ---- Edits waiting for the server ----
+
+  void _queuedNotice() {
+    _offline = true;
+    _setNotice(queuedNotice);
+  }
+
+  void _savePending() {
+    final userId = _pendingFor;
+    if (userId != null) unawaited(_pendingStorage.write(userId, _pending));
+  }
+
+  /// Inserts a play session. When the server can't be reached it is queued
+  /// instead (and shown now); returns whether it reached the server.
+  Future<bool> _insertLog({
+    required String userId,
+    required String localId,
+    required String gameId,
+    required double hours,
+    required GamePlatform platform,
+    required String note,
+  }) async {
+    try {
+      _auth.requireSession();
+      await _repository.insertLogEntry(
+        userId: userId,
+        gameId: gameId,
+        hours: hours,
+        platform: platform,
+        note: note,
+      );
+      return true;
+    } catch (e, st) {
+      debugPrint('Logging a session failed: $e\n$st');
+      if (isConnectionFailure(e)) {
+        final log = PendingLog(
+          localId: localId,
+          gameId: gameId,
+          hours: hours,
+          platform: platform,
+          note: note.trim(),
+          timestamp: DateTime.now(),
+        );
+        _pending.logs.add(log);
+        _savePending();
+        if (!_logs.any((l) => l.id == localId)) {
+          _logs = [log.toEntry(), ..._logs];
+        }
+        _queuedNotice();
+      } else {
+        _setNotice('Could not save that session.');
+      }
+      return false;
+    }
+  }
+
+  /// [games] as the user last left them: the server's list with the edits that
+  /// haven't reached it applied on top, so a refresh never undoes them.
+  List<Game> _withPendingEdits(List<Game> games) {
+    if (_pending.games.isEmpty && _pending.removed.isEmpty) return games;
+    final byId = <String, Game>{
+      for (final g in games)
+        if (!_pending.removed.contains(g.id)) g.id: g,
+    };
+    byId.addAll(_pending.games);
+    return byId.values.toList();
+  }
+
+  List<LogEntry> _withPendingLogs(List<LogEntry> logs) => _pending.logs.isEmpty
+      ? logs
+      : [for (final l in _pending.logs.reversed) l.toEntry(), ...logs];
+
+  /// Sends the queued edits to the server, deletes first, then games, then
+  /// sessions. Stops at the first one the server can't be reached for (the rest
+  /// stay queued); one it refuses is dropped, with a notice. Safe to call any
+  /// time: it does nothing without a live session or while already running.
+  Future<void> flushPending() async {
+    final user = _user;
+    if (user == null || _flushing || _pending.isEmpty || _auth.isSessionPending) {
+      return;
+    }
+    _flushing = true;
+    var sent = 0;
+    var refused = 0;
+    var unreachable = false;
+
+    // Runs [send] for one queued item. Returns false when the loop must stop.
+    Future<bool> attempt(Future<void> Function() send, void Function() done) async {
+      if (_user?.id != user.id) return false;
+      try {
+        await send();
+        sent++;
+        done();
+        return true;
+      } catch (e, st) {
+        debugPrint('Sending a queued edit failed: $e\n$st');
+        if (isConnectionFailure(e)) {
+          unreachable = true;
+          return false;
+        }
+        refused++;
+        done();
+        return true;
+      }
+    }
+
+    try {
+      for (final id in [..._pending.removed]) {
+        final ok = await attempt(
+          () async {
+            await _repository.deleteUserGame(user.id, id);
+            unawaited(_cache.removeGame(user.id, id));
+          },
+          () => _pending.removed.remove(id),
+        );
+        if (!ok) return;
+      }
+      for (final game in [..._pending.games.values]) {
+        final ok = await attempt(
+          () => _persistGame(user.id, game),
+          () => _pending.games.remove(game.id),
+        );
+        if (!ok) return;
+      }
+      for (final log in [..._pending.logs]) {
+        final ok = await attempt(
+          () => _repository.insertLogEntry(
+            userId: user.id,
+            gameId: log.gameId,
+            hours: log.hours,
+            platform: log.platform,
+            note: log.note,
+          ),
+          () => _pending.logs.remove(log),
+        );
+        if (!ok) return;
+      }
+    } finally {
+      _flushing = false;
+      _savePending();
+      if (unreachable) _offline = true;
+      if (refused > 0) {
+        _setNotice('Some offline changes could not be saved.');
+      } else {
+        notifyListeners();
+      }
+      // Pull in what the server has now, queued edits that remain applied on top.
+      if (sent > 0 && _user?.id == user.id) {
+        unawaited(_refreshLibrary(user));
+        unawaited(_refreshLogs(user.id));
       }
     }
   }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/services/local_cache.dart';
+import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
@@ -21,7 +22,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     repo = FakeRepository();
     authService = FakeAuthService();
-    stores = AppStores(repository: repo, authService: authService);
+    stores = AppStores(
+      repository: repo,
+      authService: authService,
+      connectivity: FakeConnectivity(),
+    );
   });
 
   Future<void> start(WidgetTester tester) async {
@@ -91,6 +96,40 @@ void main() {
 
     expect(find.textContaining('Can\'t reach Checkpoint'), findsNothing);
     expect(find.text('FRESH ALPHA'), findsWidgets);
+  });
+
+  testWidgets('follows queued while offline count in the banner', (tester) async {
+    await tester.runAsync(() async {
+      await LocalCache().writeLibrary('u1', [testGame('a', title: 'Saved Alpha', cover: false)]);
+    });
+    authService.user = testUser('u1');
+    repo.offline = true;
+    await start(tester);
+    stores.nav.select(NavTab.library);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('will sync'), findsNothing);
+
+    await tester.runAsync(() => stores.profile.toggleFollow('x'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.textContaining('1 change will sync when you\'re back online'), findsOneWidget);
+    expect(find.text(queuedNotice), findsOneWidget); // the snack bar, from the profile store
+  });
+
+  testWidgets('a queued follow shows in the banner even if the library loaded fine', (tester) async {
+    repo.library = [testGame('a', title: 'Fresh Alpha', cover: false)];
+    authService.user = testUser('u1');
+    await start(tester);
+    stores.nav.select(NavTab.library);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('Can\'t reach Checkpoint'), findsNothing);
+
+    repo.writesDown = true;
+    await tester.runAsync(() => stores.profile.toggleFollow('x'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.textContaining('1 change is waiting to sync'), findsOneWidget);
+    expect(find.textContaining('Can\'t reach Checkpoint'), findsNothing);
   });
 
   testWidgets('every tab builds for a signed-out visitor', (tester) async {

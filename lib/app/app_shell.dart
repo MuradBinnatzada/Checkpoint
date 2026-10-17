@@ -10,6 +10,7 @@ import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 
 class AppShell extends StatefulWidget {
@@ -28,27 +29,35 @@ class _AppShellState extends State<AppShell> {
   ];
 
   late final LibraryStore _library;
+  late final ProfileStore _profile;
 
   @override
   void initState() {
     super.initState();
     _library = context.read<LibraryStore>();
-    _library.addListener(_showNotice);
+    _profile = context.read<ProfileStore>();
+    _library.addListener(_showNotices);
+    _profile.addListener(_showNotices);
   }
 
   @override
   void dispose() {
-    _library.removeListener(_showNotice);
+    _library.removeListener(_showNotices);
+    _profile.removeListener(_showNotices);
     super.dispose();
   }
 
-  /// Tells the user when an edit could not be saved, from whichever screen they
-  /// are on. (This used to be left in the store and only turned up as the
-  /// Library tab's error screen.)
-  void _showNotice() {
-    final message = _library.notice;
+  /// Tells the user when an edit could not be saved (or was kept for later), from
+  /// whichever screen they are on. (This used to be left in the store and only
+  /// turned up as the Library tab's error screen.)
+  void _showNotices() {
+    _show(_library.notice, _library.clearNotice);
+    _show(_profile.notice, _profile.clearNotice);
+  }
+
+  void _show(String? message, VoidCallback clear) {
     if (message == null) return;
-    _library.clearNotice();
+    clear();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));

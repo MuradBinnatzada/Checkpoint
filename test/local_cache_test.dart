@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -150,5 +151,81 @@ void main() {
 
     expect((await cache.readLibrary('u1'))!.value.map((g) => g.id), ['b']);
     expect((await cache.readLogs('u1'))!.value.map((l) => l.id), ['l2']);
+  });
+
+  group('timing the library entry', () {
+    late List<String> logged;
+    final timing = RegExp(
+      r'^LocalCache: (read|write) of library took \d+ ms '
+      r'\(storage \d+ ms, JSON \d+ ms\) for (\d+) KB$',
+    );
+
+    setUp(() {
+      logged = [];
+      debugPrint = (String? message, {int? wrapWidth}) => logged.add(message ?? '');
+    });
+
+    tearDown(() => debugPrint = debugPrintThrottled);
+
+    List<String> timingLines() =>
+        logged.where((l) => l.startsWith('LocalCache:')).toList();
+
+    test('stays quiet while reads and writes are fast', () async {
+      final games = [for (var i = 0; i < 50; i++) testGame('g$i')];
+      await cache.writeLibrary('u1', games);
+      await cache.readLibrary('u1');
+
+      expect(timingLines(), isEmpty);
+    });
+
+    test('says how long a slow read and write took, and how big the entry is', () async {
+      final slow = LocalCache(slowAfter: Duration.zero);
+      final games = [for (var i = 0; i < 200; i++) testGame('g$i')];
+
+      await slow.writeLibrary('u1', games);
+      await slow.readLibrary('u1');
+
+      final lines = timingLines();
+      expect(lines, hasLength(2));
+      expect(lines.every(timing.hasMatch), isTrue, reason: '$lines');
+      expect(timing.firstMatch(lines[0])!.group(1), 'write');
+      expect(timing.firstMatch(lines[1])!.group(1), 'read');
+
+      final prefs = await SharedPreferences.getInstance();
+      final kb = (prefs.getString('cache.v1.library.u1')!.length / 1024).round();
+      expect(kb, greaterThan(10)); // not just rounding noise
+      for (final line in lines) {
+        expect(int.parse(timing.firstMatch(line)!.group(2)!), kb);
+      }
+    });
+
+    test('only the library entry is timed', () async {
+      final slow = LocalCache(slowAfter: Duration.zero);
+      final profile = UserProfile(
+        name: 'Ada',
+        handle: '@ada',
+        bio: '',
+        joined: DateTime.utc(2026, 1, 1),
+        followers: 0,
+        following: 0,
+      );
+
+      await slow.writeLogs('u1', [testLog('l1', 'a')]);
+      await slow.readLogs('u1');
+      await slow.writeProfile('u1', profile);
+      await slow.readProfile('u1');
+      await slow.writeSocial('u1', const SocialSnapshot(followingIds: {'x'}, followersCount: 1));
+      await slow.readSocial('u1');
+      await slow.writePopular([testGame('c', status: null)]);
+      await slow.readPopular();
+
+      expect(timingLines(), isEmpty);
+    });
+
+    test('says nothing about a library that is not there', () async {
+      await LocalCache(slowAfter: Duration.zero).readLibrary('u1');
+
+      expect(timingLines(), isEmpty);
+    });
   });
 }

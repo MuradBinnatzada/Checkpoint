@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show ContentType, HttpServer, HttpStatus, InternetAddress, SocketException;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Google OAuth client IDs.
@@ -176,6 +178,62 @@ class AuthService {
         '<style>body{font-family:sans-serif;background:#0b0d12;color:#eee;display:grid;'
         'place-items:center;height:100vh;margin:0;text-align:center}</style></head>'
         '<body><div><h2>$title</h2><p>$body</p></div></body></html>';
+  }
+
+  /// Where supabase_flutter keeps the session on disk (see its `Supabase.initialize`).
+  String get _persistedSessionKey =>
+      'sb-${Uri.parse(_client.rest.url).host.split('.').first}-auth-token';
+
+  Future<String?> _persistedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_persistedSessionKey);
+    } catch (e) {
+      debugPrint('Reading the saved session failed: $e');
+      return null;
+    }
+  }
+
+  /// The id of the user whose session is saved on this device, or null. While
+  /// [currentUser] is null this is the "signed in, but the session could not be
+  /// refreshed yet" state: an expired access token is only dropped from memory
+  /// when the refresh fails because the network is down, and the saved session
+  /// stays on disk. A real sign-out, or a refresh token the server rejected,
+  /// removes it.
+  Future<String?> persistedUserId() async {
+    final raw = await _persistedSession();
+    if (raw == null) return null;
+    try {
+      final user = (jsonDecode(raw) as Map)['user'];
+      final id = user is Map ? user['id'] : null;
+      return id is String && id.isNotEmpty ? id : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Tries to turn the saved session back into a live one (refreshing its
+  /// token). Returns whether it worked; on success [changes] announces it.
+  Future<bool> restoreSession() async {
+    final raw = await _persistedSession();
+    if (raw == null) return false;
+    try {
+      await _auth.recoverSession(raw);
+      return _auth.currentUser != null;
+    } catch (e) {
+      debugPrint('Restoring the session failed: $e');
+      return false;
+    }
+  }
+
+  /// Forgets a saved session that never became live (signing out in that state).
+  Future<void> discardPersistedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_persistedSessionKey);
+    } catch (e) {
+      debugPrint('Discarding the saved session failed: $e');
+    }
   }
 
   Future<void> signOut() async {

@@ -204,7 +204,7 @@ void main() {
     expect(ids((await cache.readLibrary('u1'))!.value), ['b']);
   });
 
-  test('an edit that cannot be saved is reported without hiding the library', () async {
+  test('an edit made while the server is out of reach is kept and shown', () async {
     repo.library = [testGame('a')];
     await library.initialize();
     await pumpEventQueue();
@@ -212,9 +212,10 @@ void main() {
 
     await library.setRating('a', 3);
 
-    expect(library.notice, 'Could not save that game update.');
+    expect(library.notice, contains('sync when you'));
+    expect(library.pendingCount, 1);
     expect(library.loadError, isNull);
-    expect(ids(library.libraryGames), ['a']);
+    expect(library.libraryGames.single.rating, 3);
   });
 
   test('looks a game up in the library, the catalog, then the external source', () async {

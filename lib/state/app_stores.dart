@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
+import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -27,11 +28,18 @@ class AppStores {
     required AuthService authService,
     LocalCache? cache,
     GameApiService? apiService,
+    ConnectivityService? connectivity,
   }) {
     final localCache = cache ?? LocalCache();
+    final network = connectivity ?? ConnectivityService();
     auth = AuthStore(authService);
     nav = NavStore();
-    profile = ProfileStore(repository: repository, auth: auth, cache: localCache);
+    profile = ProfileStore(
+      repository: repository,
+      auth: auth,
+      connectivity: network,
+      cache: localCache,
+    );
     search = SearchStore(
       repository: repository,
       auth: auth,
@@ -43,6 +51,7 @@ class AppStores {
       auth: auth,
       profile: profile,
       cache: localCache,
+      connectivity: network,
       externalGame: search.resultById,
     );
     libraryView = LibraryViewStore(nav: nav);
@@ -63,7 +72,7 @@ class AppStores {
   /// Starts following the session and loads each store. [AuthStore] goes first:
   /// the others read the signed-in user from it.
   Future<void> initialize() async {
-    auth.initialize();
+    await auth.initialize();
     await Future.wait([
       profile.initialize(),
       library.initialize(),
