@@ -53,3 +53,7 @@ jobs:
 
       - name: Type-check
         run: deno check supabase/functions/*/index.ts
+
+      # Rate-limit backoff and the background-sync schedule (supabase/functions/_shared).
+      - name: Test shared helpers
+        run: deno test supabase/functions/_shared/

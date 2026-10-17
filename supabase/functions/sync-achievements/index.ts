@@ -33,6 +33,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
+import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shared/backoff.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,21 +76,10 @@ class HttpError extends Error {
 }
 
 const DEFAULT_RETRY_AFTER_S = 120
-const MAX_RETRY_AFTER_S = 3600
 
-/**
- * A `Retry-After` header (delta-seconds or an HTTP date) as whole seconds, clamped
- * to 1..MAX_RETRY_AFTER_S. Falls back to `fallback` when absent or unreadable.
- */
-function parseRetryAfter(value: string | null, fallback = DEFAULT_RETRY_AFTER_S): number {
-  if (value) {
-    const seconds = /^\d+$/.test(value.trim())
-      ? Number(value)
-      : (Date.parse(value) - Date.now()) / 1000
-    if (Number.isFinite(seconds)) return Math.min(Math.max(Math.ceil(seconds), 1), MAX_RETRY_AFTER_S)
-  }
-  return fallback
-}
+// The user is waiting on this, so a Steam 429 is retried only briefly (two retries,
+// at most ~6 s of waiting); past that it is reported as STEAM_RATE_LIMITED.
+const STEAM_BACKOFF: BackoffOptions = { retries: 2, baseDelayMs: 1_000, maxDelayMs: 4_000, budgetMs: 6_000 }
 
 /** The error for a non-OK Steam reply: rate limited, down, or something else. */
 function steamStatusError(status: number, retryAfter: string | null, what: string): HttpError {
@@ -200,7 +190,7 @@ async function steamFetch(path: string, params: Record<string, string>): Promise
   const url = new URL(`${STEAM_API}/${path}`)
   url.search = new URLSearchParams(params).toString()
   try {
-    return await fetch(url)
+    return await fetchWithBackoff(() => fetch(url), STEAM_BACKOFF)
   } catch {
     // Don't surface the raw fetch error: it embeds the request URL (and API key).
     throw new HttpError(503, 'STEAM_UNAVAILABLE', 'Could not reach Steam', DEFAULT_RETRY_AFTER_S)

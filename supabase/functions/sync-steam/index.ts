@@ -41,12 +41,29 @@
  * `{ error, code, retry_after? }` with a matching HTTP status and `Retry-After`
  * header; see `ErrorCode` for the codes.
  *
+ * Rate limits: a 429 from Steam, IGDB or Twitch is retried with exponential backoff
+ * and jitter (_shared/backoff.ts), honouring `Retry-After` when it is short enough.
+ * A limit that outlasts the retries is reported (`STEAM_RATE_LIMITED`,
+ * `IGDB_RATE_LIMITED` + `retry_after`), or for IGDB leaves the rest of the games for
+ * the next sync (`delayed`).
+ *
+ * Background mode: a request carrying the `x-cron-secret` header (pg_cron, through
+ * `invoke_steam_background_sync`) does not sync the caller. It refreshes the libraries
+ * of the users `steam_sync_due` returns: ones who synced by hand before, were active
+ * lately and whose `steam_sync_state.next_attempt_at` has passed. Answers
+ * `{ success: true, background: { due, synced, delayed, failed, stopped } }`.
+ * Each successful sync, manual or background, is recorded in `steam_sync_state`.
+ *
  * Secrets (set with `supabase secrets set`):
  *   STEAM_API_KEY, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
+ *   CRON_SECRET   only for the background run; the same value as the `cron_secret`
+ *                 Vault secret the database sends (see 20261017130000_...)
  *   (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
  *
  * Requires the 20261016120000_unify_game_ids_on_igdb_id.sql migration
- * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`).
+ * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`) and, for the
+ * sync state and the background run, 20261017130000_background_steam_sync.sql
+ * (a sync still works without it; it just is not recorded).
  *
  * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
  * Column names follow checkpoint_repository.dart (`upsertBaseGame`,
@@ -57,6 +74,8 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
+import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shared/backoff.ts'
+import { failureDelayMs, shouldStopBatch, successDelayMs } from '../_shared/sync_schedule.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -81,6 +100,36 @@ const IGDB_TIME_BUDGET_MS = 100_000 // stop *starting* fuzzy searches after this
                                     // edge function's wall-clock limit (150 s on the free plan)
 const PREFIX_MIN_RATIO = 0.8     // see `matchScore`
 const LOOSE_MAX_EXTRA_WORDS = 3  // see `matchScore`
+
+// ---- Rate-limit backoff ----------------------------------------------------
+// A 429 is retried with exponential backoff (see _shared/backoff.ts) before it is
+// reported. The waits are short on purpose: a sync has a wall-clock limit, and the
+// consecutive-failure counters above already end a run once a limit sticks.
+const STEAM_BACKOFF: BackoffOptions = { retries: 2, baseDelayMs: 1_500, maxDelayMs: 5_000, budgetMs: 8_000 }
+const IGDB_BACKOFF: BackoffOptions = { retries: 3, baseDelayMs: 1_000, maxDelayMs: 6_000, budgetMs: 10_000 }
+
+// ---- Background sync (cron) ------------------------------------------------
+// pg_cron calls this function every few minutes with the CRON_SECRET (see
+// 20261017130000_background_steam_sync.sql). Each call refreshes the library of the
+// BACKGROUND_BATCH_SIZE most overdue users (`steam_sync_due`), one after the other.
+const BACKGROUND_BATCH_SIZE = 10
+const BACKGROUND_ACTIVE_DAYS = 30        // only users who used the app within this many days
+const BACKGROUND_TIME_BUDGET_MS = 90_000 // stop *starting* users after this long (150 s limit)
+
+/**
+ * What one sync may spend on IGDB. A person waiting on a sync gets the whole
+ * budget; a background sync is a top-up, so it spends little and leaves the
+ * rest of the unmatched games to the next one.
+ */
+interface SyncLimits {
+  igdbSearchBudget: number
+  igdbTimeBudgetMs: number
+}
+const INTERACTIVE_LIMITS: SyncLimits = {
+  igdbSearchBudget: IGDB_SEARCH_BUDGET,
+  igdbTimeBudgetMs: IGDB_TIME_BUDGET_MS,
+}
+const BACKGROUND_LIMITS: SyncLimits = { igdbSearchBudget: 30, igdbTimeBudgetMs: 20_000 }
 
 /**
  * Columns of an existing user_games row that are never re-sent when we rewrite
@@ -127,21 +176,6 @@ class HttpError extends Error {
 }
 
 const DEFAULT_RETRY_AFTER_S = 120
-const MAX_RETRY_AFTER_S = 3600
-
-/**
- * A `Retry-After` header (delta-seconds or an HTTP date) as whole seconds, clamped
- * to 1..MAX_RETRY_AFTER_S. Falls back to `fallback` when absent or unreadable.
- */
-function parseRetryAfter(value: string | null, fallback = DEFAULT_RETRY_AFTER_S): number {
-  if (value) {
-    const seconds = /^\d+$/.test(value.trim())
-      ? Number(value)
-      : (Date.parse(value) - Date.now()) / 1000
-    if (Number.isFinite(seconds)) return Math.min(Math.max(Math.ceil(seconds), 1), MAX_RETRY_AFTER_S)
-  }
-  return fallback
-}
 
 // ---- BEGIN PURE HELPERS ----------------------------------------------------
 
@@ -606,7 +640,7 @@ async function fetchSteamGames(steamId: string): Promise<SteamGame[]> {
 
   let res: Response
   try {
-    res = await fetch(url)
+    res = await fetchWithBackoff(() => fetch(url), STEAM_BACKOFF)
   } catch {
     // Don't surface the raw fetch error: it embeds the request URL (and API key).
     throw new HttpError(503, 'STEAM_UNAVAILABLE', 'Could not reach Steam', DEFAULT_RETRY_AFTER_S)
@@ -662,15 +696,19 @@ async function getIgdbToken(): Promise<string> {
 
   let res: Response
   try {
-    res = await fetch('https://id.twitch.tv/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'client_credentials',
-      }),
-    })
+    res = await fetchWithBackoff(
+      () =>
+        fetch('https://id.twitch.tv/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            grant_type: 'client_credentials',
+          }),
+        }),
+      IGDB_BACKOFF,
+    )
   } catch {
     throw new HttpError(503, 'IGDB_UNAVAILABLE', 'Could not reach Twitch', DEFAULT_RETRY_AFTER_S)
   }
@@ -713,15 +751,20 @@ async function igdbFetch<T>(endpoint: string, body: string, attempt = 0): Promis
   const token = await getIgdbToken()
   let res: Response
   try {
-    res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Client-ID': Deno.env.get('TWITCH_CLIENT_ID')!,
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-      body,
-    })
+    // A 429 is retried with backoff (IGDB_BACKOFF) before it is reported below.
+    res = await fetchWithBackoff(
+      () =>
+        fetch(`https://api.igdb.com/v4/${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Client-ID': Deno.env.get('TWITCH_CLIENT_ID')!,
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+          body,
+        }),
+      IGDB_BACKOFF,
+    )
   } catch {
     throw new HttpError(503, 'IGDB_UNAVAILABLE', 'Could not reach IGDB', DEFAULT_RETRY_AFTER_S)
   }
@@ -729,10 +772,6 @@ async function igdbFetch<T>(endpoint: string, body: string, attempt = 0): Promis
   if (res.status === 401 && attempt === 0) {
     igdbToken = null // token revoked/expired early: re-auth once
     return igdbFetch<T>(endpoint, body, 1)
-  }
-  if (res.status === 429 && attempt < 2) {
-    await sleep(1000 * (attempt + 1))
-    return igdbFetch<T>(endpoint, body, attempt + 1)
   }
   if (!res.ok) throw igdbStatusError(res, `IGDB /${endpoint}`)
   return (await res.json()) as T
@@ -900,7 +939,7 @@ const SEARCH_PASSES: { name: PassName; term: (p: Pending) => string | null }[] =
  * never aborts the sync: whatever matched so far is kept, and games that could not
  * be searched (budget, errors or time) are counted in `deferred` for the next sync.
  */
-async function resolveMissingGames(missing: SteamEntry[], issues: SyncIssues) {
+async function resolveMissingGames(missing: SteamEntry[], issues: SyncIssues, limits: SyncLimits) {
   const matched = new Map<string, IgdbGame>()
   const byPass: Record<PassName, number> = { exact: 0, search: 0, prefix_stripped: 0, subtitle_split: 0 }
   if (missing.length === 0) return { matched, unmatched: [] as string[], deferred: 0, byPass }
@@ -921,7 +960,7 @@ async function resolveMissingGames(missing: SteamEntry[], issues: SyncIssues) {
     byPass[pass]++
   }
   const skipped = new Set<string>() // games a pass could not search (budget, error or time)
-  const deadline = Date.now() + IGDB_TIME_BUDGET_MS
+  const deadline = Date.now() + limits.igdbTimeBudgetMs
 
   try {
     // Pass 1a — bulk case-insensitive exact match on the cleaned title.
@@ -937,7 +976,7 @@ async function resolveMissingGames(missing: SteamEntry[], issues: SyncIssues) {
     remaining.sort((a, b) => b.entry.hours - a.entry.hours)
 
     // Pass 1b (cleaned title), Pass 2 (prefix stripped), Pass 3 (subtitle split).
-    let budget = IGDB_SEARCH_BUDGET
+    let budget = limits.igdbSearchBudget
     for (const pass of SEARCH_PASSES) {
       // One search per distinct term; games that share a term share its results.
       const jobs = new Map<string, { term: string; games: Pending[] }>()
@@ -1138,7 +1177,12 @@ async function upsertChunked(
 }
 
 // ---- Orchestration ---------------------------------------------------------
-async function syncLibrary(admin: SupabaseClient, userId: string, steamId: string) {
+async function syncLibrary(
+  admin: SupabaseClient,
+  userId: string,
+  steamId: string,
+  limits: SyncLimits = INTERACTIVE_LIMITS,
+) {
   const issues: SyncIssues = { warnings: [], igdb: null }
 
   // 1. Steam
@@ -1165,7 +1209,7 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
   }
 
   // 3. Multi-pass IGDB match for the apps that aren't resolved yet.
-  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, issues)
+  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, issues, limits)
 
   // 4. Add the matched games the catalog doesn't have. A game's id comes from its
   //    IGDB id, so one that another user already added (through in-app search,
@@ -1292,6 +1336,119 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
   }
 }
 
+// ---- Sync state and the background run -------------------------------------
+
+/** A row of `steam_sync_due`: a user whose library the background run should refresh. */
+interface DueUser {
+  user_id: string
+  steam_id: string
+  consecutive_failures: number
+}
+
+/**
+ * Records a finished sync in `steam_sync_state` (service role only): when it ran and
+ * when the background run may come back. A user's first recorded sync also enrolls
+ * them in the background sync, so only people who have synced by hand are ever synced
+ * unasked. Never throws: a bookkeeping problem (the migration not applied yet, say)
+ * must not fail a sync that worked.
+ */
+async function recordSyncSuccess(
+  admin: SupabaseClient,
+  userId: string,
+  delayed: { code: string; retry_after: number | null } | null,
+): Promise<void> {
+  const now = Date.now()
+  const { error } = await admin.from('steam_sync_state').upsert(
+    {
+      user_id: userId,
+      last_synced_at: new Date(now).toISOString(),
+      last_attempt_at: new Date(now).toISOString(),
+      next_attempt_at: new Date(now + successDelayMs(delayed !== null, delayed?.retry_after ?? null)).toISOString(),
+      consecutive_failures: 0,
+      last_error_code: delayed?.code ?? null,
+    },
+    { onConflict: 'user_id' },
+  )
+  if (error) console.error('sync-steam: could not record the sync state:', error)
+}
+
+/** Pushes a user's next background attempt out after a failure (see `failureDelayMs`). */
+async function recordBackgroundFailure(admin: SupabaseClient, user: DueUser, error: unknown): Promise<void> {
+  const code = error instanceof HttpError ? error.code : 'INTERNAL'
+  const retryAfter = error instanceof HttpError ? error.retryAfter ?? null : null
+  const { delayMs, countsAsFailure } = failureDelayMs(code, user.consecutive_failures, retryAfter)
+  const now = Date.now()
+  const { error: dbError } = await admin
+    .from('steam_sync_state')
+    .update({
+      last_attempt_at: new Date(now).toISOString(),
+      next_attempt_at: new Date(now + delayMs).toISOString(),
+      consecutive_failures: user.consecutive_failures + (countsAsFailure ? 1 : 0),
+      last_error_code: code,
+    })
+    .eq('user_id', user.user_id)
+  if (dbError) console.error('sync-steam: could not record the failure:', dbError)
+}
+
+/**
+ * One background run: syncs the most overdue users, one at a time, with the small
+ * IGDB budget. A failure for one user is recorded against them and the run goes on;
+ * a failure that every user would hit (Steam limiting us, a missing secret) ends it,
+ * and the users not reached stay due for the next run.
+ */
+async function runBackgroundBatch(admin: SupabaseClient) {
+  const startedAt = Date.now()
+  const { data, error } = await admin.rpc('steam_sync_due', {
+    batch_size: BACKGROUND_BATCH_SIZE,
+    active_days: BACKGROUND_ACTIVE_DAYS,
+  })
+  if (error) throw new Error(`steam_sync_due failed: ${error.message}`)
+
+  const due = (data ?? []) as DueUser[]
+  const summary = { due: due.length, synced: 0, delayed: 0, failed: 0, stopped: null as string | null }
+  for (const user of due) {
+    if (Date.now() - startedAt > BACKGROUND_TIME_BUDGET_MS) {
+      summary.stopped = 'TIME_BUDGET'
+      break
+    }
+    try {
+      const result = await syncLibrary(admin, user.user_id, user.steam_id, BACKGROUND_LIMITS)
+      await recordSyncSuccess(admin, user.user_id, result.delayed)
+      if (result.delayed) summary.delayed++
+      else summary.synced++
+    } catch (e) {
+      summary.failed++
+      console.error(`sync-steam background: sync for ${user.user_id} failed:`, e)
+      await recordBackgroundFailure(admin, user, e)
+      const code = e instanceof HttpError ? e.code : 'INTERNAL'
+      if (shouldStopBatch(code)) {
+        summary.stopped = code
+        break
+      }
+    }
+  }
+  return summary
+}
+
+/**
+ * Throws unless `provided` is the CRON_SECRET secret. Compared as SHA-256 digests
+ * so the check takes the same time wherever the two strings first differ.
+ */
+async function requireCronSecret(provided: string): Promise<void> {
+  const expected = Deno.env.get('CRON_SECRET')
+  if (!expected) {
+    console.error('CRON_SECRET is not set')
+    throw new HttpError(500, 'NOT_CONFIGURED', 'Server is not configured')
+  }
+  const encoder = new TextEncoder()
+  const [a, b] = await Promise.all(
+    [provided, expected].map(async (s) => new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(s)))),
+  )
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  if (diff !== 0) throw new HttpError(401, 'UNAUTHENTICATED', 'Invalid cron secret')
+}
+
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
@@ -1334,6 +1491,14 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
+    // pg_cron's background run: no user session, so it proves itself with the
+    // shared secret instead and works through the users that are due.
+    const cronSecret = req.headers.get('x-cron-secret')
+    if (cronSecret !== null) {
+      await requireCronSecret(cronSecret)
+      return json({ success: true, background: await runBackgroundBatch(admin) })
+    }
+
     const userId = await authenticate(req, admin)
 
     // The request body is ignored on purpose: the Steam ID is looked up on the
@@ -1341,6 +1506,9 @@ serve(async (req) => {
     const steamId = await fetchSteamId(admin, userId)
 
     const result = await syncLibrary(admin, userId, steamId)
+    // Only a success is recorded here: a failed manual sync says nothing about when
+    // the background run should try, but a good one resets it and enrolls the user.
+    await recordSyncSuccess(admin, userId, result.delayed)
     return json({ success: true, ...result })
   } catch (error) {
     console.error('sync-steam failed:', error)

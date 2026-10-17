@@ -10,7 +10,11 @@
 //                        { "error": "...", "code": "...", "retry_after"?: seconds }
 //                        An offset at or past MAX_RESULTS answers `[]`.
 //                        Failures carry a `Retry-After` header when a retry makes
-//                        sense. Codes:
+//                        sense. A 429 from IGDB / Twitch is first retried with a
+//                        short exponential backoff (_shared/backoff.ts); only a
+//                        limit that outlasts that is reported, and then this
+//                        instance answers further searches IGDB_RATE_LIMITED
+//                        without calling IGDB for up to a minute. Codes:
 //                          IGDB_RATE_LIMITED (429)  IGDB / Twitch is limiting requests
 //                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
 //                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
@@ -25,6 +29,11 @@
 // SUPABASE_URL and SUPABASE_ANON_KEY are injected automatically by Supabase.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import {
+  type BackoffOptions,
+  fetchWithBackoff,
+  parseRetryAfter,
+} from "../_shared/backoff.ts";
 
 const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_URL = "https://api.igdb.com/v4/games";
@@ -77,33 +86,48 @@ class HttpError extends Error {
 }
 
 const DEFAULT_RETRY_AFTER_S = 60;
-const MAX_RETRY_AFTER_S = 3600;
 
-// A `Retry-After` header (delta-seconds or an HTTP date) as whole seconds,
-// clamped to 1..MAX_RETRY_AFTER_S. Falls back to `fallback` when absent or unreadable.
-function parseRetryAfter(
-  value: string | null,
-  fallback = DEFAULT_RETRY_AFTER_S,
-): number {
-  if (value) {
-    const seconds = /^\d+$/.test(value.trim())
-      ? Number(value)
-      : (Date.parse(value) - Date.now()) / 1000;
-    if (Number.isFinite(seconds)) {
-      return Math.min(Math.max(Math.ceil(seconds), 1), MAX_RETRY_AFTER_S);
-    }
+// A search is something a person is waiting on, so a 429 is retried only briefly:
+// two retries, about 3.5 s of waiting at most. Past that the 429 is reported
+// (IGDB_RATE_LIMITED + retry_after) and the app shows its own "try again" state.
+const BACKOFF: BackoffOptions = {
+  retries: 2,
+  baseDelayMs: 400,
+  maxDelayMs: 2_000,
+  budgetMs: 3_500,
+};
+
+// While IGDB is limiting us, every further request from this instance would only
+// be limited again (and count against us). After a 429 that retrying did not clear,
+// answer IGDB_RATE_LIMITED straight away for a short while instead of calling out.
+const COOLDOWN_MAX_S = 60;
+let rateLimitedUntil = 0; // ms since epoch
+
+function throwIfCoolingDown(): void {
+  const remainingMs = rateLimitedUntil - Date.now();
+  if (remainingMs > 0) {
+    throw new HttpError(
+      429,
+      "IGDB_RATE_LIMITED",
+      "IGDB rate limit reached, try again shortly",
+      Math.ceil(remainingMs / 1000),
+    );
   }
-  return fallback;
 }
 
 // The error for a non-OK Twitch / IGDB reply: rate limited, down, or our fault.
 function upstreamError(res: Response, what: string): HttpError {
   if (res.status === 429) {
+    const retryAfter = parseRetryAfter(
+      res.headers.get("Retry-After"),
+      DEFAULT_RETRY_AFTER_S,
+    );
+    rateLimitedUntil = Date.now() + Math.min(retryAfter, COOLDOWN_MAX_S) * 1000;
     return new HttpError(
       429,
       "IGDB_RATE_LIMITED",
       "IGDB rate limit reached, try again shortly",
-      parseRetryAfter(res.headers.get("Retry-After")),
+      retryAfter,
     );
   }
   if (res.status >= 500) {
@@ -165,15 +189,16 @@ async function requestNewToken(): Promise<string> {
 
   let res: Response;
   try {
-    res = await fetch(TWITCH_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "client_credentials",
-      }),
-    });
+    res = await fetchWithBackoff(() =>
+      fetch(TWITCH_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: "client_credentials",
+        }),
+      }), BACKOFF);
   } catch (err) {
     console.error("Twitch token request failed:", err);
     throw new HttpError(503, "IGDB_UNAVAILABLE", "Could not reach Twitch", 120);
@@ -216,16 +241,17 @@ async function getToken(forceRefresh = false): Promise<string> {
 
 async function igdbRequest(apicalypse: string, token: string): Promise<Response> {
   try {
-    return await fetch(IGDB_GAMES_URL, {
-      method: "POST",
-      headers: {
-        "Client-ID": Deno.env.get("TWITCH_CLIENT_ID")!,
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/json",
-        "Content-Type": "text/plain",
-      },
-      body: apicalypse,
-    });
+    return await fetchWithBackoff(() =>
+      fetch(IGDB_GAMES_URL, {
+        method: "POST",
+        headers: {
+          "Client-ID": Deno.env.get("TWITCH_CLIENT_ID")!,
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+          "Content-Type": "text/plain",
+        },
+        body: apicalypse,
+      }), BACKOFF);
   } catch (err) {
     console.error("IGDB request failed:", err);
     throw new HttpError(503, "IGDB_UNAVAILABLE", "Could not reach IGDB", 120);
@@ -262,6 +288,7 @@ async function searchGames(
   const apicalypse =
     `search "${term}"; fields ${GAME_FIELDS}; limit ${limit}; offset ${offset};`;
 
+  throwIfCoolingDown();
   let token = await getToken();
   let res = await igdbRequest(apicalypse, token);
 
