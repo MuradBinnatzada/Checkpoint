@@ -12,9 +12,10 @@ import 'package:checkpoint/state/profile_store.dart';
 
 import 'support/fakes.dart';
 
-/// The connected services are kept on the device first and mirrored to
-/// `profiles.connected_services`, which is what other members see. The names
-/// behind PSN, Xbox and Discord never leave the device.
+/// The connected services and the account names behind PSN, Xbox and Discord are
+/// kept on the device first and mirrored to the profile row
+/// (`connected_services`, `psn_id`, `xbox_id`, `discord_id`), which is what other
+/// members see and what the icons on their page open.
 void main() {
   late FakeRepository repo;
   late FakeAuthService authService;
@@ -54,7 +55,7 @@ void main() {
   });
 
   group('connecting and disconnecting', () {
-    test('connecting PSN saves the name on the device and only the service name on the server', () async {
+    test('connecting PSN saves the name on the device and on the server', () async {
       await start();
 
       profile.setServiceId(ConnectedService.psn, 'ps_user');
@@ -63,10 +64,11 @@ void main() {
       expect(profile.isConnected(ConnectedService.psn), isTrue);
       expect(repo.writes, ['services:psn']);
       expect(repo.connectedServices, {ConnectedService.psn});
+      expect(repo.savedPsnId, 'ps_user');
       final saved = await prefs();
       expect(saved.getString('psn_id.u1'), 'ps_user');
       expect(saved.getStringList('connected_services.u1'), ['psn']);
-      expect(saved.getBool('services_pending.u1'), isFalse);
+      expect(saved.getBool('accounts_pending.u1'), isFalse);
       expect(profile.notice, isNull);
     });
 
@@ -89,8 +91,10 @@ void main() {
           'services:discord,xbox',
           'services:discord,nintendo,xbox',
         ]);
-        expect(repo.writes.join(), isNot(contains('gamer')));
-        expect(repo.writes.join(), isNot(contains('disc#1')));
+        // The names go up with the list; Nintendo has none.
+        expect(repo.savedXboxId, 'gamer');
+        expect(repo.savedDiscordId, 'disc#1');
+        expect(repo.savedPsnId, isNull);
       },
     );
 
@@ -107,6 +111,9 @@ void main() {
       expect(profile.isConnected(ConnectedService.psn), isFalse);
       expect(repo.connectedServices, {ConnectedService.xbox});
       expect(repo.writes.last, 'services:xbox');
+      // A disconnected service has no name on the server any more.
+      expect(repo.savedPsnId, isNull);
+      expect(repo.savedXboxId, 'gamer');
 
       profile.toggleService(ConnectedService.xbox);
       await pumpEventQueue();
@@ -114,7 +121,7 @@ void main() {
       expect(repo.writes.last, 'services:');
     });
 
-    test('entering the name of a service that is already connected sends nothing again', () async {
+    test('changing the name of a service that is already connected sends the new name', () async {
       await start();
       profile.setServiceId(ConnectedService.psn, 'old');
       await pumpEventQueue();
@@ -122,7 +129,8 @@ void main() {
       profile.setServiceId(ConnectedService.psn, 'new');
       await pumpEventQueue();
 
-      expect(repo.writes, ['services:psn']);
+      expect(repo.writes, ['services:psn', 'services:psn']);
+      expect(repo.savedPsnId, 'new');
       expect((await prefs()).getString('psn_id.u1'), 'new');
     });
 
@@ -153,7 +161,7 @@ void main() {
       expect(profile.isConnected(ConnectedService.psn), isTrue);
       expect(profile.notice, queuedNotice);
       expect(repo.writes, isEmpty);
-      expect((await prefs()).getBool('services_pending.u1'), isTrue);
+      expect((await prefs()).getBool('accounts_pending.u1'), isTrue);
       profile.clearNotice();
 
       repo.offline = false;
@@ -162,7 +170,7 @@ void main() {
 
       expect(repo.writes, ['services:psn']);
       expect(profile.notice, isNull);
-      expect((await prefs()).getBool('services_pending.u1'), isFalse);
+      expect((await prefs()).getBool('accounts_pending.u1'), isFalse);
     });
 
     test('a change made offline is sent when the app is opened again with the connection back', () async {
@@ -181,7 +189,7 @@ void main() {
 
       expect(profile.isConnected(ConnectedService.psn), isTrue);
       expect(repo.writes, ['services:psn']);
-      expect((await prefs()).getBool('services_pending.u1'), isFalse);
+      expect((await prefs()).getBool('accounts_pending.u1'), isFalse);
     });
 
     test('a refused write is reported, keeps the change on the device and is tried again on the next load', () async {
@@ -196,7 +204,7 @@ void main() {
         profile.notice,
         'Could not update the accounts shown on your profile.',
       );
-      expect((await prefs()).getBool('services_pending.u1'), isTrue);
+      expect((await prefs()).getBool('accounts_pending.u1'), isTrue);
       profile.clearNotice();
 
       repo.rejectWrites = false;
@@ -205,20 +213,20 @@ void main() {
 
       expect(repo.writes, ['services:nintendo']);
       expect(profile.notice, isNull);
-      expect((await prefs()).getBool('services_pending.u1'), isFalse);
+      expect((await prefs()).getBool('accounts_pending.u1'), isFalse);
     });
 
     test('a retry that nobody asked for does not nag: no notice when a background send fails', () async {
       repo.writesDown = true;
       await start({
         'connected_services.u1': ['psn'],
-        'services_pending.u1': true,
+        'accounts_pending.u1': true,
       });
       await profile.refresh();
       await pumpEventQueue();
 
       expect(profile.notice, isNull);
-      expect((await prefs()).getBool('services_pending.u1'), isTrue);
+      expect((await prefs()).getBool('accounts_pending.u1'), isTrue);
     });
 
     test(
@@ -251,17 +259,43 @@ void main() {
   });
 
   group('reconciling with the server', () {
-    test('a device that never connected anything shows what another device connected', () async {
+    test('a device that never connected anything shows what another device connected, names included', () async {
+      repo.connectedServices = {ConnectedService.xbox};
+      repo.savedXboxId = 'gamer';
+
+      await start();
+
+      expect(profile.isConnected(ConnectedService.xbox), isTrue);
+      expect(profile.xboxId, 'gamer'); // the name came from the other device
+      expect((await prefs()).getString('xbox_id.u1'), 'gamer');
+      expect(repo.writes, isEmpty);
+      final saved = await prefs();
+      expect(saved.getStringList('connected_services.u1'), ['xbox']);
+      expect(saved.getBool('accounts_pending.u1'), isFalse);
+    });
+
+    test('a service another device connected before it saved names has no name here', () async {
       repo.connectedServices = {ConnectedService.xbox};
 
       await start();
 
       expect(profile.isConnected(ConnectedService.xbox), isTrue);
-      expect(profile.xboxId, isNull); // the name is on the other device
+      expect(profile.xboxId, isNull);
       expect(repo.writes, isEmpty);
-      final saved = await prefs();
-      expect(saved.getStringList('connected_services.u1'), ['xbox']);
-      expect(saved.getBool('services_pending.u1'), isFalse);
+    });
+
+    test('a name this device has and the server lacks goes up, without changing the rest', () async {
+      repo.connectedServices = {ConnectedService.psn};
+
+      await start({
+        'psn_id.u1': 'ps_user',
+        'connected_services.u1': ['psn'],
+        'accounts_pending.u1': false,
+      });
+
+      expect(profile.psnId, 'ps_user');
+      expect(repo.writes, ['services:psn']);
+      expect(repo.savedPsnId, 'ps_user');
     });
 
     test('a change made on top of the adopted list keeps the other device\'s services', () async {
@@ -282,7 +316,8 @@ void main() {
 
       expect(profile.isConnected(ConnectedService.psn), isTrue);
       expect(repo.writes, ['services:psn']);
-      expect((await prefs()).getBool('services_pending.u1'), isFalse);
+      expect(repo.savedPsnId, 'ps_user'); // the name goes up with it
+      expect((await prefs()).getBool('accounts_pending.u1'), isFalse);
     });
 
     test('a list saved before the server kept one, but empty, adopts the server\'s', () async {
@@ -301,7 +336,7 @@ void main() {
 
         await start({
           'connected_services.u1': ['psn'],
-          'services_pending.u1': true,
+          'accounts_pending.u1': true,
         });
 
         expect(profile.connectedServices, {ConnectedService.psn});
@@ -317,7 +352,7 @@ void main() {
         await start({
           'psn_id.u1': 'ps_user',
           'connected_services.u1': ['psn'],
-          'services_pending.u1': false,
+          'accounts_pending.u1': false,
         });
 
         expect(profile.isConnected(ConnectedService.psn), isFalse);
@@ -364,7 +399,7 @@ void main() {
           ConnectedService.psn,
           ConnectedService.xbox,
         });
-        expect((await prefs()).getBool('services_pending.u1'), isFalse);
+        expect((await prefs()).getBool('accounts_pending.u1'), isFalse);
       },
     );
   });
@@ -379,6 +414,7 @@ void main() {
         repo.writes.clear();
 
         repo.connectedServices = {}; // u2's row
+        repo.savedPsnId = null;
         authService.emit(testUser('u2'));
         await pumpEventQueue();
 
@@ -402,7 +438,7 @@ void main() {
       await pumpEventQueue();
 
       // Still pending for u1: the send was not confirmed for them, so it will be repeated.
-      expect((await prefs()).getBool('services_pending.u1'), isTrue);
+      expect((await prefs()).getBool('accounts_pending.u1'), isTrue);
     });
   });
 }

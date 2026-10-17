@@ -24,9 +24,10 @@ import 'package:checkpoint/state/auth_store.dart';
 /// connection is back ([flushPending]). One the server refuses is reverted
 /// instead.
 ///
-/// Which services are connected is saved on the device first, and mirrored to
-/// `profiles.connected_services` so other members see them on the profile (the
-/// account names stay on the device). A change the server hasn't received is
+/// Which services are connected, and the account names behind PSN, Xbox and
+/// Discord, are saved on the device first and mirrored to the profile row
+/// (`connected_services`, `psn_id`, `xbox_id`, `discord_id`), which is what other
+/// members' profile pages show and open. A change the server hasn't received is
 /// remembered and sent when the connection is back; see [_pushServices].
 class ProfileStore extends ChangeNotifier {
   ProfileStore({
@@ -237,7 +238,7 @@ class ProfileStore extends ChangeNotifier {
       final fetched = await _repository.ensureProfile(user);
       if (seq != _loadSeq) return true;
       _profile = fetched;
-      _applyServerServices(user.id, fetched.connectedServices, versionBefore);
+      _applyServerAccounts(user.id, fetched, versionBefore);
       notifyListeners();
       unawaited(_cache.writeProfile(user.id, fetched));
       return true;
@@ -306,7 +307,7 @@ class ProfileStore extends ChangeNotifier {
       final fetched = await _repository.fetchProfile(user);
       if (_user?.id != user.id) return;
       _profile = fetched;
-      _applyServerServices(user.id, fetched.connectedServices, versionBefore);
+      _applyServerAccounts(user.id, fetched, versionBefore);
       notifyListeners();
       unawaited(_cache.writeProfile(user.id, fetched));
     } catch (e, st) {
@@ -359,13 +360,17 @@ class ProfileStore extends ChangeNotifier {
     _discordId = prefs.getString(_scoped('discord_id', userId));
     final saved = prefs.getStringList(_scoped('connected_services', userId));
     _connected.addAll(connectedServicesFromDb(saved));
-    // No record means the list was saved before the server kept one: what this
-    // device has is then newer than the (empty) list on the server, and goes up.
+    // No record means the accounts were saved before the server kept them (the
+    // list, and the names too, which came later): what this device has is then
+    // newer than what the server has, and goes up.
     _servicesPending =
         prefs.getBool(_scoped(_servicesPendingKey, userId)) ?? _connected.isNotEmpty;
   }
 
-  static const _servicesPendingKey = 'services_pending';
+  /// Whether the server has the device's connected accounts yet. (An earlier
+  /// build kept `services_pending` for the list alone; it is not read any more, so
+  /// that every device sends the account names once.)
+  static const _servicesPendingKey = 'accounts_pending';
 
   /// Saves the connected services and whether the server has them yet.
   Future<void> _saveConnectedServices(String userId) async {
@@ -571,31 +576,42 @@ class ProfileStore extends ChangeNotifier {
     unawaited(_pushServices(userAction: true));
   }
 
-  // ---- Connected services on the server ----
+  // ---- Connected accounts on the server ----
   //
-  // `profiles.connected_services` holds the NAMES of the connected services other
-  // than Steam, which is what another member's profile shows. It is a mirror of
-  // the list on the device, written as a whole, so sending it twice is harmless
-  // and there is no queue of edits: only whether the latest list has arrived.
+  // `profiles.connected_services` names the connected services other than Steam,
+  // and `psn_id` / `xbox_id` / `discord_id` hold the account names behind them:
+  // what another member's profile shows, and what its icons open. They are a
+  // mirror of what the device has, written as a whole, so sending them twice is
+  // harmless and there is no queue of edits: only whether the latest arrived.
+
+  /// What the device has connected, as the server stores it: a service that is
+  /// not connected has no name.
+  ConnectedAccounts get _accounts => ConnectedAccounts(
+    services: {..._connected},
+    psnId: _connected.contains(ConnectedService.psn) ? _psnId : null,
+    xboxId: _connected.contains(ConnectedService.xbox) ? _xboxId : null,
+    discordId: _connected.contains(ConnectedService.discord) ? _discordId : null,
+  );
 
   /// The device has a change the server doesn't have yet. Saved with the list.
   bool _servicesPending = false;
 
   /// Bumped by every change made on the device and every send that reached the
-  /// server, so a read of the server's list that was under way meanwhile can tell
-  /// its answer is out of date.
+  /// server, so a read of the server's accounts that was under way meanwhile can
+  /// tell its answer is out of date.
   int _serviceVersion = 0;
 
   /// The send that is running, if any.
   Future<void>? _servicesPush;
 
-  /// The server's list was just read. A change the device hasn't sent goes up
-  /// now; otherwise the server's list is the truth (another device may have
-  /// changed it) and replaces the device's. [versionBefore] is [_serviceVersion]
-  /// from before the read started.
-  void _applyServerServices(
+  /// The server's accounts were just read (as part of [server], the profile). A
+  /// change the device hasn't sent goes up now; otherwise the server's accounts are
+  /// the truth (another device may have changed them) and replace the device's,
+  /// except a name this device has and the server lacks, which goes up.
+  /// [versionBefore] is [_serviceVersion] from before the read started.
+  void _applyServerAccounts(
     String userId,
-    Set<ConnectedService> server,
+    UserProfile server,
     int versionBefore,
   ) {
     if (versionBefore != _serviceVersion) return;
@@ -603,14 +619,49 @@ class ProfileStore extends ChangeNotifier {
       unawaited(_pushServices());
       return;
     }
-    if (setEquals(server, _connected)) return;
+    final onServer = ConnectedAccounts(
+      services: server.connectedServices,
+      psnId: server.psnId,
+      xboxId: server.xboxId,
+      discordId: server.discordId,
+    );
+    if (onServer == _accounts) return;
+
     _connected
       ..clear()
-      ..addAll(server);
+      ..addAll(server.connectedServices);
+    // The server's name wins; where it has none, this device's is kept. A name
+    // for a service the server doesn't list as connected is stale, and ignored.
+    bool listed(ConnectedService s) => server.connectedServices.contains(s);
+    if (listed(ConnectedService.psn)) _psnId = server.psnId ?? _psnId;
+    if (listed(ConnectedService.xbox)) _xboxId = server.xboxId ?? _xboxId;
+    if (listed(ConnectedService.discord)) {
+      _discordId = server.discordId ?? _discordId;
+    }
+    unawaited(_saveAccountNames(userId));
+    if (onServer != _accounts) {
+      // This device knows a name the server doesn't.
+      _servicesPending = true;
+      _serviceVersion++;
+      unawaited(_saveConnectedServices(userId));
+      unawaited(_pushServices());
+      return;
+    }
     unawaited(_saveConnectedServices(userId));
   }
 
-  /// Sends the connected services to the server while the device has a change it
+  Future<void> _saveAccountNames(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final (key, name) in [
+      ('psn_id', _psnId),
+      ('xbox_id', _xboxId),
+      ('discord_id', _discordId),
+    ]) {
+      if (name != null) await prefs.setString(_scoped(key, userId), name);
+    }
+  }
+
+  /// Sends the connected accounts to the server while the device has a change it
   /// hasn't received. Does nothing without a live session or with nothing to send,
   /// and a second call joins the one running. A failed send leaves the change
   /// pending: it is tried again when the profile next loads or the connection
@@ -633,11 +684,11 @@ class ProfileStore extends ChangeNotifier {
   Future<void> _sendServices(User user, bool userAction) async {
     // Again while a change was made during the send.
     while (_servicesPending && _user?.id == user.id) {
-      final sent = {..._connected};
+      final sent = _accounts;
       try {
-        await _repository.setConnectedServices(sent);
+        await _repository.setConnectedAccounts(sent);
       } catch (e, st) {
-        debugPrint('Saving the connected services failed: $e\n$st');
+        debugPrint('Saving the connected accounts failed: $e\n$st');
         if (userAction && _user?.id == user.id) {
           _setNotice(
             isConnectionFailure(e)
@@ -649,7 +700,7 @@ class ProfileStore extends ChangeNotifier {
       }
       if (_user?.id != user.id) return;
       _serviceVersion++;
-      if (setEquals(sent, _connected)) {
+      if (sent == _accounts) {
         _servicesPending = false;
         await _saveConnectedServices(user.id);
       }
@@ -704,14 +755,14 @@ class ProfileStore extends ChangeNotifier {
         debugPrint('setServiceId: ${service.name} has no stored ID.');
         return;
     }
-    if (_connected.add(service)) {
-      _servicesPending = true;
-      _serviceVersion++;
-    }
+    // The name may have changed even if the service was already connected.
+    _connected.add(service);
+    _servicesPending = true;
+    _serviceVersion++;
     notifyListeners();
 
-    // Saved per account, so another account on this device doesn't see it. Only
-    // the fact that the service is connected goes to the server, not the name.
+    // Saved per account, so another account on this device doesn't see it; the
+    // server gets a copy for other members' profile pages.
     final userId = _user?.id;
     if (userId == null) return;
     final prefs = await SharedPreferences.getInstance();

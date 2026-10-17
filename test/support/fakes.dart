@@ -4,10 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
+import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_cover.dart';
+import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
@@ -117,8 +119,12 @@ class FakeRepository implements CheckpointRepository {
   String? steamId;
 
   /// `profiles.connected_services`: the services saved for the signed-in user, as
-  /// other members see them (Steam is never in it).
+  /// other members see them (Steam is never in it), and the account names saved
+  /// with them (`psn_id`, `xbox_id`, `discord_id`).
   Set<ConnectedService> connectedServices = {};
+  String? savedPsnId;
+  String? savedXboxId;
+  String? savedDiscordId;
 
   /// What `sync-steam` answers, or the error it throws when [syncError] is set.
   Object? syncData = {'success': true, 'delayed': null};
@@ -128,7 +134,7 @@ class FakeRepository implements CheckpointRepository {
   /// Holds [follow] until completed, to have a request in flight.
   Completer<void>? followGate;
 
-  /// Holds [setConnectedServices] until completed.
+  /// Holds [setConnectedAccounts] until completed.
   Completer<void>? servicesGate;
 
   /// Holds the signed-in user's own profile read ([ensureProfile]) until completed.
@@ -181,6 +187,9 @@ class FakeRepository implements CheckpointRepository {
       bio: '',
       steamId: steamId,
       connectedServices: services,
+      psnId: savedPsnId,
+      xboxId: savedXboxId,
+      discordId: savedDiscordId,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -191,11 +200,14 @@ class FakeRepository implements CheckpointRepository {
   Future<UserProfile> fetchProfile(User user) => ensureProfile(user);
 
   @override
-  Future<void> setConnectedServices(Set<ConnectedService> services) async {
+  Future<void> setConnectedAccounts(ConnectedAccounts accounts) async {
     await servicesGate?.future;
     _checkWrite();
-    connectedServices = {...services};
-    writes.add('services:${connectedServicesToDb(services).join(',')}');
+    connectedServices = {...accounts.services};
+    savedPsnId = accounts.psnId;
+    savedXboxId = accounts.xboxId;
+    savedDiscordId = accounts.discordId;
+    writes.add('services:${connectedServicesToDb(accounts.services).join(',')}');
   }
 
   @override
@@ -364,25 +376,39 @@ class FakeRepository implements CheckpointRepository {
     ].take(CheckpointRepository.publicFavoritesLimit).toList();
   }
 
+  /// A member's latest sessions, newest first.
+  final Map<String, List<ActivityEntry>> memberActivity = {};
+
+  /// Holds the whole-library read of another member until completed.
+  Completer<void>? memberLibraryGate;
+  bool failMemberLibrary = false;
+
   @override
-  Future<List<Game>> fetchPublicRatedGames(String userId) async {
+  Future<LibraryStats> fetchPublicLibraryStats(String userId) async {
+    memberReads.add('stats-rows:$userId');
     _checkOnline();
-    return [
-      for (final g in _gamesOf(userId))
-        if (g.rating > 0) g,
-    ];
+    if (failProfileReads) throw Exception('profile read failed');
+    return LibraryStats.of(_gamesOf(userId));
   }
 
   @override
-  Future<List<Game>> fetchPublicLibrary(
-    String userId, {
-    int offset = 0,
-    int limit = CheckpointRepository.publicLibraryPageSize,
-  }) async {
-    memberReads.add('library:$userId:$offset');
+  Future<List<Game>> fetchPublicLibrary(String userId) async {
+    memberReads.add('library:$userId');
+    await memberLibraryGate?.future;
     _checkOnline();
-    if (failProfileReads && offset > 0) throw Exception('page failed');
-    return _gamesOf(userId).skip(offset).take(limit).toList();
+    if (failMemberLibrary) throw Exception('library read failed');
+    return _gamesOf(userId);
+  }
+
+  @override
+  Future<List<ActivityEntry>> fetchPublicActivity(
+    String userId, {
+    int limit = CheckpointRepository.publicActivityLimit,
+  }) async {
+    _checkOnline();
+    return (memberActivity[userId] ?? const <ActivityEntry>[])
+        .take(limit)
+        .toList();
   }
 
   ResultsPage<SocialUser> _page(List<SocialUser> all, int offset, int limit) {

@@ -15,6 +15,10 @@ abstract final class Db {
   static const publicFollowers = 'public_followers';
   static const publicFollowing = 'public_following';
 
+  /// A member's play sessions (game, hours, platform, when) with the catalog data
+  /// of the game. No notes.
+  static const publicRecentActivity = 'public_recent_activity';
+
   /// Functions (called with `rpc`). Achievements of another member are only
   /// reachable through the last two; no table or view carries them.
   static const rpcProfileStats = 'public_profile_stats';
@@ -37,13 +41,22 @@ abstract final class Db {
   static const avatarUrl = 'avatar_url';
   static const steamId = 'steam_id';
 
-  /// `public_profiles` only: whether a Steam ID is set (the ID itself is private).
+  /// `public_profiles` only: whether a Steam ID is set.
   static const steamConnected = 'steam_connected';
 
   /// Names of the services connected besides Steam (`psn`, `xbox`, `discord`,
   /// `nintendo`). Readable in `public_profiles` and writable on your own
-  /// `profiles` row. The account names behind them are never stored.
+  /// `profiles` row.
   static const connectedServices = 'connected_services';
+
+  /// The account names behind the services: PSN id, Xbox gamertag, Discord
+  /// username. Public to signed-in members (the profile icons link to them).
+  static const psnId = 'psn_id';
+  static const xboxId = 'xbox_id';
+  static const discordId = 'discord_id';
+
+  /// `public_profiles` only: `profiles.created_at`, the member's join date.
+  static const joinedAt = 'joined_at';
 
   static const weeklyGoalHours = 'weekly_goal_hours';
 

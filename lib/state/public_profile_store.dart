@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/state/account_scoped_store.dart';
@@ -28,12 +30,9 @@ class PublicProfileView {
     required this.status,
     this.profile,
     this.stats,
+    this.library = const LibraryStats(),
     this.favorites = const [],
-    this.rated = const [],
-    this.library = const [],
-    this.libraryExhausted = false,
-    this.loadingMoreLibrary = false,
-    this.loadMoreLibraryFailed = false,
+    this.activity = const [],
     this.refreshFailed = false,
     this.loadedAt,
   });
@@ -42,30 +41,22 @@ class PublicProfileView {
 
   final PublicProfileStatus status;
   final PublicProfile? profile;
+
+  /// Follower and following counts, and whether the viewer follows them.
   final PublicProfileStats? stats;
+
+  /// Numbers over their whole library: games per status, hours, ratings.
+  final LibraryStats library;
 
   /// Their (up to four) favorites.
   final List<Game> favorites;
 
-  /// Their best-rated games, best first.
-  final List<Game> rated;
-
-  /// The pages of their library loaded so far, newest first.
-  final List<Game> library;
-
-  /// A page came back with nothing new, so there is no point asking for more.
-  final bool libraryExhausted;
-  final bool loadingMoreLibrary;
-  final bool loadMoreLibraryFailed;
+  /// Their latest sessions, one per game, newest first.
+  final List<ActivityEntry> activity;
 
   /// The last refresh failed, so what is shown may be out of date.
   final bool refreshFailed;
   final DateTime? loadedAt;
-
-  /// How many games they have, whether or not all are loaded.
-  int get libraryTotal => math.max(stats?.games ?? 0, library.length);
-
-  bool get libraryHasMore => !libraryExhausted && library.length < libraryTotal;
 
   /// Their follower count with the signed-in member's own follow or unfollow
   /// since [stats] were read applied, so the count moves as soon as the button
@@ -77,29 +68,22 @@ class PublicProfileView {
     return math.max(0, s.followers + delta);
   }
 
-  PublicProfileView copyWith({
-    List<Game>? library,
-    bool? libraryExhausted,
-    bool? loadingMoreLibrary,
-    bool? loadMoreLibraryFailed,
-    bool? refreshFailed,
-  }) => PublicProfileView(
+  PublicProfileView copyWith({bool? refreshFailed}) => PublicProfileView(
     status: status,
     profile: profile,
     stats: stats,
+    library: library,
     favorites: favorites,
-    rated: rated,
-    library: library ?? this.library,
-    libraryExhausted: libraryExhausted ?? this.libraryExhausted,
-    loadingMoreLibrary: loadingMoreLibrary ?? this.loadingMoreLibrary,
-    loadMoreLibraryFailed: loadMoreLibraryFailed ?? this.loadMoreLibraryFailed,
+    activity: activity,
     refreshFailed: refreshFailed ?? this.refreshFailed,
     loadedAt: loadedAt,
   );
 }
 
-/// Other members' profiles: header, counts and games. It never touches
-/// [ProfileStore], which holds the signed-in member's own profile.
+/// Other members' profiles: header, counts, favorites, latest sessions and library
+/// numbers. It never touches [ProfileStore], which holds the signed-in member's own
+/// profile. A member's whole library is in [PublicLibraryStore], loaded only when
+/// their Library screen opens.
 ///
 /// A profile is fetched when its screen opens and kept in memory (the 20 most
 /// recently opened) so that opening it again is instant; one older than
@@ -142,10 +126,11 @@ class PublicProfileStore extends AccountScopedStore {
   /// found by the game screen (it is usually not in the member's library).
   Game? gameById(String id) {
     for (final view in _views.values) {
-      for (final games in [view.favorites, view.rated, view.library]) {
-        for (final game in games) {
-          if (game.id == id) return game.withoutUserState();
-        }
+      for (final game in view.favorites) {
+        if (game.id == id) return game.withoutUserState();
+      }
+      for (final entry in view.activity) {
+        if (entry.game.id == id) return entry.game.withoutUserState();
       }
     }
     return null;
@@ -188,12 +173,12 @@ class PublicProfileStore extends AccountScopedStore {
     }
 
     try {
-      final (profile, stats, favorites, rated, library) = await (
+      final (profile, stats, library, favorites, activity) = await (
         _repository.fetchPublicProfile(userId),
         _repository.fetchPublicProfileStats(userId),
+        _repository.fetchPublicLibraryStats(userId),
         _repository.fetchPublicFavorites(userId),
-        _repository.fetchPublicRatedGames(userId),
-        _repository.fetchPublicLibrary(userId),
+        _repository.fetchPublicActivity(userId),
       ).wait;
       if (isStale(epoch)) return;
       _views[userId] = profile == null
@@ -205,9 +190,9 @@ class PublicProfileStore extends AccountScopedStore {
               status: PublicProfileStatus.ready,
               profile: profile,
               stats: stats,
-              favorites: favorites,
-              rated: rated,
               library: library,
+              favorites: favorites,
+              activity: activity,
               loadedAt: _now(),
             );
     } catch (e, st) {
@@ -216,55 +201,6 @@ class PublicProfileStore extends AccountScopedStore {
       _views[userId] = hasContent
           ? cached.copyWith(refreshFailed: true)
           : const PublicProfileView(status: PublicProfileStatus.failed);
-    }
-    notifyIfAlive();
-  }
-
-  /// Fetches the next page of [userId]'s library and adds it to the end. Does
-  /// nothing unless the profile is loaded, has more games and is not already
-  /// loading a page, so the screen can call it whenever the end comes into view.
-  Future<void> loadMoreLibrary(String userId) async {
-    final view = _views.peek(userId);
-    if (view == null ||
-        view.status != PublicProfileStatus.ready ||
-        !view.libraryHasMore ||
-        view.loadingMoreLibrary) {
-      return;
-    }
-    final epoch = this.epoch;
-    _views[userId] = view.copyWith(
-      loadingMoreLibrary: true,
-      loadMoreLibraryFailed: false,
-    );
-    notifyIfAlive();
-
-    try {
-      final page = await _repository.fetchPublicLibrary(
-        userId,
-        offset: view.library.length,
-      );
-      if (isStale(epoch)) return;
-      final current = _views.peek(userId) ?? view;
-      final seen = {for (final g in current.library) g.id};
-      final fresh = [
-        for (final g in page)
-          if (seen.add(g.id)) g,
-      ];
-      _views[userId] = current.copyWith(
-        library: [...current.library, ...fresh],
-        // Nothing new means the source stopped advancing (games removed since the
-        // count was read): don't ask for the same page forever.
-        libraryExhausted: fresh.isEmpty,
-        loadingMoreLibrary: false,
-      );
-    } catch (e, st) {
-      debugPrint('Loading more of a public library failed: $e\n$st');
-      if (isStale(epoch)) return;
-      final current = _views.peek(userId) ?? view;
-      _views[userId] = current.copyWith(
-        loadingMoreLibrary: false,
-        loadMoreLibraryFailed: true,
-      );
     }
     notifyIfAlive();
   }

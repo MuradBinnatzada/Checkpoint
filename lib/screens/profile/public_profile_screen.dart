@@ -1,13 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/profile/achievements_section.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_profile_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
@@ -15,15 +14,23 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/connected_service_badges.dart';
 import 'package:checkpoint/widgets/count_stat.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/favorite_games_row.dart';
-import 'package:checkpoint/widgets/game_poster_card.dart';
+import 'package:checkpoint/widgets/hours_by_platform_panel.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
+import 'package:checkpoint/widgets/profile_link_rows.dart';
+import 'package:checkpoint/widgets/ratings_panel.dart';
+import 'package:checkpoint/widgets/recent_activity_panel.dart';
+import 'package:checkpoint/widgets/stat_tile.dart';
 
-/// Another member's profile: who they are, who follows them, what they play and
-/// which services they linked. Their achievements stay behind a button.
+/// Another member's profile, laid out like your own: who they are, their bio and
+/// linked accounts, who follows them, then their favorites, latest sessions,
+/// playtime, library numbers (each box opens their library), hours per platform,
+/// ratings, and a short menu into their library and follow lists. Their
+/// achievements stay behind a button.
 ///
 /// [preview] is the row the member was tapped from; it fills in the name and
 /// photo while the profile loads.
@@ -95,18 +102,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 }
 
-/// Name, @handle and photo.
+/// Photo, name, @handle and, once known, when they joined.
 class _Header extends StatelessWidget {
   const _Header({
     required this.name,
     required this.handle,
     this.avatarUrl,
+    this.joined,
     this.isSelf = false,
   });
 
   final String name;
   final String handle;
   final String? avatarUrl;
+  final DateTime? joined;
   final bool isSelf;
 
   @override
@@ -137,11 +146,13 @@ class _Header extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (isSelf) ...[
+              if (isSelf || joined != null) ...[
                 const SizedBox(height: 2),
-                const Text(
-                  'This is you',
-                  style: TextStyle(color: Palette.muted, fontSize: 12.5),
+                Text(
+                  isSelf
+                      ? 'This is you'
+                      : 'Member since ${fmtMonthYear(joined!)}',
+                  style: const TextStyle(color: Palette.muted, fontSize: 12.5),
                 ),
               ],
             ],
@@ -190,6 +201,7 @@ class _Loaded extends StatelessWidget {
   Widget build(BuildContext context) {
     final profile = view.profile!;
     final stats = view.stats!;
+    final library = view.library;
     final own = context.watch<ProfileStore>();
     final following = own.isFollowing(userId);
 
@@ -200,12 +212,33 @@ class _Loaded extends StatelessWidget {
         : view.followersFor(viewerFollows: following);
     final followingCount = isSelf ? own.followingCount : stats.following;
 
-    void open(FollowListKind kind) => openFollowList(
+    void openFollowers(FollowListKind kind) => openFollows(
       context,
       userId: userId,
       kind: kind,
       ownerName: profile.name,
     );
+    void openLibrary({GameStatus? status, SortField? sortBy}) =>
+        openPublicLibrary(
+          context,
+          userId: userId,
+          ownerName: profile.name,
+          status: status,
+          sortBy: sortBy,
+        );
+
+    Widget statTile(IconData icon, GameStatus status, String label) => Expanded(
+      child: StatTile(
+        icon: icon,
+        value: '${library.count(status)}',
+        label: label,
+        onTap: () => openLibrary(status: status),
+      ),
+    );
+
+    final bio = profile.bio?.trim();
+    final hasBio = bio != null && bio.isNotEmpty;
+    final services = profile.connectedServices;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -215,6 +248,7 @@ class _Loaded extends StatelessWidget {
           name: profile.name,
           handle: profile.handle,
           avatarUrl: profile.avatarUrl,
+          joined: profile.joined,
           isSelf: isSelf,
         ),
         if (view.refreshFailed) ...[
@@ -224,20 +258,43 @@ class _Loaded extends StatelessWidget {
             style: TextStyle(color: Palette.muted, fontSize: 12.5),
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
+        if (hasBio || services.isNotEmpty) ...[
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasBio)
+                Text(
+                  bio,
+                  style: const TextStyle(height: 1.4, color: Colors.white70),
+                ),
+              if (hasBio && services.isNotEmpty) const SizedBox(height: 12),
+              if (services.isNotEmpty)
+                ConnectedServiceBadges(
+                  services: services,
+                  steamId: profile.steamId,
+                  psnId: profile.psnId,
+                  xboxId: profile.xboxId,
+                  discordId: profile.discordId,
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+        // Tapping a count opens the list behind it.
         Row(
           children: [
             CountStat(
               value: fmtCount(followers),
               label: 'Followers',
-              onTap: () => open(FollowListKind.followers),
+              onTap: () => openFollowers(FollowListKind.followers),
             ),
+            const SizedBox(width: 14),
             CountStat(
               value: fmtCount(followingCount),
               label: 'Following',
-              onTap: () => open(FollowListKind.following),
+              onTap: () => openFollowers(FollowListKind.following),
             ),
-            CountStat(value: fmtCount(stats.games), label: 'Games'),
           ],
         ),
         if (!isSelf) ...[
@@ -255,56 +312,88 @@ class _Loaded extends StatelessWidget {
                   ),
           ),
         ],
-        const SizedBox(height: 20),
-        Panel(
-          title: 'Connected accounts',
-          child: profile.connectedServices.isEmpty
-              ? const Text(
-                  'No connected accounts.',
-                  style: TextStyle(color: Palette.muted, fontSize: 13),
-                )
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    // ConnectedService.values keeps the order stable.
-                    for (final s in ConnectedService.values)
-                      if (profile.connectedServices.contains(s))
-                        _ServiceChip(service: s),
-                  ],
-                ),
-        ),
         const SizedBox(height: 28),
         const _SectionTitle('Favorite Games'),
         if (view.favorites.isEmpty)
-          const _EmptyNote('No favorites picked yet.')
+          const Panel(
+            child: Text(
+              'No favorites picked yet.',
+              style: TextStyle(
+                color: Palette.muted,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          )
         else
           FavoriteGamesRow(games: view.favorites),
         const SizedBox(height: 28),
-        const _SectionTitle('Rated Games'),
-        if (view.rated.isEmpty)
-          const _EmptyNote('No rated games yet.')
-        else
-          SizedBox(
-            height: posterCardHeight(context, 104, subtitle: false),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: view.rated.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (_, i) =>
-                  GamePosterCard(game: view.rated[i], width: 104),
+        RecentActivityPanel(entries: view.activity),
+        const SizedBox(height: 24),
+        Text(
+          'Total Playtime: ${fmtHours(library.totalHours)} hours',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            statTile(Icons.play_arrow_rounded, GameStatus.playing, 'Playing'),
+            const SizedBox(width: 10),
+            statTile(Icons.verified_rounded, GameStatus.completed, 'Completed'),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            statTile(Icons.inventory_2_rounded, GameStatus.toPlay, 'To Play'),
+            const SizedBox(width: 10),
+            statTile(Icons.block_rounded, GameStatus.dropped, 'Dropped'),
+          ],
+        ),
+        const SizedBox(height: 14),
+        HoursByPlatformPanel(
+          hours: library.hoursByPlatform,
+          emptyText: 'No hours logged yet.',
+        ),
+        const SizedBox(height: 14),
+        RatingsPanel(stats: library),
+        const SizedBox(height: 24),
+        ProfileLinkRows(
+          links: [
+            ProfileLink(
+              icon: Icons.collections_bookmark_rounded,
+              label: 'Library',
+              count: library.games,
+              onTap: () => openLibrary(),
             ),
-          ),
-        const SizedBox(height: 28),
-        _SectionTitle('Library', count: view.libraryTotal),
-        if (view.library.isEmpty)
-          const _EmptyNote('Nothing in their library yet.')
-        else ...[
-          _LibraryGrid(games: view.library),
-          if (view.libraryHasMore || view.loadingMoreLibrary)
-            _ShowMore(userId: userId, view: view),
-        ],
-        const SizedBox(height: 28),
+            ProfileLink(
+              icon: Icons.bookmark_rounded,
+              label: 'Wishlist',
+              count: library.count(GameStatus.wishlist),
+              onTap: () => openLibrary(status: GameStatus.wishlist),
+            ),
+            ProfileLink(
+              icon: Icons.star_rounded,
+              label: 'Top rated',
+              count: library.ratedCount,
+              onTap: () => openLibrary(sortBy: SortField.rating),
+            ),
+            ProfileLink(
+              icon: Icons.people_alt_rounded,
+              label: 'Followers',
+              count: followers,
+              onTap: () => openFollowers(FollowListKind.followers),
+            ),
+            ProfileLink(
+              icon: Icons.person_add_alt_1_rounded,
+              label: 'Following',
+              count: followingCount,
+              onTap: () => openFollowers(FollowListKind.following),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // Fetched only when "View Achievements" is pressed.
         AchievementsSection(userId: userId),
       ],
     );
@@ -324,150 +413,16 @@ class _Loaded extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title, {this.count});
+  const _SectionTitle(this.title);
   final String title;
-  final int? count;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-          ),
-          if (count != null) ...[
-            const SizedBox(width: 8),
-            Text(
-              fmtCount(count!),
-              style: const TextStyle(
-                color: Palette.muted,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyNote extends StatelessWidget {
-  const _EmptyNote(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Panel(
-    child: Text(
-      text,
-      style: const TextStyle(color: Palette.muted, fontSize: 13, height: 1.35),
-    ),
-  );
-}
-
-/// Three posters across. A wrap rather than a lazy grid, because it sits inside
-/// the page's own scroll view and holds one page of 30 at a time.
-class _LibraryGrid extends StatelessWidget {
-  const _LibraryGrid({required this.games});
-  final List<Game> games;
-
-  static const double _gap = 12;
-  static const int _columns = 3;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = (constraints.maxWidth - _gap * (_columns - 1)) / _columns;
-        return Wrap(
-          spacing: _gap,
-          runSpacing: 16,
-          children: [
-            for (final game in games)
-              GamePosterCard(
-                game: game,
-                width: width,
-                showUnrated: false,
-                subtitle: game.status?.label,
-                subtitleIcon: game.status?.icon,
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Loads the next page of the library when pressed. A button rather than "load
-/// when scrolled to": the page is one scroll view, so everything would be built,
-/// and so loaded, at once.
-class _ShowMore extends StatelessWidget {
-  const _ShowMore({required this.userId, required this.view});
-  final String userId;
-  final PublicProfileView view;
-
-  @override
-  Widget build(BuildContext context) {
-    final remaining = view.libraryTotal - view.library.length;
-    final String label;
-    if (view.loadMoreLibraryFailed) {
-      label = 'Couldn’t load. Tap to retry';
-    } else if (view.loadingMoreLibrary) {
-      label = 'Loading…';
-    } else {
-      label = 'Show more ($remaining left)';
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: SizedBox(
-        width: double.infinity,
-        child: OutlinedButton(
-          onPressed: view.loadingMoreLibrary
-              ? null
-              : () => unawaited(
-                  context.read<PublicProfileStore>().loadMoreLibrary(userId),
-                ),
-          child: Text(label),
-        ),
-      ),
-    );
-  }
-}
-
-/// A connected service, in its brand color. Not tappable: the member's account
-/// names and Steam ID are private; only the fact that it is linked is shown.
-class _ServiceChip extends StatelessWidget {
-  const _ServiceChip({required this.service});
-  final ConnectedService service;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '${service.label} connected',
-      excludeSemantics: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: service.color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: service.color.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FaIcon(service.icon, size: 16, color: service.color),
-            const SizedBox(width: 8),
-            Text(
-              service.label,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-            ),
-          ],
-        ),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
       ),
     );
   }

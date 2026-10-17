@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/public_profile.dart';
@@ -20,8 +21,17 @@ void main() {
   late PublicProfileStore store;
   late DateTime clock;
 
-  Game owned(String id, {bool favorite = false, double rating = 4}) =>
-      testGame(id, favorite: favorite, cover: false).copyWith(rating: rating);
+  Game owned(
+    String id, {
+    bool favorite = false,
+    double rating = 4,
+    GameStatus status = GameStatus.playing,
+  }) => testGame(
+    id,
+    favorite: favorite,
+    cover: false,
+    status: status,
+  ).copyWith(rating: rating);
 
   setUp(() {
     debugPrint = (String? message, {int? wrapWidth}) {};
@@ -48,11 +58,23 @@ void main() {
       expect(repo.memberReads, isEmpty);
     });
 
-    test('loads the header, the counts and the three game sections', () async {
+    test('loads the header, the counts, the favorites, the latest sessions and the library numbers', () async {
       repo.memberGames['m1'] = [
-        owned('fav', favorite: true, rating: 5),
-        owned('rated', rating: 3),
-        owned('plain', rating: 0),
+        owned('fav', favorite: true, rating: 5).copyWith(hoursPlayed: 10),
+        owned('rated', rating: 3).copyWith(hoursPlayed: 5),
+        owned(
+          'plain',
+          rating: 0,
+          status: GameStatus.wishlist,
+        ).copyWith(hoursPlayed: 0),
+      ];
+      repo.memberActivity['m1'] = [
+        ActivityEntry(
+          game: testGame('rated', status: null, cover: false),
+          hours: 2,
+          platform: GamePlatform.pc,
+          at: DateTime.utc(2026, 10, 1),
+        ),
       ];
 
       await store.load('m1');
@@ -65,10 +87,12 @@ void main() {
       expect(view.stats!.followers, 5);
       expect(view.stats!.games, 3);
       expect(view.favorites.map((g) => g.id), ['fav']);
-      expect(view.rated.map((g) => g.id), ['fav', 'rated']);
-      expect(view.library.map((g) => g.id), ['fav', 'rated', 'plain']);
-      expect(view.libraryTotal, 3);
-      expect(view.libraryHasMore, isFalse);
+      expect(view.activity.single.game.id, 'rated');
+      expect(view.library.games, 3);
+      expect(view.library.totalHours, 15);
+      expect(view.library.count(GameStatus.wishlist), 1);
+      expect(view.library.ratedCount, 2);
+      expect(view.library.ratingCounts, {5.0: 1, 3.0: 1});
     });
 
     test('leaves the signed-in member\'s own ProfileStore alone', () async {
@@ -208,7 +232,7 @@ void main() {
     test(
       'is dropped when another account signs in, and after sign-out',
       () async {
-        repo.memberGames['m1'] = [owned('g1')];
+        repo.memberGames['m1'] = [owned('g1', favorite: true)];
         await store.load('m1');
         expect(store.gameById('g1'), isNotNull);
 
@@ -254,84 +278,6 @@ void main() {
     );
   });
 
-  group('the library', () {
-    setUp(() {
-      repo.memberGames['m1'] = [
-        for (var i = 0; i < 70; i++) owned('g$i', rating: 0),
-      ];
-    });
-
-    test('comes a page at a time, until the total is reached', () async {
-      await store.load('m1');
-      var view = store.viewOf('m1');
-      expect(view.library, hasLength(30));
-      expect(view.libraryTotal, 70);
-      expect(view.libraryHasMore, isTrue);
-
-      await store.loadMoreLibrary('m1');
-      expect(store.viewOf('m1').library, hasLength(60));
-
-      await store.loadMoreLibrary('m1');
-      view = store.viewOf('m1');
-      expect(view.library.map((g) => g.id), [
-        for (var i = 0; i < 70; i++) 'g$i',
-      ]);
-      expect(view.libraryHasMore, isFalse);
-
-      await store.loadMoreLibrary('m1'); // nothing left: no request
-      expect(reads('library:m1:70'), 0);
-    });
-
-    test('two calls at once fetch one page', () async {
-      await store.load('m1');
-
-      await Future.wait([
-        store.loadMoreLibrary('m1'),
-        store.loadMoreLibrary('m1'),
-      ]);
-
-      expect(reads('library:m1:30'), 1);
-      expect(store.viewOf('m1').library, hasLength(60));
-    });
-
-    test('a failed page can be retried', () async {
-      await store.load('m1');
-      repo.failProfileReads = true;
-
-      await store.loadMoreLibrary('m1');
-      expect(store.viewOf('m1').loadMoreLibraryFailed, isTrue);
-      expect(store.viewOf('m1').library, hasLength(30));
-
-      repo.failProfileReads = false;
-      await store.loadMoreLibrary('m1');
-      expect(store.viewOf('m1').loadMoreLibraryFailed, isFalse);
-      expect(store.viewOf('m1').library, hasLength(60));
-    });
-
-    test(
-      'stops asking when the server has fewer games than the count said',
-      () async {
-        repo.stats['m1'] = const PublicProfileStats(
-          followers: 0,
-          following: 0,
-          viewerFollows: false,
-          games: 90, // 20 of these were removed since
-        );
-        await store.load('m1');
-        await store.loadMoreLibrary('m1');
-        await store.loadMoreLibrary('m1');
-        expect(store.viewOf('m1').library, hasLength(70));
-
-        await store.loadMoreLibrary('m1'); // an empty page
-        expect(store.viewOf('m1').libraryHasMore, isFalse);
-        final asked = reads('library:m1:70');
-
-        await store.loadMoreLibrary('m1');
-        expect(reads('library:m1:70'), asked);
-      },
-    );
-  });
-
   group('followersFor', () {
     test(
       'counts the viewer\'s own follow or unfollow since the page was read',
@@ -364,7 +310,7 @@ void main() {
 
   group('gameById', () {
     test(
-      'finds a game from a loaded profile without the owner\'s own state',
+      'finds a favorite from a loaded profile without the owner\'s own state',
       () async {
         repo.memberGames['m1'] = [owned('g1', favorite: true, rating: 5)];
         await store.load('m1');
@@ -379,5 +325,24 @@ void main() {
         expect(store.gameById('missing'), isNull);
       },
     );
+
+    test('finds a game from the latest sessions too', () async {
+      repo.memberActivity['m1'] = [
+        ActivityEntry(
+          game: testGame(
+            'seen',
+            title: 'Seen Lately',
+            status: null,
+            cover: false,
+          ),
+          hours: 1,
+          platform: GamePlatform.pc,
+          at: DateTime.utc(2026, 10, 1),
+        ),
+      ];
+      await store.load('m1');
+
+      expect(store.gameById('seen')!.title, 'Seen Lately');
+    });
   });
 }

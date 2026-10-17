@@ -5,6 +5,7 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
+import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -28,6 +29,7 @@ class GameDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<LibraryStore>().maybeGame(gameId);
+    final isLoggedIn = context.watch<AuthStore>().isLoggedIn;
     if (game == null) {
       return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.error_outline_rounded, title: 'Game not found', message: 'It may have been removed.'));
     }
@@ -45,6 +47,20 @@ class GameDetailScreen extends StatelessWidget {
             child: Center(child: _RoundIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.maybePop(context))),
           ),
           actions: [
+            // Wishlist: for a game that is not in the library yet, or is only on the
+            // wishlist. A game being played or finished has moved past it.
+            if (isLoggedIn && (game.status == null || game.status == GameStatus.wishlist))
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Center(
+                  child: _RoundIconButton(
+                    icon: game.status == GameStatus.wishlist ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+                    color: game.status == GameStatus.wishlist ? GameStatus.wishlist.color : Colors.white,
+                    tooltip: game.status == GameStatus.wishlist ? 'Remove from wishlist' : 'Add to wishlist',
+                    onTap: () => toggleWishlist(context, game),
+                  ),
+                ),
+              ),
             if (game.status != null) // Only show heart if it's in the library
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -52,6 +68,7 @@ class GameDetailScreen extends StatelessWidget {
                   child: _RoundIconButton(
                     icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     color: game.isFavorite ? Palette.danger : Colors.white,
+                    tooltip: game.isFavorite ? 'Remove from favorites' : 'Add to favorites',
                     onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
                   ),
                 ),
@@ -134,10 +151,11 @@ class GameDetailScreen extends StatelessWidget {
 }
 
 class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.onTap, this.color});
+  const _RoundIconButton({required this.icon, required this.onTap, this.color, this.tooltip});
   final IconData icon;
   final VoidCallback onTap;
   final Color? color;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -148,10 +166,37 @@ class _RoundIconButton extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.38),
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: Icon(icon, size: 18, color: color ?? Colors.white)),
+        child: InkWell(
+          onTap: onTap,
+          child: Tooltip(message: tooltip ?? '', child: Icon(icon, size: 18, color: color ?? Colors.white)),
+        ),
       ),
     );
   }
+}
+
+/// Puts [game] on the wishlist, or takes it off. A wishlisted game is a library
+/// entry with the Wishlist status, so unlike favorites (four at most) there is no
+/// limit. The snack bar can undo it.
+void toggleWishlist(BuildContext context, Game game) {
+  final store = context.read<LibraryStore>();
+  final messenger = ScaffoldMessenger.of(context);
+  final wishlisted = game.status == GameStatus.wishlist;
+  if (wishlisted) {
+    store.removeFromLibrary(game.id);
+  } else {
+    store.addToLibrary(game.id, GameStatus.wishlist);
+  }
+  HapticFeedback.mediumImpact();
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(wishlisted ? 'Removed ${game.title} from your wishlist' : 'Added ${game.title} to your wishlist'),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => wishlisted ? store.addToLibrary(game.id, GameStatus.wishlist) : store.removeFromLibrary(game.id),
+      ),
+    ));
 }
 
 class _DetailHeaderArt extends StatelessWidget {
@@ -307,6 +352,12 @@ class _StatusActions extends StatelessWidget {
           onPressed: () => change(GameStatus.playing, 'Started playing'),
           icon: const Icon(Icons.play_circle_rounded, size: 18),
           label: const Text('Start Playing'),
+        ),
+      if (game.status == null)
+        TextButton.icon(
+          onPressed: () => toggleWishlist(context, game),
+          icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+          label: const Text('Add to Wishlist'),
         ),
       if (game.status != null) ...[
         const SizedBox(width: double.infinity, height: 4),

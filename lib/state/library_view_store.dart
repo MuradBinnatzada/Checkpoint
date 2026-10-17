@@ -9,10 +9,14 @@ import 'package:checkpoint/state/nav_store.dart';
 /// selected status tab. It is screen state only, with no data of its own, so
 /// re-sorting rebuilds the Library tab and nothing that merely reads the games.
 /// Hand [visible] / [count] the games from [LibraryStore].
+///
+/// Another member's Library screen makes its own instance, without a [NavStore]:
+/// that one has no tab of the app to switch to, so [openTab] is the signed-in
+/// member's only.
 class LibraryViewStore extends ChangeNotifier {
-  LibraryViewStore({required this._nav});
+  LibraryViewStore({this._nav});
 
-  final NavStore _nav;
+  final NavStore? _nav;
 
   static final _epoch = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -54,7 +58,7 @@ class LibraryViewStore extends ChangeNotifier {
       _sortDescending = true;
     }
     notifyListeners();
-    _nav.select(NavTab.library);
+    _nav?.select(NavTab.library);
   }
 
   void setView(LibraryView v) {

@@ -7,9 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:checkpoint/data/db_schema.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
+import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_cover.dart';
+import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
@@ -158,17 +160,32 @@ class CheckpointRepository {
         .eq(Db.id, userId);
   }
 
-  /// Saves which services the signed-in user has connected on their own
-  /// `profiles` row, which is what other members see on their profile. Only the
-  /// names go up, never the PSN / Xbox / Discord account names (those stay on the
-  /// device), and never Steam (it follows from the Steam ID). Replaces the whole
-  /// list, so sending the same set twice is harmless. Read back with
-  /// [fetchProfile] (as [UserProfile.connectedServices]).
-  Future<void> setConnectedServices(Set<ConnectedService> services) async {
+  /// Saves which services the signed-in user has connected, and the account
+  /// names behind PSN, Xbox and Discord, on their own `profiles` row. This is what
+  /// other members see on the profile: the icons, and what tapping one opens.
+  /// Replaces everything, so sending the same accounts twice is harmless, and a
+  /// service that is not connected has its name cleared. Never Steam: it follows
+  /// from the Steam ID. Read back with [fetchProfile] (as
+  /// [UserProfile.connectedServices] and its account names).
+  Future<void> setConnectedAccounts(ConnectedAccounts accounts) async {
     final userId = _requireUserId();
+    String? name(ConnectedService s) {
+      if (!accounts.services.contains(s)) return null;
+      final text = accounts.nameOf(s)?.trim();
+      if (text == null || text.isEmpty) return null;
+      return text.length <= accountNameMaxLength
+          ? text
+          : text.substring(0, accountNameMaxLength);
+    }
+
     await _client
         .from(Db.profiles)
-        .update({Db.connectedServices: connectedServicesToDb(services)})
+        .update({
+          Db.connectedServices: connectedServicesToDb(accounts.services),
+          Db.psnId: name(ConnectedService.psn),
+          Db.xboxId: name(ConnectedService.xbox),
+          Db.discordId: name(ConnectedService.discord),
+        })
         .eq(Db.id, userId);
   }
 
@@ -456,17 +473,27 @@ class CheckpointRepository {
   /// Favorites on a profile: the app lets a member pick four.
   static const int publicFavoritesLimit = 4;
 
-  /// Best-rated games on a profile.
-  static const int publicRatedLimit = 20;
+  /// Recent sessions on a profile.
+  static const int publicActivityLimit = 4;
 
-  /// Games per page of a profile's library.
-  static const int publicLibraryPageSize = 30;
+  /// Everything `public_profiles` has: see 20261018120000_public_profile_details.sql.
+  static final String _publicProfileColumns = [
+    _memberColumns,
+    Db.steamConnected,
+    Db.connectedServices,
+    Db.bio,
+    Db.steamId,
+    Db.psnId,
+    Db.xboxId,
+    Db.discordId,
+    Db.joinedAt,
+  ].join(', ');
 
   /// The header of [userId]'s profile, or null when no such member exists.
   Future<PublicProfile?> fetchPublicProfile(String userId) async {
     final row = await _client
         .from(Db.publicProfiles)
-        .select('$_memberColumns, ${Db.steamConnected}, ${Db.connectedServices}')
+        .select(_publicProfileColumns)
         .eq(Db.id, userId)
         .maybeSingle();
     return row == null ? null : _publicProfileFromRow(row);
@@ -490,15 +517,9 @@ class CheckpointRepository {
     );
   }
 
-  /// Columns of `public_user_games`. No purchase price, no achievements.
-  static final String _publicGameColumns = [
-    Db.gameId,
-    Db.status,
-    Db.rating,
-    Db.hoursPlayed,
-    Db.playedOn,
-    Db.dateAdded,
-    Db.isFavorite,
+  /// The catalog columns of a game, as `games`, `public_user_games` and
+  /// `public_recent_activity` all have them.
+  static final List<String> _catalogColumns = [
     Db.igdbId,
     Db.steamAppId,
     Db.title,
@@ -509,13 +530,46 @@ class CheckpointRepository {
     Db.genres,
     Db.summary,
     Db.coverUrl,
+  ];
+
+  /// Columns of `public_user_games`. No purchase price, no achievements.
+  static final String _publicGameColumns = [
+    Db.gameId,
+    Db.status,
+    Db.rating,
+    Db.hoursPlayed,
+    Db.playedOn,
+    Db.dateAdded,
+    Db.isFavorite,
+    ..._catalogColumns,
   ].join(', ');
 
-  PostgrestFilterBuilder<List<Map<String, dynamic>>> _publicGames(String userId) =>
-      _client
-          .from(Db.publicUserGames)
-          .select(_publicGameColumns)
-          .eq(Db.userId, userId);
+  /// What [LibraryStats] needs and nothing more, so a big library is a small read.
+  static final String _statsColumns = [
+    Db.gameId,
+    Db.status,
+    Db.rating,
+    Db.hoursPlayed,
+    Db.playedOn,
+    Db.platforms,
+  ].join(', ');
+
+  /// Columns of `public_recent_activity`.
+  static final String _activityColumns = [
+    Db.gameId,
+    Db.hours,
+    Db.platform,
+    Db.loggedAt,
+    ..._catalogColumns,
+  ].join(', ');
+
+  PostgrestFilterBuilder<List<Map<String, dynamic>>> _publicGames(
+    String userId, [
+    String? columns,
+  ]) => _client
+      .from(Db.publicUserGames)
+      .select(columns ?? _publicGameColumns)
+      .eq(Db.userId, userId);
 
   /// [userId]'s favorite games, newest first, at most [publicFavoritesLimit].
   Future<List<Game>> fetchPublicFavorites(String userId) async {
@@ -527,30 +581,53 @@ class CheckpointRepository {
     return rows.map<Game>(_gameFromPublicRow).toList(growable: false);
   }
 
-  /// [userId]'s best-rated games: highest rating first, then most played.
-  Future<List<Game>> fetchPublicRatedGames(String userId) async {
-    final rows = await _publicGames(userId)
-        .gt(Db.rating, 0)
-        .order(Db.rating, ascending: false)
-        .order(Db.hoursPlayed, ascending: false)
-        .order(Db.gameId, ascending: true)
-        .limit(publicRatedLimit);
-    return rows.map<Game>(_gameFromPublicRow).toList(growable: false);
+  /// Counts and sums over [userId]'s whole library (games per status, hours,
+  /// ratings). Reads only the few columns they need, a page of 500 at a time, so
+  /// even a big library is a small payload.
+  Future<LibraryStats> fetchPublicLibraryStats(String userId) async {
+    final rows = await _readAllPages(Db.gameId, (after) {
+      final query = _publicGames(userId, _statsColumns);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId, ascending: true)
+          .limit(_pageSize);
+    });
+    return LibraryStats.of(rows.map<Game>(_gameFromPublicRow));
   }
 
-  /// One page of [userId]'s library, newest first, starting at [offset]. The
-  /// total number of games is in [PublicProfileStats.games].
-  Future<List<Game>> fetchPublicLibrary(
+  /// [userId]'s whole library, newest first, for their Library screen. Read like
+  /// [fetchUserGames]: a page of 500 at a time, keyed on `game_id`.
+  Future<List<Game>> fetchPublicLibrary(String userId) async {
+    final rows = await _readAllPages(Db.gameId, (after) {
+      final query = _publicGames(userId);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId, ascending: true)
+          .limit(_pageSize);
+    });
+    return rows.map<Game>(_gameFromPublicRow).toList()..sort(_newestFirst);
+  }
+
+  /// [userId]'s latest play sessions, newest first, one per game (the latest of
+  /// each), at most [limit]. The notes they wrote are not readable.
+  Future<List<ActivityEntry>> fetchPublicActivity(
     String userId, {
-    int offset = 0,
-    int limit = publicLibraryPageSize,
+    int limit = publicActivityLimit,
   }) async {
-    final rows = await _publicGames(userId)
-        .order(Db.dateAdded, ascending: false, nullsFirst: false)
-        // `game_id` breaks ties, so a page boundary is stable.
-        .order(Db.gameId, ascending: true)
-        .range(offset, offset + limit - 1);
-    return rows.map<Game>(_gameFromPublicRow).toList(growable: false);
+    // Several sessions of one game count once, so ask for more rows than [limit].
+    final rows = await _client
+        .from(Db.publicRecentActivity)
+        .select(_activityColumns)
+        .eq(Db.userId, userId)
+        .order(Db.loggedAt, ascending: false)
+        .order(Db.id, ascending: true)
+        .limit(limit * 10);
+    final seen = <String>{};
+    final entries = <ActivityEntry>[];
+    for (final row in rows) {
+      if (!seen.add('${row[Db.gameId]}')) continue;
+      entries.add(_activityFromRow(row));
+      if (entries.length >= limit) break;
+    }
+    return entries;
   }
 
   /// The members who follow [userId], newest follow first. A full page means
@@ -775,6 +852,9 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     avatarUrl: _firstText([row[Db.avatarUrl]]),
     steamId: _firstText([row[Db.steamId]]),
     connectedServices: connectedServicesFromDb(row[Db.connectedServices]),
+    psnId: _firstText([row[Db.psnId]]),
+    xboxId: _firstText([row[Db.xboxId]]),
+    discordId: _firstText([row[Db.discordId]]),
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,
@@ -806,8 +886,23 @@ PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
     avatarUrl: _firstText([row[Db.avatarUrl]]),
     steamConnected: row[Db.steamConnected] == true,
     services: connectedServicesFromDb(row[Db.connectedServices]),
+    bio: _firstText([row[Db.bio]]),
+    steamId: _firstText([row[Db.steamId]]),
+    psnId: _firstText([row[Db.psnId]]),
+    xboxId: _firstText([row[Db.xboxId]]),
+    discordId: _firstText([row[Db.discordId]]),
+    joined: _date(row[Db.joinedAt]),
   );
 }
+
+/// A play session on someone's profile, from a `public_recent_activity` row. The
+/// game is the catalog game, with none of the player's own state.
+ActivityEntry _activityFromRow(Map<String, dynamic> row) => ActivityEntry(
+  game: _gameFromCatalogRow({...row, Db.id: row[Db.gameId]}),
+  hours: _double(row[Db.hours]),
+  platform: gamePlatformFromDb(row[Db.platform]) ?? GamePlatform.pc,
+  at: _date(row[Db.loggedAt]) ?? DateTime.now(),
+);
 
 /// A game on another member's profile: the catalog data and the owner's tracking
 /// fields, from a `public_user_games` row. The purchase price is never read.

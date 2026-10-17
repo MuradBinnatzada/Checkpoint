@@ -35,11 +35,11 @@
       <li><strong>Account information.</strong> When you sign in with Google, we receive your name, email address, profile picture and Google account identifier. We request only the basic profile scopes (<code>openid</code>, <code>email</code>, <code>profile</code>). If you sign up with an email and password instead, we store your email address and a password hash handled by our authentication provider.</li>
       <li><strong>Your profile.</strong> Your display name, username, bio and avatar. Your avatar is the picture you upload, or the one from your Google account.</li>
       <li><strong>Your library.</strong> The games you add and, for each one, your status, rating, hours played, purchase price, favourite flag and the platform you played on, plus any play sessions and notes you log.</li>
-      <li><strong>Steam information (optional).</strong> If you connect Steam, we store the Steam ID you enter. We use it to fetch your owned games and playtime, and, if you ask for them, the achievements for a game. After you have imported your library once, we also refresh it automatically in the background about twice a day while you are actively using the app, so your playtime stays current. This works only if your Steam profile's game details are public.</li>
-      <li><strong>Connected services (optional).</strong> Which of PlayStation, Xbox, Discord and Nintendo you have marked as connected, stored as the names of the services only (Steam is covered above). The usernames you enter for them are not stored on our servers.</li>
+      <li><strong>Steam information (optional).</strong> If you connect Steam, we store the Steam ID you enter. We use it to fetch your owned games and playtime, and, if you ask for them, the achievements for a game. Other signed-in members can see your Steam ID (it is the link on your profile's Steam icon). After you have imported your library once, we also refresh it automatically in the background about twice a day while you are actively using the app, so your playtime stays current. This works only if your Steam profile's game details are public.</li>
+      <li><strong>Connected services (optional).</strong> Which of PlayStation, Xbox, Discord and Nintendo you have marked as connected, and the PSN id, Xbox gamertag and Discord username you enter for them (Steam is covered above). Other signed-in members can see them: they are what the icons on your profile open.</li>
       <li><strong>Social activity.</strong> Which members you follow.</li>
       <li><strong>Search terms.</strong> When you search for a game, the search term is sent to our server so it can look the game up.</li>
-      <li><strong>On your device.</strong> The app keeps your sign-in session, your recent searches and the gaming usernames you enter for PlayStation, Xbox and Discord on your device only. These last three are not sent to our servers.</li>
+      <li><strong>On your device.</strong> The app keeps your sign-in session, your recent searches and a saved copy of your library and profile so it works offline.</li>
     </ul>
 
     <h2>How we use it</h2>
@@ -47,8 +47,9 @@
 
     <h2>Who can see what</h2>
     <ul>
-      <li><strong>Private to you:</strong> your email address, your Steam ID, and your whole library: ratings, hours, notes and logs.</li>
-      <li><strong>Visible to other signed-in members:</strong> your display name, username and avatar, which services you have connected (that they are connected, not your usernames or Steam ID), and the list of who follows whom.</li>
+      <li><strong>Private to you:</strong> your email address, the purchase price you enter for a game, and the notes you write on play sessions.</li>
+      <li><strong>Visible to other signed-in members:</strong> your display name, username, avatar, bio and the month you joined; your library (each game with its status, your rating, hours played, the platform you played on and whether it is a favourite) and so the totals made from it; your latest play sessions (the game, hours, platform and when, without notes); who follows whom; and the accounts you connected: your Steam ID, PSN id, Xbox gamertag and Discord username. Your Steam achievements are shown to another member only when they ask to see them.</li>
+      <li>Nothing in this list is visible to people who are not signed in.</li>
       <li>Your avatar image is stored in a public file bucket, so anyone with its link can view it.</li>
     </ul>
 

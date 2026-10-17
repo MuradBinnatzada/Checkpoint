@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
@@ -16,9 +14,11 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/connected_service_badges.dart';
 import 'package:checkpoint/widgets/count_stat.dart';
 import 'package:checkpoint/widgets/favorite_games_row.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
+import 'package:checkpoint/widgets/hours_by_platform_panel.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
 import 'package:checkpoint/widgets/stat_tile.dart';
@@ -37,53 +37,10 @@ class ProfileScreen extends StatelessWidget {
     final library = context.watch<LibraryStore>();
     final p = profileStore.profile;
     final userId = context.watch<AuthStore>().user?.id;
-    final byPlatform = library.hoursByPlatform.entries.toList();
-    final maxH = byPlatform.isEmpty ? 1.0 : byPlatform.first.value;
     final top = library.topRated;
     final favorites = library.libraryGames.where((g) => g.isFavorite).toList();
     final hasBio = p.bio != null && p.bio!.trim().isNotEmpty;
     final connectedServices = profileStore.connectedServices;
-    final steamId = profileStore.steamId;
-    final steamUrl = steamId != null && steamId.isNotEmpty ? Uri.https('steamcommunity.com', '/profiles/$steamId') : null;
-
-    Future<bool> openLink(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
-
-    // Where tapping a connected service's badge leads, once its ID is saved.
-    // Steam, Xbox and PSN open the profile page; Discord has no public profile
-    // URL, so it copies the username to the clipboard instead.
-    ({String tooltip, VoidCallback onTap})? badgeLink(ConnectedService s) {
-      switch (s) {
-        case ConnectedService.steam:
-          if (steamUrl == null) return null;
-          return (tooltip: 'Open Steam profile', onTap: () => openLink(steamUrl));
-        case ConnectedService.xbox:
-          final id = profileStore.xboxId;
-          if (id == null || id.isEmpty) return null;
-          return (tooltip: 'Open Xbox profile', onTap: () => openLink(Uri.https('xboxgamertag.com', '/search/$id')));
-        case ConnectedService.psn:
-          final id = profileStore.psnId;
-          if (id == null || id.isEmpty) return null;
-          return (tooltip: 'Open PSN profile', onTap: () => openLink(Uri.https('psnprofiles.com', '/$id')));
-        case ConnectedService.discord:
-          final id = profileStore.discordId;
-          if (id == null || id.isEmpty) return null;
-          return (
-            tooltip: 'Copy Discord username',
-            onTap: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              await Clipboard.setData(ClipboardData(text: id));
-              messenger
-                ..hideCurrentSnackBar()
-                ..showSnackBar(const SnackBar(content: Text('Discord username copied to clipboard')));
-            },
-          );
-        case ConnectedService.nintendo:
-          return null;
-      }
-    }
-
-    final badgeLinks = {for (final s in connectedServices) s: badgeLink(s)};
-
     return SafeArea(
       bottom: false,
       child: Center(
@@ -117,40 +74,47 @@ class ProfileScreen extends StatelessWidget {
                     if (hasBio) Text(p.bio!, style: const TextStyle(height: 1.4, color: Colors.white70)),
                     if (hasBio && connectedServices.isNotEmpty) const SizedBox(height: 12),
                     if (connectedServices.isNotEmpty)
-                      Wrap(spacing: 6, runSpacing: 8, children: [
-                        // ConnectedService.values keeps the order stable, matching the
-                        // Connected accounts panel below.
-                        for (final s in ConnectedService.values)
-                          if (connectedServices.contains(s))
-                            _ServiceBadge(
-                              service: s,
-                              // Tappable only once an ID has been saved (see badgeLink above).
-                              tooltip: badgeLinks[s]?.tooltip,
-                              onTap: badgeLinks[s]?.onTap,
-                            ),
-                      ]),
+                      ConnectedServiceBadges(
+                        services: connectedServices,
+                        steamId: profileStore.steamId,
+                        psnId: profileStore.psnId,
+                        xboxId: profileStore.xboxId,
+                        discordId: profileStore.discordId,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
               ],
               // Tapping a count opens the list behind it.
-              Row(children: [
-                CountStat(
-                  value: fmtCount(profileStore.followersCount),
-                  label: 'Followers',
-                  onTap: userId == null
-                      ? null
-                      : () => openFollowList(context, userId: userId, kind: FollowListKind.followers, ownerName: p.name),
-                ),
-                const SizedBox(width: 14),
-                CountStat(
-                  value: fmtCount(profileStore.followingCount),
-                  label: 'Following',
-                  onTap: userId == null
-                      ? null
-                      : () => openFollowList(context, userId: userId, kind: FollowListKind.following, ownerName: p.name),
-                ),
-              ]),
+              Row(
+                children: [
+                  CountStat(
+                    value: fmtCount(profileStore.followersCount),
+                    label: 'Followers',
+                    onTap: userId == null
+                        ? null
+                        : () => openFollows(
+                            context,
+                            userId: userId,
+                            kind: FollowListKind.followers,
+                            ownerName: p.name,
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  CountStat(
+                    value: fmtCount(profileStore.followingCount),
+                    label: 'Following',
+                    onTap: userId == null
+                        ? null
+                        : () => openFollows(
+                            context,
+                            userId: userId,
+                            kind: FollowListKind.following,
+                            ownerName: p.name,
+                          ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
@@ -375,30 +339,7 @@ class ProfileScreen extends StatelessWidget {
                 ]),
               ),
               const SizedBox(height: 14),
-              Panel(
-                title: 'Hours by platform',
-                child: byPlatform.isEmpty
-                    ? const Text('Log a session to see your breakdown.', style: TextStyle(color: Palette.muted))
-                    : Column(children: [
-                        for (final e in byPlatform)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(children: [
-                              Icon(e.key.icon, size: 18, color: e.key.color),
-                              const SizedBox(width: 10),
-                              SizedBox(width: 82, child: Text(e.key.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(5),
-                                  child: LinearProgressIndicator(value: e.value / maxH, minHeight: 9, color: e.key.color, backgroundColor: Colors.white10),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              SizedBox(width: 52, child: Text('${fmtHours(e.value)} h', textAlign: TextAlign.end, style: const TextStyle(fontSize: 12.5, color: Palette.muted))),
-                            ]),
-                          ),
-                      ]),
-              ),
+              HoursByPlatformPanel(hours: library.hoursByPlatform),
               if (top.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 const Padding(
@@ -508,34 +449,6 @@ class _UsernameDialogState extends State<_UsernameDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: _submit, child: const Text('Connect')),
       ],
-    );
-  }
-}
-
-/// Small, subtle icon badge for a connected service. Tappable only when [onTap]
-/// is provided (Steam, Xbox, PSN and Discord, once an ID has been saved).
-class _ServiceBadge extends StatelessWidget {
-  const _ServiceBadge({required this.service, this.onTap, this.tooltip});
-  final ConnectedService service;
-  final VoidCallback? onTap;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? service.label,
-      // Transparent Material so the InkWell ripple still has somewhere to paint,
-      // without drawing a background or border behind the icon.
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
-            child: FaIcon(service.icon, size: 20, color: service.color),
-          ),
-        ),
-      ),
     );
   }
 }

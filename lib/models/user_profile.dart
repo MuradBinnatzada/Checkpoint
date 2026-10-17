@@ -11,6 +11,9 @@ class UserProfile {
     this.avatarUrl,
     this.steamId,
     this.connectedServices = const {},
+    this.psnId,
+    this.xboxId,
+    this.discordId,
     required this.joined,
     this.followers = 248,
     this.following = 120,
@@ -23,6 +26,9 @@ class UserProfile {
         avatarUrl: json['avatarUrl'] as String?,
         steamId: json['steamId'] as String?,
         connectedServices: connectedServicesFromDb(json['connectedServices']),
+        psnId: json['psnId'] as String?,
+        xboxId: json['xboxId'] as String?,
+        discordId: json['discordId'] as String?,
         joined: DateTime.parse(json['joined'] as String).toLocal(),
         followers: (json['followers'] as num).toInt(),
         following: (json['following'] as num).toInt(),
@@ -41,6 +47,12 @@ class UserProfile {
   /// connected: the list other members see. The PSN / Xbox / Discord names behind
   /// them are not on the server.
   final Set<ConnectedService> connectedServices;
+
+  /// The account names the server has for PSN, Xbox and Discord
+  /// (`profiles.psn_id` and so on): what other members' icons open.
+  final String? psnId;
+  final String? xboxId;
+  final String? discordId;
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
@@ -54,6 +66,9 @@ class UserProfile {
         'avatarUrl': avatarUrl,
         'steamId': steamId,
         'connectedServices': connectedServicesToDb(connectedServices),
+        'psnId': psnId,
+        'xboxId': xboxId,
+        'discordId': discordId,
         'joined': joined.toUtc().toIso8601String(),
         'followers': followers,
         'following': following,
@@ -75,6 +90,9 @@ class UserProfile {
         avatarUrl: avatarUrl ?? this.avatarUrl,
         steamId: clearSteamId ? null : (steamId ?? this.steamId),
         connectedServices: connectedServices,
+        psnId: psnId,
+        xboxId: xboxId,
+        discordId: discordId,
         joined: joined,
         followers: followers,
         following: following,

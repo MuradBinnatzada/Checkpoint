@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
 
-/// Another member's profile header: what `public_profiles` exposes. No email, bio
-/// or Steam ID; [steamConnected] only says that a Steam account is linked. The
-/// same goes for the other services: [services] names them, and the account names
-/// behind PSN, Xbox and Discord stay on the owner's device.
+/// Another member's profile header: what `public_profiles` exposes to signed-in
+/// members. That is the name, handle, photo, bio, which services they linked and
+/// the account names behind them (what makes the service icons tappable). Never
+/// the email.
 @immutable
 class PublicProfile {
   const PublicProfile({
@@ -15,6 +15,12 @@ class PublicProfile {
     this.avatarUrl,
     this.steamConnected = false,
     this.services = const {},
+    this.bio,
+    this.steamId,
+    this.psnId,
+    this.xboxId,
+    this.discordId,
+    this.joined,
   });
 
   final String id;
@@ -27,6 +33,20 @@ class PublicProfile {
 
   /// The connected services besides Steam (`profiles.connected_services`).
   final Set<ConnectedService> services;
+
+  /// Null when they wrote none.
+  final String? bio;
+
+  /// Steam ID64, PSN id, Xbox gamertag and Discord username, as the member
+  /// entered them. Null when not given (a service can be connected without a
+  /// name, until the member's app has uploaded it).
+  final String? steamId;
+  final String? psnId;
+  final String? xboxId;
+  final String? discordId;
+
+  /// When they joined.
+  final DateTime? joined;
 
   /// Every service the member has connected, Steam (derived from [steamConnected])
   /// included.

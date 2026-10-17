@@ -160,4 +160,126 @@ void main() {
       expect(chip(GamePlatform.emulator), findsOneWidget);
     });
   });
+
+  group('wishlist', () {
+    setUp(() {
+      // Signed in: the wishlist is a part of the library.
+      stores = AppStores(
+        repository: repo,
+        authService: FakeAuthService(testUser('u1')),
+        connectivity: FakeConnectivity(),
+      );
+    });
+
+    Future<void> openGameScreen(WidgetTester tester, String id) async {
+      await start(tester, GameDetailScreen(gameId: id));
+      await tester.pumpAndSettle();
+    }
+
+    Finder add() => find.byTooltip('Add to wishlist');
+    Finder remove() => find.byTooltip('Remove from wishlist');
+
+    testWidgets('a game that is not in the library can be bookmarked, at once and with an undo', (
+      tester,
+    ) async {
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      await openGameScreen(tester, 'g1');
+      expect(add(), findsOneWidget);
+      expect(remove(), findsNothing);
+
+      await tester.tap(add());
+      await tester.pumpAndSettle();
+
+      expect(stores.library.maybeGame('g1')!.status, GameStatus.wishlist);
+      expect(remove(), findsOneWidget); // the bookmark is filled now
+      expect(add(), findsNothing);
+      expect(find.text('Added Game g1 to your wishlist'), findsOneWidget);
+      expect(repo.writes.any((w) => w.startsWith('game:g1:GameStatus.wishlist')), isTrue);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(stores.library.maybeGame('g1')!.status, isNull);
+      expect(add(), findsOneWidget);
+    });
+
+    testWidgets('a wishlisted game can be taken off the wishlist', (tester) async {
+      repo.library = [testGame('g1', status: GameStatus.wishlist, cover: false, hours: 0)];
+      await openGameScreen(tester, 'g1');
+      expect(remove(), findsOneWidget);
+
+      await tester.tap(remove());
+      await tester.pumpAndSettle();
+
+      expect(stores.library.maybeGame('g1')!.status, isNull);
+      expect(find.text('Removed Game g1 from your wishlist'), findsOneWidget);
+      expect(repo.writes, contains('delete:g1'));
+      expect(tester.takeException(), isNull); // the page stays; no "Game not found"
+      expect(find.text('Game not found'), findsNothing);
+    });
+
+    testWidgets('a game being played has moved past the wishlist: no bookmark, but the heart', (
+      tester,
+    ) async {
+      repo.library = [testGame('g1', status: GameStatus.playing, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      expect(add(), findsNothing);
+      expect(remove(), findsNothing);
+      expect(find.byTooltip('Add to favorites'), findsOneWidget);
+    });
+
+    testWidgets('a wishlisted game can be a favorite too', (tester) async {
+      repo.library = [testGame('g1', status: GameStatus.wishlist, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      expect(find.byTooltip('Add to favorites'), findsOneWidget);
+    });
+
+    testWidgets('signed out there is no bookmark', (tester) async {
+      stores = AppStores(
+        repository: repo,
+        authService: FakeAuthService(),
+        connectivity: FakeConnectivity(),
+      );
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      expect(add(), findsNothing);
+    });
+
+    testWidgets('"Add to Wishlist" is also among the status actions of a game that is not in the library', (
+      tester,
+    ) async {
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      await openGameScreen(tester, 'g1');
+      await tester.scrollUntilVisible(
+        find.text('Add to Wishlist'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      await tester.ensureVisible(find.text('Add to Wishlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to Wishlist'));
+      await tester.pumpAndSettle();
+
+      expect(stores.library.maybeGame('g1')!.status, GameStatus.wishlist);
+      expect(find.text('Add to Wishlist'), findsNothing);
+    });
+
+    testWidgets('there is no limit, unlike favorites', (tester) async {
+      repo.popular = [
+        for (var i = 0; i < 7; i++) testGame('g$i', status: null, cover: false),
+      ];
+      await tester.runAsync(stores.initialize);
+
+      for (var i = 0; i < 7; i++) {
+        await stores.library.addToLibrary('g$i', GameStatus.wishlist);
+      }
+
+      expect(stores.library.count(GameStatus.wishlist), 7);
+      expect(stores.library.notice, isNull);
+      addTearDown(stores.dispose);
+    });
+  });
 }

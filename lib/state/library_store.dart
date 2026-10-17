@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connection_failure.dart';
@@ -763,19 +764,8 @@ class LibraryStore extends ChangeNotifier {
 
   /// Total hours per platform, based on each game's total playtime (so hours
   /// imported via Steam sync count too, not just manually logged sessions).
-  Map<GamePlatform, double> get hoursByPlatform {
-    final m = <GamePlatform, double>{};
-    for (final g in _libraryGames) {
-      if (g.hoursPlayed <= 0) continue;
-      final platform =
-          g.playedOn ??
-          (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
-      m[platform] = (m[platform] ?? 0) + g.hoursPlayed;
-    }
-    final entries = m.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return Map.fromEntries(entries);
-  }
+  Map<GamePlatform, double> get hoursByPlatform =>
+      LibraryStats.hoursByPlatformOf(_libraryGames);
 
   List<Game> get topRated {
     final rated = _libraryGames.where((g) => g.rating > 0).toList()

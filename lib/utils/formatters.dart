@@ -7,6 +7,9 @@ import 'package:checkpoint/theme/palette.dart';
 
 String fmtCount(int n) => n < 1000 ? '$n' : '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}k';
 
+/// 1280 -> "1,280": the exact number, for places that have room for it.
+String fmtThousands(int n) => n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+
 String fmtHours(double h) => (h - h.roundToDouble()).abs() < 0.05 ? h.round().toString() : h.toStringAsFixed(1);
 String fmtMoney(double v) => '\$${v.toStringAsFixed(2)}';
 double? parseNum(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
@@ -75,3 +78,6 @@ InputDecoration fieldDecoration(
 
 final decimalFormatter = FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'));
 const decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
+
+/// "Oct 2026": the month and year of [d], as stored, without shifting it to local time.
+String fmtMonthYear(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';

@@ -617,7 +617,7 @@ void main() {
       'cover_url': 'https://images.igdb.com/hades.jpg',
     };
 
-    test('fetchPublicProfile reads the public view, with the Steam flag but never the ID', () async {
+    test('fetchPublicProfile reads the public view, never the email', () async {
       api.reply({
         'id': 'm1',
         'handle': 'zed',
@@ -632,41 +632,58 @@ void main() {
       expect(api.last.url.path, '/rest/v1/public_profiles');
       expect(query['id'], 'eq.m1');
       expect(query['select'], contains('steam_connected'));
-      expect(query['select'], isNot(contains('steam_id')));
       expect(query['select'], isNot(contains('email')));
-      expect(query['select'], isNot(contains('bio')));
       expect(profile!.name, 'Zed');
       expect(profile.handle, '@zed');
       expect(profile.avatarUrl, 'https://example.com/zed.png');
       expect(profile.steamConnected, isTrue);
     });
 
-    test('fetchPublicProfile reads which services are connected, as names only', () async {
+    test('fetchPublicProfile reads the bio, the services and the account names behind them', () async {
       api.reply({
         'id': 'm1',
         'handle': 'zed',
         'display_name': 'Zed',
-        'steam_connected': false,
+        'bio': ' Speedrunner ',
+        'steam_connected': true,
+        'steam_id': '76561198000000000',
+        'psn_id': 'zed_psn',
+        'xbox_id': '  ',
+        'discord_id': 'zed#1',
+        'joined_at': '2026-03-04T00:00:00+00:00',
         'connected_services': ['xbox', 'psn', 'nintendo', 'discord'],
       });
 
       final profile = (await repo.fetchPublicProfile('m1'))!;
 
       final select = api.last.url.queryParameters['select']!;
-      expect(select, contains('connected_services'));
-      // Only the service names are asked for: never an account name or the Steam ID.
-      for (final private in ['psn_id', 'xbox_id', 'discord_id', 'steam_id']) {
-        expect(select, isNot(contains(private)));
+      for (final column in [
+        'connected_services',
+        'bio',
+        'steam_id',
+        'psn_id',
+        'xbox_id',
+        'discord_id',
+        'joined_at',
+      ]) {
+        expect(select, contains(column));
       }
+      expect(select, isNot(contains('email')));
+      expect(profile.bio, 'Speedrunner');
+      expect(profile.steamId, '76561198000000000');
+      expect(profile.psnId, 'zed_psn');
+      expect(profile.xboxId, isNull); // blank text is no name
+      expect(profile.discordId, 'zed#1');
+      expect(profile.joined!.toUtc(), DateTime.utc(2026, 3, 4));
       expect(profile.services, {
         ConnectedService.psn,
         ConnectedService.xbox,
         ConnectedService.discord,
         ConnectedService.nintendo,
       });
-      expect(profile.steamConnected, isFalse);
-      // The chips come out in the enum's order, Steam first when it is linked.
+      // The icons come out in the enum's order, Steam first when it is linked.
       expect(profile.connectedServices.toList(), [
+        ConnectedService.steam,
         ConnectedService.discord,
         ConnectedService.psn,
         ConnectedService.xbox,
@@ -768,23 +785,112 @@ void main() {
       expect(game.coverUrl, 'https://images.igdb.com/hades.jpg');
     });
 
-    test('rated games are the best rated first', () async {
-      await repo.fetchPublicRatedGames('m1');
+    test('library stats read only the columns they need, a keyed page at a time', () async {
+      api.serveTable([
+        for (var i = 0; i < 3; i++)
+          {
+            'game_id': 'g$i',
+            'status': i == 0 ? 'completed' : 'playing',
+            'rating': i == 0 ? 5 : 0,
+            'hours_played': 10 + i,
+            'played_on': 'ps5',
+            'platforms': ['pc'],
+          },
+      ], 'game_id');
+
+      final stats = await repo.fetchPublicLibraryStats('m1');
 
       final query = api.last.url.queryParameters;
-      expect(query['rating'], 'gt.0');
-      expect(query['order'], startsWith('rating.desc'));
-      expect(query['limit'], '20');
+      expect(api.last.url.path, '/rest/v1/public_user_games');
+      expect(query['user_id'], 'eq.m1');
+      expect(query['limit'], '500');
+      for (final heavy in ['title', 'summary', 'cover_url', 'purchase_price', 'achievements']) {
+        expect(query['select'], isNot(contains(heavy)));
+      }
+      expect(stats.games, 3);
+      expect(stats.count(GameStatus.playing), 2);
+      expect(stats.count(GameStatus.completed), 1);
+      expect(stats.totalHours, 33);
+      expect(stats.hoursByPlatform, {GamePlatform.ps5: 33});
+      expect(stats.ratedCount, 1);
+      expect(stats.ratingCounts, {5.0: 1});
     });
 
-    test('the library is read a page at a time, newest first', () async {
-      await repo.fetchPublicLibrary('m1', offset: 30, limit: 30);
+    test('library stats reach every row of a library bigger than a page', () async {
+      api.serveTable([
+        for (var i = 0; i < 1200; i++)
+          {
+            'game_id': 'g${i.toString().padLeft(5, '0')}',
+            'status': 'playing',
+            'rating': 0,
+            'hours_played': 1,
+            'played_on': 'pc',
+            'platforms': ['pc'],
+          },
+      ], 'game_id');
+
+      final stats = await repo.fetchPublicLibraryStats('m1');
+
+      expect(stats.games, 1200);
+      expect(stats.totalHours, 1200);
+      expect(api.requests, hasLength(3)); // 500 + 500 + 200
+    });
+
+    test('the whole library comes with its covers, newest first, from the public view', () async {
+      api.serveTable([
+        publicGameRow('g1'),
+        {...publicGameRow('g2'), 'date_added': '2026-05-01T10:00:00+00:00', 'title': 'Newer'},
+      ], 'game_id');
+
+      final games = await repo.fetchPublicLibrary('m1');
 
       final query = api.last.url.queryParameters;
       expect(query['user_id'], 'eq.m1');
-      expect(query['order'], startsWith('date_added.desc.nullslast'));
-      expect(query['offset'], '30');
-      expect(query['limit'], '30');
+      expect(query['select'], contains('cover_url'));
+      expect(query['select'], isNot(contains('purchase_price')));
+      expect(query['select'], isNot(contains('achievements')));
+      expect(games.map((g) => g.title), ['Newer', 'Hades']);
+      expect(games.first.rating, 4.5);
+    });
+
+    test('recent activity is one row per game, newest first, without the note', () async {
+      Map<String, dynamic> session(String gameId, String title, String at, {Object? hours = 2}) => {
+        'game_id': gameId,
+        'hours': hours,
+        'platform': 'ps5',
+        'logged_at': at,
+        'igdb_id': 7,
+        'title': title,
+        'publisher': 'P',
+        'developer': 'D',
+        'release_year': 2020,
+        'platforms': ['ps5'],
+        'genres': ['RPG'],
+        'summary': 's',
+        'cover_url': 'https://images.igdb.com/c.jpg',
+      };
+      api.reply([
+        session('g1', 'Hades', '2026-03-03T10:00:00+00:00', hours: '1.5'),
+        session('g1', 'Hades', '2026-03-02T10:00:00+00:00'),
+        session('g2', 'Celeste', '2026-03-01T10:00:00+00:00'),
+        session('g3', 'Tunic', '2026-02-28T10:00:00+00:00'),
+      ]);
+
+      final activity = await repo.fetchPublicActivity('m1', limit: 2);
+
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, '/rest/v1/public_recent_activity');
+      expect(query['user_id'], 'eq.m1');
+      expect(query['order'], startsWith('logged_at.desc'));
+      expect(query['select'], isNot(contains('note')));
+      expect(query['limit'], '20'); // more rows than asked, to skip repeats of a game
+      expect(activity.map((e) => e.game.title), ['Hades', 'Celeste']);
+      expect(activity.first.hours, 1.5);
+      expect(activity.first.platform, GamePlatform.ps5);
+      expect(activity.first.at.toUtc(), DateTime.utc(2026, 3, 3, 10));
+      // The game is the catalog one: none of the player's own state.
+      expect(activity.first.game.status, isNull);
+      expect(activity.first.game.id, 'g1');
     });
 
     test('followers come from the followers view, newest follow first, with their photo', () async {
@@ -857,8 +963,9 @@ void main() {
       api.reply({'id': 'm1', 'handle': 'zed', 'display_name': 'Zed'});
       await repo.fetchPublicProfile('m1');
       await repo.fetchPublicFavorites('m1');
-      await repo.fetchPublicRatedGames('m1');
+      await repo.fetchPublicLibraryStats('m1');
       await repo.fetchPublicLibrary('m1');
+      await repo.fetchPublicActivity('m1');
       await repo.fetchFollowers('m1');
       await repo.fetchFollowing('m1');
 
@@ -866,6 +973,7 @@ void main() {
         expect(request.url.path, isNot('/rest/v1/profiles'));
         expect(request.url.path, isNot('/rest/v1/user_games'));
         expect(request.url.path, isNot('/rest/v1/social_follows'));
+        expect(request.url.path, isNot('/rest/v1/log_entries'));
       }
     });
   });
@@ -945,33 +1053,81 @@ void main() {
       expect(row['is_favorite'], isFalse);
     });
 
-    test('setConnectedServices replaces the list on the signed-in user\'s row with names only', () async {
+    test('setConnectedAccounts replaces the services and the account names on the signed-in user\'s row', () async {
       await signIn('u1');
 
-      await repo.setConnectedServices({
-        ConnectedService.xbox,
-        ConnectedService.steam, // derived from steam_id, never stored
-        ConnectedService.psn,
-      });
+      await repo.setConnectedAccounts(const ConnectedAccounts(
+        services: {
+          ConnectedService.xbox,
+          ConnectedService.steam, // derived from steam_id, never stored
+          ConnectedService.psn,
+          ConnectedService.nintendo,
+        },
+        psnId: ' ps_user ',
+        xboxId: 'gamer',
+      ));
 
       expect(api.last.method, 'PATCH');
       expect(api.last.url.path, '/rest/v1/profiles');
       expect(api.last.url.queryParameters['id'], 'eq.u1');
       expect(api.bodyOf(api.last), {
-        'connected_services': ['psn', 'xbox'],
+        'connected_services': ['nintendo', 'psn', 'xbox'],
+        'psn_id': 'ps_user',
+        'xbox_id': 'gamer',
+        'discord_id': null,
       });
     });
 
-    test('setConnectedServices with nothing connected writes an empty list', () async {
+    test('a name for a service that is not connected is cleared, not sent', () async {
       await signIn('u1');
 
-      await repo.setConnectedServices({});
+      await repo.setConnectedAccounts(const ConnectedAccounts(
+        services: {ConnectedService.psn},
+        psnId: 'ps_user',
+        xboxId: 'left_over',
+        discordId: 'left_over#1',
+      ));
 
-      expect(api.bodyOf(api.last), {'connected_services': <String>[]});
+      expect(api.bodyOf(api.last), {
+        'connected_services': ['psn'],
+        'psn_id': 'ps_user',
+        'xbox_id': null,
+        'discord_id': null,
+      });
     });
 
-    test('setConnectedServices needs a signed-in user', () async {
-      await expectLater(repo.setConnectedServices({ConnectedService.psn}), throwsStateError);
+    test('a blank name is stored as none, and a very long one is cut to what the database allows', () async {
+      await signIn('u1');
+
+      await repo.setConnectedAccounts(ConnectedAccounts(
+        services: const {ConnectedService.psn, ConnectedService.xbox},
+        psnId: '   ',
+        xboxId: 'x' * 100,
+      ));
+
+      final body = api.bodyOf(api.last) as Map<String, dynamic>;
+      expect(body['psn_id'], isNull);
+      expect(body['xbox_id'], 'x' * accountNameMaxLength);
+    });
+
+    test('setConnectedAccounts with nothing connected clears everything', () async {
+      await signIn('u1');
+
+      await repo.setConnectedAccounts(const ConnectedAccounts());
+
+      expect(api.bodyOf(api.last), {
+        'connected_services': <String>[],
+        'psn_id': null,
+        'xbox_id': null,
+        'discord_id': null,
+      });
+    });
+
+    test('setConnectedAccounts needs a signed-in user', () async {
+      await expectLater(
+        repo.setConnectedAccounts(const ConnectedAccounts(services: {ConnectedService.psn})),
+        throwsStateError,
+      );
       expect(api.requests, isEmpty);
     });
 

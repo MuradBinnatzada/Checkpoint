@@ -1,26 +1,30 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
+import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/screens/game_detail/game_detail_screen.dart';
-import 'package:checkpoint/screens/profile/follow_list_screen.dart';
+import 'package:checkpoint/screens/profile/follows_screen.dart';
 import 'package:checkpoint/screens/profile/profile_screen.dart';
+import 'package:checkpoint/screens/profile/public_library_screen.dart';
 import 'package:checkpoint/screens/profile/public_profile_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
+import 'package:checkpoint/widgets/count_stat.dart';
 
 import 'support/fakes.dart';
 
-/// Another member's profile, their follower lists and their achievements, on the
-/// real screens over fake data sources.
+/// Another member's profile, their follower lists, their library and their
+/// achievements, on the real screens over fake data sources.
 void main() {
   late FakeRepository repo;
   late FakeAuthService authService;
@@ -31,11 +35,15 @@ void main() {
     String title, {
     bool favorite = false,
     double rating = 4,
+    GameStatus status = GameStatus.playing,
+    double hours = 10,
   }) => testGame(
     id,
     title: title,
     favorite: favorite,
     cover: false,
+    status: status,
+    hours: hours,
   ).copyWith(rating: rating);
 
   setUp(() {
@@ -46,6 +54,17 @@ void main() {
       repository: repo,
       authService: authService,
       connectivity: FakeConnectivity(),
+    );
+    repo.members['m1'] = PublicProfile(
+      id: 'm1',
+      name: 'Member One',
+      handle: '@member_one',
+      bio: 'Speedrunner and soulslike enjoyer.',
+      steamConnected: true,
+      steamId: '76561198000000000',
+      services: {ConnectedService.discord, ConnectedService.nintendo},
+      discordId: 'member#1',
+      joined: DateTime.utc(2026, 3, 4),
     );
     repo.members['m2'] = const PublicProfile(
       id: 'm2',
@@ -58,9 +77,48 @@ void main() {
       handle: '@ada',
     );
     repo.memberGames['m1'] = [
-      owned('fav', 'Favourite Quest', favorite: true, rating: 5),
-      owned('rated', 'Rated Rogue', rating: 3),
-      owned('plain', 'Plain Platformer', rating: 0),
+      owned(
+        'fav',
+        'Favourite Quest',
+        favorite: true,
+        rating: 5,
+        status: GameStatus.completed,
+        hours: 40,
+      ),
+      owned(
+        'rated',
+        'Rated Rogue',
+        rating: 3,
+        status: GameStatus.playing,
+        hours: 12,
+      ),
+      owned(
+        'plain',
+        'Plain Platformer',
+        rating: 0,
+        status: GameStatus.toPlay,
+        hours: 0,
+      ),
+      owned(
+        'wish',
+        'Wished Wonder',
+        rating: 0,
+        status: GameStatus.wishlist,
+        hours: 0,
+      ),
+    ];
+    repo.memberActivity['m1'] = [
+      ActivityEntry(
+        game: testGame(
+          'rated',
+          title: 'Rated Rogue',
+          status: null,
+          cover: false,
+        ),
+        hours: 2.5,
+        platform: GamePlatform.pc,
+        at: DateTime.now().subtract(const Duration(hours: 5)),
+      ),
     ];
     repo.followersOf['m1'] = [testMember('f1', name: 'Follower One')];
     repo.followingOf['m1'] = [testMember('m2', name: 'Second')];
@@ -89,7 +147,7 @@ void main() {
   });
 
   Future<void> open(WidgetTester tester, Widget screen) async {
-    tester.view.physicalSize = const Size(800, 3200);
+    tester.view.physicalSize = const Size(800, 4200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.runAsync(stores.initialize);
@@ -106,30 +164,145 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> openProfile(WidgetTester tester, [String userId = 'm1']) =>
+      open(tester, PublicProfileScreen(userId: userId));
+
+  double top(WidgetTester tester, Finder finder) =>
+      tester.getTopLeft(finder.first).dy;
+
   group('the profile', () {
     testWidgets(
-      'shows who they are, their counts, their services and their games',
+      'shows who they are: name, handle, member since, bio and the linked services',
       (tester) async {
-        await open(tester, const PublicProfileScreen(userId: 'm1'));
+        await openProfile(tester);
 
         expect(find.text('Member One'), findsOneWidget);
         expect(find.text('@member_one'), findsOneWidget);
-        expect(find.text('5'), findsOneWidget); // followers
-        expect(find.text('Followers'), findsOneWidget);
-        expect(find.text('Following'), findsWidgets);
-        expect(
-          find.text('Steam'),
-          findsOneWidget,
-        ); // the connected-account chip
-        expect(find.text('Favorite Games'), findsOneWidget);
-        expect(find.text('Rated Games'), findsOneWidget);
-        expect(find.text('Library'), findsOneWidget);
-        // The favorite and the rated game are in more than one section.
-        expect(find.text('Favourite Quest'), findsWidgets);
-        expect(find.text('Rated Rogue'), findsWidgets);
-        expect(find.text('Plain Platformer'), findsOneWidget); // library only
+        expect(find.text('Member since Mar 2026'), findsOneWidget);
+        expect(find.text('Speedrunner and soulslike enjoyer.'), findsOneWidget);
+        // The icons, as on your own profile; tapping one opens the account.
+        expect(find.byTooltip('Open Steam profile'), findsOneWidget);
+        expect(find.byTooltip('Copy Discord username'), findsOneWidget);
+        expect(find.byTooltip('Nintendo'), findsOneWidget); // nothing to open
       },
     );
+
+    testWidgets(
+      'lays the page out in order: favorites, recent activity, playtime, boxes, hours, ratings, menu',
+      (tester) async {
+        await openProfile(tester);
+
+        final order = [
+          top(tester, find.text('Favorite Games')),
+          top(tester, find.text('Recent activity')),
+          top(tester, find.textContaining('Total Playtime')),
+          top(tester, find.text('Playing').first),
+          top(tester, find.text('Hours by platform')),
+          top(tester, find.text('Ratings')),
+          top(tester, find.text('Wishlist')),
+          top(tester, find.text('View Achievements')),
+        ];
+        expect(order, orderedEquals([...order]..sort()));
+        // The follow button comes before all of it, where Edit Profile is on yours.
+        expect(
+          top(tester, find.widgetWithText(FilledButton, 'Follow')),
+          lessThan(order.first),
+        );
+      },
+    );
+
+    testWidgets(
+      'shows their numbers: playtime, the four boxes, hours per platform, ratings',
+      (tester) async {
+        await openProfile(tester);
+
+        expect(find.text('Total Playtime: 52 hours'), findsOneWidget);
+        // Playing 1, Completed 1, To Play 1, Dropped 0.
+        expect(find.text('1'), findsWidgets);
+        expect(find.text('0'), findsOneWidget);
+        expect(find.text('52 h'), findsOneWidget); // all on PC
+        // Average of 5 and 3, and how many are rated.
+        expect(find.text('4.0'), findsOneWidget);
+        expect(find.text('2 rated'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'shows the latest sessions, and a tapped one opens the game as the catalog has it',
+      (tester) async {
+        await openProfile(tester);
+
+        expect(find.text('2.5 h · PC'), findsOneWidget);
+        expect(find.text('5h ago'), findsOneWidget);
+
+        await tester.tap(find.text('2.5 h · PC'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(GameDetailScreen), findsOneWidget);
+        expect(find.text('Game not found'), findsNothing);
+        expect(find.text('Not in your library'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a member with no bio, no services and no games says what is missing, without a gap',
+      (tester) async {
+        repo.members['m3'] = const PublicProfile(
+          id: 'm3',
+          name: 'Newbie',
+          handle: '@newbie',
+        );
+        await openProfile(tester, 'm3');
+
+        expect(find.text('No favorites picked yet.'), findsOneWidget);
+        expect(find.text('No sessions logged yet.'), findsOneWidget);
+        expect(find.text('No hours logged yet.'), findsOneWidget);
+        expect(find.text('No rated games yet.'), findsOneWidget);
+        expect(find.text('Total Playtime: 0 hours'), findsOneWidget);
+        expect(find.byTooltip('Open Steam profile'), findsNothing);
+      },
+    );
+
+    testWidgets('the Discord icon copies the username', (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await openProfile(tester);
+
+      await tester.tap(find.byTooltip('Copy Discord username'));
+      await tester.pump();
+
+      expect(copied, 'member#1');
+      expect(find.text('Discord username copied to clipboard'), findsOneWidget);
+    });
+
+    testWidgets('a service without a saved name is not tappable', (
+      tester,
+    ) async {
+      repo.members['m1'] = const PublicProfile(
+        id: 'm1',
+        name: 'Member One',
+        handle: '@member_one',
+        services: {ConnectedService.psn},
+      );
+      await openProfile(tester);
+
+      expect(find.byTooltip('PSN'), findsOneWidget); // not "Open PSN profile"
+      expect(find.byTooltip('Open PSN profile'), findsNothing);
+    });
 
     testWidgets('shows the name from the tapped row while it loads', (
       tester,
@@ -160,81 +333,15 @@ void main() {
       stores.dispose();
     });
 
-    testWidgets('a member with PSN connected shows a PSN chip, and only the services they connected', (
-      tester,
-    ) async {
-      repo.members['m4'] = const PublicProfile(
-        id: 'm4',
-        name: 'Console Fan',
-        handle: '@console_fan',
-        services: {ConnectedService.psn, ConnectedService.nintendo},
-      );
-      await open(tester, const PublicProfileScreen(userId: 'm4'));
-
-      // What a screen reader announces for each chip.
-      Finder announced(String label) => find.byWidgetPredicate(
-        (w) => w is Semantics && w.properties.label == label,
-      );
-      expect(announced('PSN connected'), findsOneWidget);
-      expect(find.text('PSN'), findsOneWidget);
-      expect(announced('Nintendo connected'), findsOneWidget);
-      expect(find.text('Nintendo'), findsOneWidget);
-      // Not connected, so no chip; and the panel is not the empty one.
-      expect(find.text('Steam'), findsNothing);
-      expect(find.text('Xbox'), findsNothing);
-      expect(find.text('Discord'), findsNothing);
-      expect(announced('Xbox connected'), findsNothing);
-      expect(find.text('No connected accounts.'), findsNothing);
-    });
-
-    testWidgets('Steam and the other services sit side by side, Steam first', (
-      tester,
-    ) async {
-      repo.members['m5'] = const PublicProfile(
-        id: 'm5',
-        name: 'Everything',
-        handle: '@everything',
-        steamConnected: true,
-        services: {ConnectedService.xbox, ConnectedService.discord},
-      );
-      await open(tester, const PublicProfileScreen(userId: 'm5'));
-
-      for (final label in ['Steam', 'Discord', 'Xbox']) {
-        expect(find.text(label), findsOneWidget);
-      }
-      expect(find.text('PSN'), findsNothing);
-      final steam = tester.getTopLeft(find.text('Steam')).dx;
-      final discord = tester.getTopLeft(find.text('Discord')).dx;
-      final xbox = tester.getTopLeft(find.text('Xbox')).dx;
-      expect(steam, lessThan(discord));
-      expect(discord, lessThan(xbox));
-    });
-
-    testWidgets('a member without connected services or games says so', (
-      tester,
-    ) async {
-      repo.members['m3'] = const PublicProfile(
-        id: 'm3',
-        name: 'Newbie',
-        handle: '@newbie',
-      );
-      await open(tester, const PublicProfileScreen(userId: 'm3'));
-
-      expect(find.text('No connected accounts.'), findsOneWidget);
-      expect(find.text('No favorites picked yet.'), findsOneWidget);
-      expect(find.text('No rated games yet.'), findsOneWidget);
-      expect(find.text('Nothing in their library yet.'), findsOneWidget);
-    });
-
     testWidgets('a deleted member shows "Profile not found"', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'ghost'));
+      await openProfile(tester, 'ghost');
 
       expect(find.text('Profile not found'), findsOneWidget);
     });
 
     testWidgets('a failed load offers a retry that works', (tester) async {
       repo.failProfileReads = true;
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       expect(find.text('Could not load this profile'), findsOneWidget);
 
       repo.failProfileReads = false;
@@ -247,8 +354,13 @@ void main() {
     testWidgets(
       'Follow becomes Following and moves the follower count at once',
       (tester) async {
-        await open(tester, const PublicProfileScreen(userId: 'm1'));
-        expect(find.text('5'), findsOneWidget);
+        await openProfile(tester);
+        // The count over the "Followers" label (the menu row below shows it too).
+        Finder followers(String count) => find.descendant(
+          of: find.widgetWithText(CountStat, 'Followers'),
+          matching: find.text(count),
+        );
+        expect(followers('5'), findsOneWidget);
 
         await tester.tap(find.widgetWithText(FilledButton, 'Follow'));
         await tester.pumpAndSettle();
@@ -258,62 +370,215 @@ void main() {
           find.widgetWithText(OutlinedButton, 'Following'),
           findsOneWidget,
         );
-        expect(find.text('6'), findsOneWidget);
-        expect(find.text('5'), findsNothing);
+        expect(followers('6'), findsOneWidget);
+        expect(find.text('6'), findsWidgets); // and in the menu row
 
         await tester.tap(find.widgetWithText(OutlinedButton, 'Following'));
         await tester.pumpAndSettle();
 
-        expect(find.text('5'), findsOneWidget);
+        expect(followers('5'), findsOneWidget);
         expect(find.widgetWithText(FilledButton, 'Follow'), findsOneWidget);
       },
     );
 
     testWidgets('your own page has no Follow button', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'u1'));
+      await openProfile(tester, 'u1');
 
       expect(find.text('This is you'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Follow'), findsNothing);
       expect(find.widgetWithText(OutlinedButton, 'Following'), findsNothing);
     });
+  });
+
+  group('the boxes and the menu open their library', () {
+    testWidgets(
+      'a box opens it on that status, with the games of that status only',
+      (tester) async {
+        await openProfile(tester);
+
+        await tester.tap(find.text('Completed'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(PublicLibraryScreen), findsOneWidget);
+        expect(find.text('Library'), findsWidgets);
+      expect(find.text('Member One'), findsOneWidget); // whose it is, under the title
+        expect(find.text('FAVOURITE QUEST'), findsOneWidget);
+        expect(find.text('RATED ROGUE'), findsNothing);
+        expect(find.text('Search in Completed'), findsOneWidget);
+      },
+    );
 
     testWidgets(
-      'a game opened from their profile is the catalog game, not their copy',
+      'the library has a tab per status with counts, and "All" shows every game',
       (tester) async {
-        await open(tester, const PublicProfileScreen(userId: 'm1'));
+        await open(
+          tester,
+          const PublicLibraryScreen(userId: 'm1', ownerName: 'Member One'),
+        );
 
-        await tester.tap(find.text('Plain Platformer'));
+        for (final label in [
+          'All',
+          'Playing',
+          'To Play',
+          'Completed',
+          'Dropped',
+          'Wishlist',
+        ]) {
+          expect(
+            find.widgetWithText(Tab, label),
+            findsOneWidget,
+            reason: label,
+          );
+        }
+        for (final title in [
+          'FAVOURITE QUEST',
+          'RATED ROGUE',
+          'PLAIN PLATFORMER',
+          'WISHED WONDER',
+        ]) {
+          expect(find.text(title), findsOneWidget, reason: title);
+        }
+
+        await tester.tap(find.widgetWithText(Tab, 'Wishlist'));
+        await tester.pumpAndSettle();
+        expect(find.text('WISHED WONDER'), findsOneWidget);
+        expect(find.text('FAVOURITE QUEST'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'the search box narrows the games, and says so when nothing matches',
+      (tester) async {
+        await open(
+          tester,
+          const PublicLibraryScreen(userId: 'm1', ownerName: 'Member One'),
+        );
+
+        await tester.enterText(find.byType(TextField), 'rogue');
+        await tester.pumpAndSettle();
+        expect(find.text('RATED ROGUE'), findsOneWidget);
+        expect(find.text('FAVOURITE QUEST'), findsNothing);
+
+        await tester.enterText(find.byType(TextField), 'zzz');
+        await tester.pumpAndSettle();
+        expect(find.text('No matches for "zzz"'), findsOneWidget);
+
+        await tester.tap(find.text('Clear search'));
+        await tester.pumpAndSettle();
+        expect(find.text('FAVOURITE QUEST'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the menu rows open the library: Wishlist on its tab, Top rated sorted by rating',
+      (tester) async {
+        await openProfile(tester);
+
+        await tester.tap(find.text('Wishlist').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Search in Wishlist'), findsOneWidget);
+        expect(find.text('WISHED WONDER'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Top rated'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Sorted by Rating'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a game opened from their library is the catalog game, not their copy',
+      (tester) async {
+        await open(
+          tester,
+          const PublicLibraryScreen(userId: 'm1', ownerName: 'Member One'),
+        );
+
+        await tester.tap(find.text('PLAIN PLATFORMER'));
         await tester.pumpAndSettle();
 
         expect(find.byType(GameDetailScreen), findsOneWidget);
         expect(find.text('Game not found'), findsNothing);
         expect(find.text('Not in your library'), findsOneWidget);
-        expect(find.text('Your rating'), findsOneWidget);
-        // Their 4-star rating, hours and status are theirs, not the viewer's.
-        expect(find.text('4 / 5'), findsNothing);
+        expect(find.text('4 / 5'), findsNothing); // their rating is theirs
+      },
+    );
+
+    testWidgets('a library that cannot be loaded offers a retry', (
+      tester,
+    ) async {
+      repo.failMemberLibrary = true;
+      await open(
+        tester,
+        const PublicLibraryScreen(userId: 'm1', ownerName: 'Member One'),
+      );
+      expect(find.text('Could not load this library'), findsOneWidget);
+
+      repo.failMemberLibrary = false;
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(find.text('FAVOURITE QUEST'), findsOneWidget);
+    });
+
+    testWidgets(
+      'the member\'s library does not touch the arrangement of yours',
+      (tester) async {
+        await open(
+          tester,
+          const PublicLibraryScreen(
+            userId: 'm1',
+            ownerName: 'Member One',
+            initialStatus: GameStatus.wishlist,
+          ),
+        );
+
+        expect(
+          stores.libraryView.selectedStatus,
+          isNull,
+        ); // your Library tab stays on All
       },
     );
   });
 
-  group('follower and following lists', () {
-    testWidgets('the counts open the lists', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+  group('followers and following', () {
+    testWidgets(
+      'the counts open one screen on the tab that was tapped, with both counts',
+      (tester) async {
+        await openProfile(tester);
 
-      await tester.tap(find.text('Followers'));
-      await tester.pumpAndSettle();
-      expect(find.byType(FollowListScreen), findsOneWidget);
-      expect(find.text('Follower One'), findsOneWidget);
-      expect(repo.memberReads, contains('followers:m1:0'));
+        await tester.tap(find.text('Followers').first);
+        await tester.pumpAndSettle();
 
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+        expect(find.byType(FollowsScreen), findsOneWidget);
+        expect(find.widgetWithText(Tab, '5 followers'), findsOneWidget);
+        expect(find.widgetWithText(Tab, '2 following'), findsOneWidget);
+        expect(find.text('Follower One'), findsOneWidget);
+        expect(repo.memberReads, contains('followers:m1:0'));
+        expect(
+          repo.memberReads,
+          isNot(contains('following:m1:0')),
+        ); // not asked until shown
+
+        await tester.tap(find.widgetWithText(Tab, '2 following'));
+        await tester.pumpAndSettle();
+        expect(find.text('Second'), findsOneWidget);
+        expect(repo.memberReads, contains('following:m1:0'));
+      },
+    );
+
+    testWidgets('tapping Following opens on the Following tab', (tester) async {
+      await openProfile(tester);
+
       await tester.tap(find.text('Following').first);
       await tester.pumpAndSettle();
+
       expect(find.text('Second'), findsOneWidget);
+      expect(find.text('Follower One'), findsNothing);
     });
 
     testWidgets('a member in a list opens their profile', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       await tester.tap(find.text('Following').first);
       await tester.pumpAndSettle();
 
@@ -325,20 +590,20 @@ void main() {
     });
 
     testWidgets('an empty list says so', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       repo.followersOf['m1'] = [];
 
-      await tester.tap(find.text('Followers'));
+      await tester.tap(find.text('Followers').first);
       await tester.pumpAndSettle();
 
       expect(find.text('No followers yet'), findsOneWidget);
     });
 
     testWidgets('a list that fails to load offers a retry', (tester) async {
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       repo.failFollowLists = true;
 
-      await tester.tap(find.text('Followers'));
+      await tester.tap(find.text('Followers').first);
       await tester.pumpAndSettle();
       expect(find.text('Could not load followers'), findsOneWidget);
 
@@ -353,9 +618,9 @@ void main() {
         testMember('u1', name: 'Ada'),
         testMember('f1', name: 'Follower One'),
       ];
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
 
-      await tester.tap(find.text('Followers'));
+      await tester.tap(find.text('Followers').first);
       await tester.pumpAndSettle();
 
       expect(find.text('You'), findsOneWidget);
@@ -367,18 +632,36 @@ void main() {
   });
 
   group('your own profile', () {
-    testWidgets('the Followers and Following counts open your lists', (
+    Future<void> openOwn(WidgetTester tester) =>
+        open(tester, const Scaffold(body: ProfileScreen()));
+
+    testWidgets(
+      'the Followers count opens your lists on that tab, with your counts',
+      (tester) async {
+        repo.followersOf['u1'] = [testMember('f9', name: 'Fan Nine')];
+        await openOwn(tester);
+
+        await tester.tap(find.text('Followers'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FollowsScreen), findsOneWidget);
+        expect(find.text('Fan Nine'), findsOneWidget);
+        expect(find.widgetWithText(Tab, '3 followers'), findsOneWidget);
+        expect(find.widgetWithText(Tab, '1 following'), findsOneWidget);
+        expect(repo.memberReads, contains('followers:u1:0'));
+      },
+    );
+
+    testWidgets('the Following count opens your following list', (
       tester,
     ) async {
-      repo.followersOf['u1'] = [testMember('f9', name: 'Fan Nine')];
-      await open(tester, const Scaffold(body: ProfileScreen()));
+      repo.followingOf['u1'] = [testMember('f1', name: 'Friend One')];
+      await openOwn(tester);
 
-      await tester.tap(find.text('Followers'));
+      await tester.tap(find.text('Following'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(FollowListScreen), findsOneWidget);
-      expect(find.text('Fan Nine'), findsOneWidget);
-      expect(repo.memberReads, contains('followers:u1:0'));
+      expect(find.text('Friend One'), findsOneWidget);
     });
   });
 
@@ -394,11 +677,10 @@ void main() {
     testWidgets(
       'stay locked, and unrequested, until "View Achievements" is pressed',
       (tester) async {
-        await open(tester, const PublicProfileScreen(userId: 'm1'));
+        await openProfile(tester);
         await scrollToAchievements(tester);
 
         expect(find.text('View Achievements'), findsOneWidget);
-        expect(find.text('Favourite Quest · 1 / 2'), findsNothing);
         expect(
           repo.memberReads.where((r) => r.startsWith('achievements')),
           isEmpty,
@@ -409,7 +691,7 @@ void main() {
     testWidgets(
       'the button fetches the progress, and opening a game fetches its achievements',
       (tester) async {
-        await open(tester, const PublicProfileScreen(userId: 'm1'));
+        await openProfile(tester);
         await scrollToAchievements(tester);
 
         await tester.tap(find.text('View Achievements'));
@@ -432,7 +714,7 @@ void main() {
 
     testWidgets('a failure offers to try again', (tester) async {
       repo.failAchievementReads = true;
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       await scrollToAchievements(tester);
 
       await tester.tap(find.text('View Achievements'));
@@ -450,7 +732,7 @@ void main() {
 
     testWidgets('a member without any says so', (tester) async {
       repo.achievementSummaries['m1'] = [];
-      await open(tester, const PublicProfileScreen(userId: 'm1'));
+      await openProfile(tester);
       await scrollToAchievements(tester);
 
       await tester.tap(find.text('View Achievements'));

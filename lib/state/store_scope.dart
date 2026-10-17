@@ -8,6 +8,7 @@ import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
+import 'package:checkpoint/state/public_library_store.dart';
 import 'package:checkpoint/state/public_profile_store.dart';
 import 'package:checkpoint/state/search_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
@@ -62,11 +63,14 @@ class AppStoresScope extends StatelessWidget {
                   store: stores.browse,
                   child: StoreScope<PublicProfileStore>(
                     store: stores.publicProfiles,
-                    child: StoreScope<SocialGraphStore>(
-                      store: stores.socialGraph,
-                      child: StoreScope<PublicAchievementsStore>(
-                        store: stores.publicAchievements,
-                        child: child,
+                    child: StoreScope<PublicLibraryStore>(
+                      store: stores.publicLibraries,
+                      child: StoreScope<SocialGraphStore>(
+                        store: stores.socialGraph,
+                        child: StoreScope<PublicAchievementsStore>(
+                          store: stores.publicAchievements,
+                          child: child,
+                        ),
                       ),
                     ),
                   ),

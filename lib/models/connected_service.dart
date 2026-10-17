@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
@@ -32,3 +33,46 @@ Set<ConnectedService> connectedServicesFromDb(Object? value) => {
     for (final s in ConnectedService.values)
       if (s != ConnectedService.steam && value.contains(s.name)) s,
 };
+
+/// Longest account name the server stores (`profiles_account_names_length`). Real
+/// ones are much shorter.
+const accountNameMaxLength = 64;
+
+/// Which services a member has connected and the account names behind PSN, Xbox
+/// and Discord: what the app mirrors to the member's `profiles` row so that other
+/// members see the icons and can open them. Steam is not here: it follows from the
+/// Steam ID.
+@immutable
+class ConnectedAccounts {
+  const ConnectedAccounts({
+    this.services = const {},
+    this.psnId,
+    this.xboxId,
+    this.discordId,
+  });
+
+  final Set<ConnectedService> services;
+  final String? psnId;
+  final String? xboxId;
+  final String? discordId;
+
+  /// The name for [service], if it has one.
+  String? nameOf(ConnectedService service) => switch (service) {
+    ConnectedService.psn => psnId,
+    ConnectedService.xbox => xboxId,
+    ConnectedService.discord => discordId,
+    ConnectedService.steam || ConnectedService.nintendo => null,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ConnectedAccounts &&
+      setEquals(other.services, services) &&
+      other.psnId == psnId &&
+      other.xboxId == xboxId &&
+      other.discordId == discordId;
+
+  @override
+  int get hashCode =>
+      Object.hash(Object.hashAllUnordered(services), psnId, xboxId, discordId);
+}
