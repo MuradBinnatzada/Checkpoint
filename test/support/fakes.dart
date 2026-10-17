@@ -82,6 +82,14 @@ class FakeRepository implements CheckpointRepository {
   /// Who the signed-in user follows on the server.
   Set<String> following = {'friend-1'};
 
+  /// The Steam ID saved on the profile; null means no Steam account is connected.
+  String? steamId;
+
+  /// What `sync-steam` answers, or the error it throws when [syncError] is set.
+  Object? syncData = {'success': true, 'delayed': null};
+  Object? syncError;
+  int syncCalls = 0;
+
   /// Holds [follow] until completed, to have a request in flight.
   Completer<void>? followGate;
   Completer<void>? gate;
@@ -127,6 +135,7 @@ class FakeRepository implements CheckpointRepository {
       name: 'Ada',
       handle: '@ada',
       bio: '',
+      steamId: steamId,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -135,6 +144,14 @@ class FakeRepository implements CheckpointRepository {
 
   @override
   Future<UserProfile> fetchProfile(User user) => ensureProfile(user);
+
+  @override
+  Future<Object?> syncSteamLibrary() async {
+    syncCalls++;
+    final error = syncError;
+    if (error != null) throw error;
+    return syncData;
+  }
 
   @override
   Future<Set<String>> fetchFollowingIds(String userId) async {

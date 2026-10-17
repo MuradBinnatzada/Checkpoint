@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/nav_tab.dart';
@@ -130,6 +131,40 @@ void main() {
 
     expect(find.textContaining('1 change is waiting to sync'), findsOneWidget);
     expect(find.textContaining('Can\'t reach Checkpoint'), findsNothing);
+  });
+
+  testWidgets('Profile shows "Sync Delayed" when Steam is rate limiting, and the next sync clears it', (tester) async {
+    repo.steamId = '76561198000000000';
+    repo.syncError = const FunctionException(
+      status: 429,
+      details: {'code': 'STEAM_RATE_LIMITED', 'retry_after': 300},
+    );
+    authService.user = testUser('u1');
+    await start(tester);
+    stores.nav.select(NavTab.profile);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Sync Delayed'), findsNothing);
+
+    await tester.scrollUntilVisible(find.text('Sync Library'), 300);
+    // "Visible" can still mean under the bottom bar: bring it clear of it.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -150));
+    await tester.pump();
+    await tester.tap(find.text('Sync Library'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Sync Delayed'), findsOneWidget);
+    expect(find.text('Retry Sync'), findsOneWidget);
+    expect(find.text('Sync Library'), findsNothing);
+    // The same words in the notice and in the snack bar.
+    expect(find.textContaining('Steam is limiting requests right now. Try again in 5 minutes.'), findsWidgets);
+
+    repo.syncError = null;
+    await tester.tap(find.text('Retry Sync'));
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('Sync Delayed'), findsNothing);
+    expect(find.text('Sync Library'), findsOneWidget);
+    expect(find.text('Library synced successfully'), findsOneWidget);
   });
 
   testWidgets('every tab builds for a signed-out visitor', (tester) async {

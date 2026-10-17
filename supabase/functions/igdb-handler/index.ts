@@ -6,8 +6,18 @@
 // Request  (POST, JSON): { "query": "zelda", "limit": 20, "offset": 0 }
 //                        limit optional, 1-50; offset optional, for paging
 //          Header:       Authorization: Bearer <user access token>
-// Response (JSON):       the raw IGDB /v4/games array, or { "error": "..." }
+// Response (JSON):       the raw IGDB /v4/games array, or
+//                        { "error": "...", "code": "...", "retry_after"?: seconds }
 //                        An offset at or past MAX_RESULTS answers `[]`.
+//                        Failures carry a `Retry-After` header when a retry makes
+//                        sense. Codes:
+//                          IGDB_RATE_LIMITED (429)  IGDB / Twitch is limiting requests
+//                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
+//                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
+//                          UNAUTHENTICATED   (401)  no valid user session
+//                          BAD_REQUEST       (400 / 405)
+//                          NOT_CONFIGURED    (500)  missing secrets
+//                          INTERNAL          (500)  anything else
 //
 // Secrets (set with `supabase secrets set`):
 //   TWITCH_CLIENT_ID
@@ -46,17 +56,91 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+type ErrorCode =
+  | "IGDB_RATE_LIMITED"
+  | "IGDB_UNAVAILABLE"
+  | "IGDB_ERROR"
+  | "UNAUTHENTICATED"
+  | "BAD_REQUEST"
+  | "NOT_CONFIGURED"
+  | "INTERNAL";
+
 class HttpError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    public code: ErrorCode,
+    message: string,
+    public retryAfter?: number, // seconds
+  ) {
     super(message);
   }
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+const DEFAULT_RETRY_AFTER_S = 60;
+const MAX_RETRY_AFTER_S = 3600;
+
+// A `Retry-After` header (delta-seconds or an HTTP date) as whole seconds,
+// clamped to 1..MAX_RETRY_AFTER_S. Falls back to `fallback` when absent or unreadable.
+function parseRetryAfter(
+  value: string | null,
+  fallback = DEFAULT_RETRY_AFTER_S,
+): number {
+  if (value) {
+    const seconds = /^\d+$/.test(value.trim())
+      ? Number(value)
+      : (Date.parse(value) - Date.now()) / 1000;
+    if (Number.isFinite(seconds)) {
+      return Math.min(Math.max(Math.ceil(seconds), 1), MAX_RETRY_AFTER_S);
+    }
+  }
+  return fallback;
+}
+
+// The error for a non-OK Twitch / IGDB reply: rate limited, down, or our fault.
+function upstreamError(res: Response, what: string): HttpError {
+  if (res.status === 429) {
+    return new HttpError(
+      429,
+      "IGDB_RATE_LIMITED",
+      "IGDB rate limit reached, try again shortly",
+      parseRetryAfter(res.headers.get("Retry-After")),
+    );
+  }
+  if (res.status >= 500) {
+    return new HttpError(
+      503,
+      "IGDB_UNAVAILABLE",
+      "IGDB is unavailable right now",
+      parseRetryAfter(res.headers.get("Retry-After"), 120),
+    );
+  }
+  // Another 4xx is our request or credentials being wrong; a retry won't fix it.
+  console.error(`${what} failed with status ${res.status}`);
+  return new HttpError(502, "IGDB_ERROR", `${what} failed`);
+}
+
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders, "Content-Type": "application/json", ...headers },
   });
+}
+
+function errorResponse(err: HttpError): Response {
+  const retryAfter = err.retryAfter;
+  return jsonResponse(
+    {
+      error: err.message,
+      code: err.code,
+      ...(retryAfter ? { retry_after: retryAfter } : {}),
+    },
+    err.status,
+    retryAfter ? { "Retry-After": String(retryAfter) } : {},
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -76,27 +160,30 @@ async function requestNewToken(): Promise<string> {
   const clientSecret = Deno.env.get("TWITCH_CLIENT_SECRET");
   if (!clientId || !clientSecret) {
     console.error("TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET are not set");
-    throw new HttpError(500, "Server is not configured");
+    throw new HttpError(500, "NOT_CONFIGURED", "Server is not configured");
   }
 
-  const res = await fetch(TWITCH_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "client_credentials",
-    }),
-  });
-
-  if (!res.ok) {
-    console.error(`Twitch token request failed with status ${res.status}`);
-    throw new HttpError(502, "Could not authenticate with Twitch");
+  let res: Response;
+  try {
+    res = await fetch(TWITCH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "client_credentials",
+      }),
+    });
+  } catch (err) {
+    console.error("Twitch token request failed:", err);
+    throw new HttpError(503, "IGDB_UNAVAILABLE", "Could not reach Twitch", 120);
   }
 
-  const data = await res.json();
+  if (!res.ok) throw upstreamError(res, "Twitch authentication");
+
+  const data = await res.json().catch(() => null);
   if (typeof data?.access_token !== "string") {
-    throw new HttpError(502, "Unexpected response from Twitch");
+    throw new HttpError(502, "IGDB_ERROR", "Unexpected response from Twitch");
   }
 
   const ttlSeconds = typeof data.expires_in === "number" ? data.expires_in : 3600;
@@ -127,17 +214,22 @@ async function getToken(forceRefresh = false): Promise<string> {
 // IGDB
 // ---------------------------------------------------------------------------
 
-function igdbRequest(apicalypse: string, token: string): Promise<Response> {
-  return fetch(IGDB_GAMES_URL, {
-    method: "POST",
-    headers: {
-      "Client-ID": Deno.env.get("TWITCH_CLIENT_ID")!,
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/json",
-      "Content-Type": "text/plain",
-    },
-    body: apicalypse,
-  });
+async function igdbRequest(apicalypse: string, token: string): Promise<Response> {
+  try {
+    return await fetch(IGDB_GAMES_URL, {
+      method: "POST",
+      headers: {
+        "Client-ID": Deno.env.get("TWITCH_CLIENT_ID")!,
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+        "Content-Type": "text/plain",
+      },
+      body: apicalypse,
+    });
+  } catch (err) {
+    console.error("IGDB request failed:", err);
+    throw new HttpError(503, "IGDB_UNAVAILABLE", "Could not reach IGDB", 120);
+  }
 }
 
 // Strip control characters and escape what would break out of the quoted
@@ -179,15 +271,11 @@ async function searchGames(
     res = await igdbRequest(apicalypse, token);
   }
 
-  if (res.status === 429) {
-    throw new HttpError(429, "IGDB rate limit reached, try again shortly");
-  }
-  if (!res.ok) {
-    console.error(`IGDB request failed with status ${res.status}`);
-    throw new HttpError(502, "IGDB request failed");
-  }
+  if (!res.ok) throw upstreamError(res, "IGDB request");
 
-  return await res.json();
+  return await res.json().catch(() => {
+    throw new HttpError(502, "IGDB_ERROR", "Unexpected response from IGDB");
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -201,14 +289,14 @@ async function requireUser(req: Request): Promise<void> {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader ? /^Bearer\s+(.+)$/i.exec(authHeader)?.[1] : undefined;
   if (!authHeader || !token) {
-    throw new HttpError(401, "Unauthorized");
+    throw new HttpError(401, "UNAUTHENTICATED", "Unauthorized");
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error("SUPABASE_URL / SUPABASE_ANON_KEY are not set");
-    throw new HttpError(500, "Server is not configured");
+    throw new HttpError(500, "NOT_CONFIGURED", "Server is not configured");
   }
 
   // A per-request client that acts as the caller (their Authorization header).
@@ -220,7 +308,7 @@ async function requireUser(req: Request): Promise<void> {
   // The token is passed explicitly so verification doesn't depend on a stored session.
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) {
-    throw new HttpError(401, "Unauthorized");
+    throw new HttpError(401, "UNAUTHENTICATED", "Unauthorized");
   }
 }
 
@@ -233,7 +321,7 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
+    return jsonResponse({ error: "Method not allowed", code: "BAD_REQUEST" }, 405);
   }
 
   try {
@@ -244,7 +332,10 @@ Deno.serve(async (req: Request) => {
     const rawQuery = typeof payload?.query === "string" ? payload.query : "";
     const term = sanitizeSearchTerm(rawQuery.slice(0, MAX_QUERY_LENGTH));
     if (!term) {
-      return jsonResponse({ error: "A non-empty `query` string is required" }, 400);
+      return jsonResponse(
+        { error: "A non-empty `query` string is required", code: "BAD_REQUEST" },
+        400,
+      );
     }
 
     const offset = parseOffset(payload?.offset);
@@ -255,10 +346,8 @@ Deno.serve(async (req: Request) => {
     const games = await searchGames(term, parseLimit(payload?.limit), offset);
     return jsonResponse(games);
   } catch (err) {
-    if (err instanceof HttpError) {
-      return jsonResponse({ error: err.message }, err.status);
-    }
+    if (err instanceof HttpError) return errorResponse(err);
     console.error("Unhandled error in igdb-handler:", err);
-    return jsonResponse({ error: "Internal error" }, 500);
+    return jsonResponse({ error: "Internal error", code: "INTERNAL" }, 500);
   }
 });

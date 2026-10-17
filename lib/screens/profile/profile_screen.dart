@@ -333,6 +333,10 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ]),
                   const SizedBox(height: 14),
+                  if (library.syncStatus == SyncStatus.delayed) ...[
+                    _SyncDelayedNotice(message: library.syncFailure?.message ?? ''),
+                    const SizedBox(height: 10),
+                  ],
                   SizedBox(
                     width: double.infinity,
                     child: Builder(
@@ -346,16 +350,22 @@ class ProfileScreen extends StatelessWidget {
                               ? null
                               : () async {
                                   final messenger = ScaffoldMessenger.of(context);
-                                  // null = a sync ran and succeeded; otherwise why nothing was synced.
-                                  final error = await context.read<LibraryStore>().syncLibrary();
+                                  // null = everything synced; otherwise why not, or what is still waiting.
+                                  final message = await context.read<LibraryStore>().syncLibrary();
                                   messenger
                                     ..hideCurrentSnackBar()
-                                    ..showSnackBar(SnackBar(content: Text(error ?? 'Library synced successfully')));
+                                    ..showSnackBar(SnackBar(content: Text(message ?? 'Library synced successfully')));
                                 },
                           icon: library.isSyncing
                               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.sync_rounded),
-                          label: Text(library.isSyncing ? 'Syncing…' : 'Sync Library'),
+                          label: Text(
+                            library.isSyncing
+                                ? 'Syncing…'
+                                : library.syncStatus == SyncStatus.delayed
+                                    ? 'Retry Sync'
+                                    : 'Sync Library',
+                          ),
                         );
                       }
                     ),
@@ -529,6 +539,51 @@ class _ServiceBadge extends StatelessWidget {
             padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
             child: FaIcon(service.icon, size: 20, color: service.color),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown under the Sync button while the last sync was cut short by Steam or the
+/// game database (rate limited or down). Nothing is wrong with the account; the
+/// button turns into "Retry Sync".
+class _SyncDelayedNotice extends StatelessWidget {
+  const _SyncDelayedNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: 'Sync delayed. $message',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Palette.star.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Palette.star.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.schedule_rounded, size: 18, color: Palette.star),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Sync Delayed', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  if (message.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(message, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

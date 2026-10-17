@@ -34,6 +34,13 @@
  *   6. Library     bulk upsert `user_games`, one row per game (new rows get
  *                  defaults; existing rows only ever get a higher `hours_played`)
  *
+ * Response: `{ success: true, delayed, summary, … }` on success. `delayed` is null
+ * for a complete sync, or `{ code, message, retry_after, deferred }` when IGDB
+ * rate limiting / downtime left some games unmatched (the rest of the sync is
+ * saved; they are matched on a later one). A failed sync is
+ * `{ error, code, retry_after? }` with a matching HTTP status and `Retry-After`
+ * header; see `ErrorCode` for the codes.
+ *
  * Secrets (set with `supabase secrets set`):
  *   STEAM_API_KEY, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET
  *   (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
@@ -83,12 +90,57 @@ const LOOSE_MAX_EXTRA_WORDS = 3  // see `matchScore`
  */
 const NOT_RESENT_COLUMNS = ['achievements']
 
+/**
+ * Machine-readable failure codes. The app keys its messages and its "Sync Delayed"
+ * state off `code`, never off the (human) `error` text. Keep in sync with
+ * `SyncFailureCode` in lib/services/sync_failure.dart.
+ *
+ *   Retry later (`retry_after` seconds when known):
+ *     STEAM_RATE_LIMITED, STEAM_UNAVAILABLE, IGDB_RATE_LIMITED, IGDB_UNAVAILABLE,
+ *     SYNC_PARTIAL (success response only: some games wait for the next sync)
+ *   Needs the user:  UNAUTHENTICATED, NO_STEAM_ID, STEAM_PROFILE_PRIVATE
+ *   Needs the owner: NOT_CONFIGURED, STEAM_ERROR, IGDB_ERROR, INTERNAL
+ */
+type ErrorCode =
+  | 'UNAUTHENTICATED'
+  | 'NO_STEAM_ID'
+  | 'STEAM_PROFILE_PRIVATE'
+  | 'STEAM_RATE_LIMITED'
+  | 'STEAM_UNAVAILABLE'
+  | 'STEAM_ERROR'
+  | 'IGDB_RATE_LIMITED'
+  | 'IGDB_UNAVAILABLE'
+  | 'IGDB_ERROR'
+  | 'NOT_CONFIGURED'
+  | 'INTERNAL'
+
 class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code: ErrorCode
+  retryAfter?: number // seconds
+  constructor(status: number, code: ErrorCode, message: string, retryAfter?: number) {
     super(message)
     this.status = status
+    this.code = code
+    this.retryAfter = retryAfter
   }
+}
+
+const DEFAULT_RETRY_AFTER_S = 120
+const MAX_RETRY_AFTER_S = 3600
+
+/**
+ * A `Retry-After` header (delta-seconds or an HTTP date) as whole seconds, clamped
+ * to 1..MAX_RETRY_AFTER_S. Falls back to `fallback` when absent or unreadable.
+ */
+function parseRetryAfter(value: string | null, fallback = DEFAULT_RETRY_AFTER_S): number {
+  if (value) {
+    const seconds = /^\d+$/.test(value.trim())
+      ? Number(value)
+      : (Date.parse(value) - Date.now()) / 1000
+    if (Number.isFinite(seconds)) return Math.min(Math.max(Math.ceil(seconds), 1), MAX_RETRY_AFTER_S)
+  }
+  return fallback
 }
 
 // ---- BEGIN PURE HELPERS ----------------------------------------------------
@@ -538,7 +590,10 @@ function newUserGameRow(
 // ---- Steam -----------------------------------------------------------------
 async function fetchSteamGames(steamId: string): Promise<SteamGame[]> {
   const apiKey = Deno.env.get('STEAM_API_KEY')
-  if (!apiKey) throw new Error('Server missing Steam API key')
+  if (!apiKey) {
+    console.error('STEAM_API_KEY is not set')
+    throw new HttpError(500, 'NOT_CONFIGURED', 'Server is not configured')
+  }
 
   const url = new URL('https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/')
   url.search = new URLSearchParams({
@@ -554,13 +609,42 @@ async function fetchSteamGames(steamId: string): Promise<SteamGame[]> {
     res = await fetch(url)
   } catch {
     // Don't surface the raw fetch error: it embeds the request URL (and API key).
-    throw new HttpError(502, 'Could not reach Steam')
+    throw new HttpError(503, 'STEAM_UNAVAILABLE', 'Could not reach Steam', DEFAULT_RETRY_AFTER_S)
   }
-  if (!res.ok) throw new HttpError(502, `Steam API returned ${res.status}`)
+  if (res.status === 429) {
+    throw new HttpError(
+      429,
+      'STEAM_RATE_LIMITED',
+      'Steam is limiting requests right now',
+      parseRetryAfter(res.headers.get('Retry-After'), 300),
+    )
+  }
+  if (res.status >= 500) {
+    throw new HttpError(
+      503,
+      'STEAM_UNAVAILABLE',
+      `Steam is unavailable right now (${res.status})`,
+      parseRetryAfter(res.headers.get('Retry-After')),
+    )
+  }
+  if (!res.ok) throw new HttpError(502, 'STEAM_ERROR', `Steam API returned ${res.status}`)
 
-  const data = await res.json()
-  // Private profiles return `{ response: {} }`.
-  return data?.response?.games ?? []
+  const data = await res.json().catch(() => null)
+  const response = data?.response
+  if (!response || typeof response !== 'object') {
+    throw new HttpError(502, 'STEAM_ERROR', 'Steam returned an unreadable response')
+  }
+  // A public profile always carries `game_count` (0 for an empty library). A
+  // private profile, or one with "Game details" hidden, comes back as `{}`: without
+  // this check that read as an empty library and the sync "succeeded" with nothing.
+  if (response.games === undefined && response.game_count === undefined) {
+    throw new HttpError(
+      403,
+      'STEAM_PROFILE_PRIVATE',
+      'Your Steam game details are private. Set "Game details" to Public in your Steam privacy settings, then try again.',
+    )
+  }
+  return Array.isArray(response.games) ? response.games : []
 }
 
 // ---- IGDB ------------------------------------------------------------------
@@ -571,20 +655,31 @@ async function getIgdbToken(): Promise<string> {
 
   const clientId = Deno.env.get('TWITCH_CLIENT_ID')
   const clientSecret = Deno.env.get('TWITCH_CLIENT_SECRET')
-  if (!clientId || !clientSecret) throw new Error('Server missing Twitch/IGDB credentials')
+  if (!clientId || !clientSecret) {
+    console.error('TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET are not set')
+    throw new HttpError(500, 'NOT_CONFIGURED', 'Server is not configured')
+  }
 
-  const res = await fetch('https://id.twitch.tv/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'client_credentials',
-    }),
-  })
-  if (!res.ok) throw new Error(`Twitch auth failed (${res.status})`)
+  let res: Response
+  try {
+    res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'client_credentials',
+      }),
+    })
+  } catch {
+    throw new HttpError(503, 'IGDB_UNAVAILABLE', 'Could not reach Twitch', DEFAULT_RETRY_AFTER_S)
+  }
+  if (!res.ok) throw igdbStatusError(res, 'Twitch auth')
 
-  const data = await res.json()
+  const data = await res.json().catch(() => null)
+  if (typeof data?.access_token !== 'string') {
+    throw new HttpError(502, 'IGDB_ERROR', 'Unexpected response from Twitch')
+  }
   igdbToken = {
     value: data.access_token,
     expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
@@ -592,17 +687,44 @@ async function getIgdbToken(): Promise<string> {
   return igdbToken.value
 }
 
+/** The error for a non-OK Twitch / IGDB reply: rate limited, down, or something we did wrong. */
+function igdbStatusError(res: Response, what: string): HttpError {
+  if (res.status === 429) {
+    return new HttpError(
+      429,
+      'IGDB_RATE_LIMITED',
+      `${what} is rate limited`,
+      parseRetryAfter(res.headers.get('Retry-After'), 60),
+    )
+  }
+  if (res.status >= 500) {
+    return new HttpError(
+      503,
+      'IGDB_UNAVAILABLE',
+      `${what} is unavailable (${res.status})`,
+      parseRetryAfter(res.headers.get('Retry-After')),
+    )
+  }
+  // 4xx other than 429 is our request or credentials being wrong, which no retry fixes.
+  return new HttpError(502, 'IGDB_ERROR', `${what} failed (${res.status})`)
+}
+
 async function igdbFetch<T>(endpoint: string, body: string, attempt = 0): Promise<T> {
   const token = await getIgdbToken()
-  const res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Client-ID': Deno.env.get('TWITCH_CLIENT_ID')!,
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
-    body,
-  })
+  let res: Response
+  try {
+    res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Client-ID': Deno.env.get('TWITCH_CLIENT_ID')!,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      body,
+    })
+  } catch {
+    throw new HttpError(503, 'IGDB_UNAVAILABLE', 'Could not reach IGDB', DEFAULT_RETRY_AFTER_S)
+  }
 
   if (res.status === 401 && attempt === 0) {
     igdbToken = null // token revoked/expired early: re-auth once
@@ -612,15 +734,20 @@ async function igdbFetch<T>(endpoint: string, body: string, attempt = 0): Promis
     await sleep(1000 * (attempt + 1))
     return igdbFetch<T>(endpoint, body, attempt + 1)
   }
-  if (!res.ok) {
-    throw new Error(`IGDB /${endpoint} failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
-  }
+  if (!res.ok) throw igdbStatusError(res, `IGDB /${endpoint}`)
   return (await res.json()) as T
 }
 
+/** What went wrong with IGDB during one sync, for the response (see `syncLibrary`). */
+interface SyncIssues {
+  warnings: string[]
+  igdb: HttpError | null // the first IGDB failure of this run
+}
+
 /** Record a warning once (a failing IGDB repeats the same message for every batch). */
-const warn = (warnings: string[], message: string) => {
-  if (!warnings.includes(message)) warnings.push(message)
+const warn = (issues: SyncIssues, message: string, cause?: unknown) => {
+  if (!issues.warnings.includes(message)) issues.warnings.push(message)
+  if (cause instanceof HttpError && issues.igdb === null) issues.igdb = cause
 }
 
 /**
@@ -643,7 +770,7 @@ async function igdbExactBatch(titles: string[]): Promise<IgdbGame[]> {
 }
 
 /** Bulk exact lookup for many titles, indexed by normalized IGDB name. A failed batch is skipped, not fatal. */
-async function igdbExactMany(titles: string[], warnings: string[]): Promise<Map<string, IgdbGame[]>> {
+async function igdbExactMany(titles: string[], issues: SyncIssues): Promise<Map<string, IgdbGame[]>> {
   const byName = new Map<string, IgdbGame[]>()
   let failures = 0
   for (const part of chunk(titles, IGDB_TITLE_BATCH)) {
@@ -660,7 +787,7 @@ async function igdbExactMany(titles: string[], warnings: string[]): Promise<Map<
     } catch (e) {
       failures++
       console.error('IGDB exact lookup failed:', e)
-      warn(warnings, `IGDB exact lookup incomplete: ${(e as Error).message}`)
+      warn(issues, `IGDB exact lookup incomplete: ${(e as Error).message}`, e)
     }
     await sleep(IGDB_PACING_MS)
   }
@@ -693,7 +820,7 @@ async function igdbSearchOne(term: string): Promise<IgdbGame[]> {
  */
 async function igdbSearchMany(
   terms: string[],
-  warnings: string[],
+  issues: SyncIssues,
   deadline: number,
 ): Promise<{ results: (IgdbGame[] | undefined)[]; stopped: boolean }> {
   const results: (IgdbGame[] | undefined)[] = terms.map(() => undefined)
@@ -707,7 +834,7 @@ async function igdbSearchMany(
       const i = next++
       if (Date.now() >= deadline) {
         stopped = true
-        warn(warnings, 'IGDB search stopped early (time budget); the rest will be matched on the next sync')
+        warn(issues, 'IGDB search stopped early (time budget); the rest will be matched on the next sync')
         return
       }
       // Reserve a start slot. JS is single-threaded, so this is race-free and keeps
@@ -722,7 +849,7 @@ async function igdbSearchMany(
       } catch (e) {
         failures++
         console.error('IGDB search failed:', e)
-        warn(warnings, `IGDB search incomplete: ${(e as Error).message}`)
+        warn(issues, `IGDB search incomplete: ${(e as Error).message}`, e)
         if (failures >= IGDB_MAX_CONSECUTIVE_SEARCH_FAILURES) stopped = true
       }
     }
@@ -773,7 +900,7 @@ const SEARCH_PASSES: { name: PassName; term: (p: Pending) => string | null }[] =
  * never aborts the sync: whatever matched so far is kept, and games that could not
  * be searched (budget, errors or time) are counted in `deferred` for the next sync.
  */
-async function resolveMissingGames(missing: SteamEntry[], warnings: string[]) {
+async function resolveMissingGames(missing: SteamEntry[], issues: SyncIssues) {
   const matched = new Map<string, IgdbGame>()
   const byPass: Record<PassName, number> = { exact: 0, search: 0, prefix_stripped: 0, subtitle_split: 0 }
   if (missing.length === 0) return { matched, unmatched: [] as string[], deferred: 0, byPass }
@@ -798,7 +925,7 @@ async function resolveMissingGames(missing: SteamEntry[], warnings: string[]) {
 
   try {
     // Pass 1a — bulk case-insensitive exact match on the cleaned title.
-    const byName = await igdbExactMany([...new Set(pending.map((p) => p.clean))], warnings)
+    const byName = await igdbExactMany([...new Set(pending.map((p) => p.clean))], issues)
     let remaining: Pending[] = []
     for (const p of pending) {
       const best = pickBest(byName.get(normalizeTitle(p.clean)) ?? [], [p.clean])
@@ -829,7 +956,7 @@ async function resolveMissingGames(missing: SteamEntry[], warnings: string[]) {
       if (run.length === 0) continue
       budget -= run.length
 
-      const { results, stopped } = await igdbSearchMany(run.map((j) => j.term), warnings, deadline)
+      const { results, stopped } = await igdbSearchMany(run.map((j) => j.term), issues, deadline)
       run.forEach((j, i) => {
         const hits = results[i]
         if (!hits) {
@@ -855,7 +982,7 @@ async function resolveMissingGames(missing: SteamEntry[], warnings: string[]) {
     }
   } catch (e) {
     console.error('IGDB lookup failed:', e)
-    warn(warnings, `IGDB lookup incomplete: ${(e as Error).message}`)
+    warn(issues, `IGDB lookup incomplete: ${(e as Error).message}`, e)
   }
 
   const unmatched = missing.filter((m) => !matched.has(m.id)).map((m) => m.title)
@@ -866,9 +993,9 @@ async function resolveMissingGames(missing: SteamEntry[], warnings: string[]) {
 // ---- Supabase --------------------------------------------------------------
 async function authenticate(req: Request, admin: SupabaseClient): Promise<string> {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
-  if (!token) throw new HttpError(401, 'Missing authorization')
+  if (!token) throw new HttpError(401, 'UNAUTHENTICATED', 'Missing authorization')
   const { data, error } = await admin.auth.getUser(token)
-  if (error || !data.user) throw new HttpError(401, 'Invalid or expired session')
+  if (error || !data.user) throw new HttpError(401, 'UNAUTHENTICATED', 'Invalid or expired session')
   return data.user.id
 }
 
@@ -887,7 +1014,11 @@ async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<stri
 
   const steamId = data?.steam_id
   if (steamId === null || steamId === undefined || String(steamId).trim() === '') {
-    throw new HttpError(400, 'No Steam ID saved on your profile. Connect your Steam account first.')
+    throw new HttpError(
+      400,
+      'NO_STEAM_ID',
+      'No Steam ID saved on your profile. Connect your Steam account first.',
+    )
   }
   return String(steamId).trim()
 }
@@ -1008,7 +1139,7 @@ async function upsertChunked(
 
 // ---- Orchestration ---------------------------------------------------------
 async function syncLibrary(admin: SupabaseClient, userId: string, steamId: string) {
-  const warnings: string[] = []
+  const issues: SyncIssues = { warnings: [], igdb: null }
 
   // 1. Steam
   const owned = await fetchSteamGames(steamId)
@@ -1034,7 +1165,7 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
   }
 
   // 3. Multi-pass IGDB match for the apps that aren't resolved yet.
-  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, warnings)
+  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, issues)
 
   // 4. Add the matched games the catalog doesn't have. A game's id comes from its
   //    IGDB id, so one that another user already added (through in-app search,
@@ -1119,7 +1250,26 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
     await upsertChunked(admin, 'user_games', libraryRows, 'user_id,game_id')
   }
 
+  // The sync still did what it could, but IGDB could not match every game (rate
+  // limited, down, or out of time/budget). Say so in a form the app can act on,
+  // instead of leaving it to guess from `deferred` and the warning text.
+  const delayed =
+    deferred > 0
+      ? {
+          code: issues.igdb?.code ?? 'SYNC_PARTIAL',
+          message:
+            issues.igdb?.code === 'IGDB_RATE_LIMITED'
+              ? 'The game database is busy. Some games will be matched on your next sync.'
+              : issues.igdb
+                ? 'The game database is unavailable. Some games will be matched on your next sync.'
+                : 'Some games will be matched on your next sync.',
+          retry_after: issues.igdb?.retryAfter ?? null,
+          deferred,
+        }
+      : null
+
   return {
+    delayed,
     summary: {
       steam_total: owned.length,
       junk_filtered: junk,
@@ -1138,15 +1288,32 @@ async function syncLibrary(admin: SupabaseClient, userId: string, steamId: strin
     },
     unmatched_titles: unmatched.slice(0, 50),
     non_game_titles: nonGames.slice(0, 50), // test / beta / server / demo builds that were skipped
-    warnings,
+    warnings: issues.warnings,
   }
 }
 
-const json = (body: unknown, status = 200) =>
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...headers },
   })
+
+/**
+ * `{ error, code, retry_after? }` plus a `Retry-After` header when a retry makes
+ * sense. Anything that is not an `HttpError` is logged and answered with a generic
+ * message, so database / library error text never reaches the client.
+ */
+function errorResponse(error: unknown): Response {
+  if (error instanceof HttpError) {
+    const retryAfter = error.retryAfter
+    return json(
+      { error: error.message, code: error.code, ...(retryAfter ? { retry_after: retryAfter } : {}) },
+      error.status,
+      retryAfter ? { 'Retry-After': String(retryAfter) } : {},
+    )
+  }
+  return json({ error: 'Something went wrong on our side. Try again later.', code: 'INTERNAL' }, 500)
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -1156,7 +1323,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    if (!supabaseUrl || !serviceKey) throw new Error('Server missing Supabase credentials')
+    if (!supabaseUrl || !serviceKey) {
+      console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set')
+      throw new HttpError(500, 'NOT_CONFIGURED', 'Server is not configured')
+    }
 
     // Service-role client: writes the global `games` catalog and bypasses RLS,
     // so every user_games query below is explicitly scoped to the verified user.
@@ -1174,7 +1344,6 @@ serve(async (req) => {
     return json({ success: true, ...result })
   } catch (error) {
     console.error('sync-steam failed:', error)
-    const status = error instanceof HttpError ? error.status : 500
-    return json({ error: (error as Error).message }, status)
+    return errorResponse(error)
   }
 })

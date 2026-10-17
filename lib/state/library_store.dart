@@ -11,6 +11,7 @@ import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
+import 'package:checkpoint/services/sync_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 
@@ -25,6 +26,23 @@ import 'package:checkpoint/state/profile_store.dart';
 /// Edits made while the server can't be reached are kept on the device
 /// ([PendingEdits]), shown as if saved, and sent when the connection is back
 /// ([flushPending]). An edit the server refuses is reverted instead.
+/// How the last Steam sync ended.
+enum SyncStatus {
+  /// No sync has run since sign-in.
+  idle,
+
+  /// Everything was imported.
+  synced,
+
+  /// Steam or IGDB was rate limited or down, so the sync is incomplete or did
+  /// not run. Trying again later is expected to work.
+  delayed,
+
+  /// The sync could not run and waiting will not fix it (a private Steam
+  /// profile, no Steam ID saved, a server problem).
+  failed,
+}
+
 class LibraryStore extends ChangeNotifier {
   LibraryStore({
     required this._repository,
@@ -201,6 +219,8 @@ class LibraryStore extends ChangeNotifier {
       _syncedAt = null;
       _pending = PendingEdits();
       _pendingFor = null;
+      _syncStatus = SyncStatus.idle;
+      _syncFailure = null;
       // The previous account's saved copy goes too (it stays valid only while
       // that account stays signed in).
       if (previous != null) unawaited(_cache.clearAccount(previous.id));
@@ -527,11 +547,22 @@ class LibraryStore extends ChangeNotifier {
   // ---- Steam ----
 
   bool _isSyncing = false;
+  SyncStatus _syncStatus = SyncStatus.idle;
+  SyncFailure? _syncFailure;
 
   bool get isSyncing => _isSyncing;
 
-  /// Syncs the signed-in user's Steam library. Returns null when a sync ran and
-  /// succeeded, otherwise a message that is safe to show (nothing was synced).
+  /// How the last [syncLibrary] ended. The Profile tab shows "Sync Delayed" for
+  /// [SyncStatus.delayed].
+  SyncStatus get syncStatus => _syncStatus;
+
+  /// Why the last sync is [SyncStatus.delayed] or [SyncStatus.failed]; null
+  /// otherwise. [SyncFailure.message] is safe to show.
+  SyncFailure? get syncFailure => _syncFailure;
+
+  /// Syncs the signed-in user's Steam library. Returns null when everything was
+  /// imported, otherwise a message that is safe to show: why nothing was synced,
+  /// or what is still waiting when only part of it was. [syncStatus] says which.
   Future<String?> syncLibrary() async {
     final current = _user;
     if (current == null) return 'Sign in to sync your library.';
@@ -541,6 +572,8 @@ class LibraryStore extends ChangeNotifier {
     }
 
     _isSyncing = true;
+    _syncStatus = SyncStatus.idle;
+    _syncFailure = null;
     notifyListeners();
 
     try {
@@ -550,14 +583,31 @@ class LibraryStore extends ChangeNotifier {
       // Give the database a brief moment to settle broadcasts
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await _refreshLibrary(current);
-      return null;
+
+      // The function saves what it could and says what IGDB left for later.
+      final delayed = SyncFailure.fromDelayed(data);
+      _recordSync(current, delayed);
+      return delayed?.message;
     } catch (e) {
       debugPrint('Error syncing Steam library: $e');
-      return 'Could not sync Steam library.';
+      final failure = SyncFailure.from(e);
+      _recordSync(current, failure);
+      return failure.message;
     } finally {
       _isSyncing = false;
       notifyListeners();
     }
+  }
+
+  /// Remembers how a sync ended, unless the account changed while it ran.
+  void _recordSync(User syncedFor, SyncFailure? failure) {
+    if (_user?.id != syncedFor.id) return;
+    _syncFailure = failure;
+    _syncStatus = switch (failure) {
+      null => SyncStatus.synced,
+      SyncFailure(isDelayed: true) => SyncStatus.delayed,
+      _ => SyncStatus.failed,
+    };
   }
 
   final Set<String> _achievementsLoading = {};
@@ -624,7 +674,10 @@ class LibraryStore extends ChangeNotifier {
       return null;
     } on FunctionException catch (e) {
       debugPrint('Achievements sync failed (${e.status}): ${e.details}');
-      // The Edge Function sends actionable messages (e.g. private profile).
+      final failure = SyncFailure.from(e);
+      if (failure.code != SyncFailureCode.unknown) return failure.message;
+      // No code: a function deployed before codes existed. Its text is still
+      // actionable (e.g. private profile).
       final details = e.details;
       final message = details is Map ? details['error'] : null;
       return message is String && message.isNotEmpty

@@ -47,6 +47,17 @@ Run the tests:
 flutter test
 ```
 
+### CI/CD
+
+GitHub Actions (`.github/workflows`):
+
+- **CI** (`ci.yml`) runs `flutter analyze` and `flutter test` on every pull request and push to `main`, and type-checks the Edge Functions with `deno check`.
+- **Deploy Supabase** (`deploy-supabase.yml`) applies new migrations (`supabase db push`) and deploys the Edge Functions when `supabase/` changes on `main`, or when started by hand. It needs the repository secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` and the variable `SUPABASE_PROJECT_ID`. It runs in the `production` environment, where you can require a reviewer before migrations touch the live database.
+
+### Edge Function errors
+
+The functions answer a failure with `{ "error": "...", "code": "...", "retry_after": 60 }` and a `Retry-After` header when waiting helps. The app turns the `code` into a message (`lib/services/sync_failure.dart`): rate limiting or downtime at Steam or IGDB shows **Sync Delayed** on the Profile tab, and a sync that IGDB only got part of the way through reports the games left for the next one in `delayed`.
+
 ### Using your own backend
 
 The app ships pointing at the project's Supabase instance with a public anon key, which is safe to expose when Row Level Security is enabled. To run against your own backend:

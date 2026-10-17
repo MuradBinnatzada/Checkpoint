@@ -248,7 +248,8 @@ class CheckpointRepository {
           .select(_userGameColumns)
           .eq(Db.userId, userId);
       return (after == null ? query : query.gt(Db.gameId, after))
-          .order(Db.gameId)
+          // Ascending, because the next page asks for `game_id > cursor`.
+          .order(Db.gameId, ascending: true)
           .limit(_pageSize);
     });
     // Newest first, the order the old single ordered query returned.
@@ -332,7 +333,7 @@ class CheckpointRepository {
           .select()
           .eq(Db.userId, userId);
       return (after == null ? query : query.gt(Db.id, after))
-          .order(Db.id)
+          .order(Db.id, ascending: true) // see fetchUserGames
           .limit(_pageSize);
     });
     return rows.map<LogEntry>(_logFromRow).toList()
@@ -366,8 +367,8 @@ class CheckpointRepository {
     }
     // `id` breaks ties between equal names, so a page boundary is stable.
     final rows = await request
-        .order(Db.displayName)
-        .order(Db.id)
+        .order(Db.displayName, ascending: true)
+        .order(Db.id, ascending: true)
         .range(offset, offset + limit - 1);
     final users = rows
         .map<SocialUser>((row) => _socialUserFromProfile(row))
@@ -683,8 +684,8 @@ String _handleFrom(String seed, String suffix) {
       .replaceAll(RegExp(r'^_|_$'), '');
   final safeBase = base.length < 3 ? 'player' : base;
   final safeSuffix = suffix.replaceAll('-', '');
-  return '${safeBase}_${safeSuffix.substring(0, math.min(6, safeSuffix.length))}'
-      .substring(0, math.min(24, safeBase.length + 7));
+  final handle = '${safeBase}_${safeSuffix.substring(0, math.min(6, safeSuffix.length))}';
+  return handle.substring(0, math.min(24, handle.length));
 }
 
 DateTime? _date(Object? value) {
