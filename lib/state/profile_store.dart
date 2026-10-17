@@ -23,6 +23,11 @@ import 'package:checkpoint/state/auth_store.dart';
 /// device ([PendingEdits.follows]), shown as if saved, and sent when the
 /// connection is back ([flushPending]). One the server refuses is reverted
 /// instead.
+///
+/// Which services are connected is saved on the device first, and mirrored to
+/// `profiles.connected_services` so other members see them on the profile (the
+/// account names stay on the device). A change the server hasn't received is
+/// remembered and sent when the connection is back; see [_pushServices].
 class ProfileStore extends ChangeNotifier {
   ProfileStore({
     required this._repository,
@@ -94,8 +99,8 @@ class ProfileStore extends ChangeNotifier {
   /// [flushPending]).
   int get pendingCount => _pending.count;
 
-  /// A message about something that just went wrong with a follow. The app shell
-  /// shows it once and calls [clearNotice].
+  /// A message about something that just went wrong with a follow or with the
+  /// connected services. The app shell shows it once and calls [clearNotice].
   String? get notice => _notice;
 
   void clearNotice() => _notice = null;
@@ -127,6 +132,7 @@ class ProfileStore extends ChangeNotifier {
         unawaited(refresh());
       } else {
         unawaited(flushPending());
+        unawaited(_pushServices());
       }
     });
     await _onUser(_auth.user);
@@ -226,10 +232,12 @@ class ProfileStore extends ChangeNotifier {
   /// CheckpointRepository.ensureProfile; AuthService has no copy of it, so two
   /// code paths can't race to create the same row during sign-in.
   Future<bool> _loadProfile(User user, int seq) async {
+    final versionBefore = _serviceVersion;
     try {
       final fetched = await _repository.ensureProfile(user);
       if (seq != _loadSeq) return true;
       _profile = fetched;
+      _applyServerServices(user.id, fetched.connectedServices, versionBefore);
       notifyListeners();
       unawaited(_cache.writeProfile(user.id, fetched));
       return true;
@@ -293,10 +301,12 @@ class ProfileStore extends ChangeNotifier {
   }
 
   Future<void> _refreshProfile(User user) async {
+    final versionBefore = _serviceVersion;
     try {
       final fetched = await _repository.fetchProfile(user);
       if (_user?.id != user.id) return;
       _profile = fetched;
+      _applyServerServices(user.id, fetched.connectedServices, versionBefore);
       notifyListeners();
       unawaited(_cache.writeProfile(user.id, fetched));
     } catch (e, st) {
@@ -323,6 +333,9 @@ class ProfileStore extends ChangeNotifier {
   // ---- Per-account local data: PSN / Xbox / Discord names + connected flags ----
   // Steam is not stored here. It is connected exactly when the signed-in user's
   // profile has a Steam ID (see [steamConnected]).
+  //
+  // Every key ends in `.<user id>`, which is what lets account deletion find and
+  // erase them (LocalCache.eraseAccount).
 
   static String _scoped(String key, String userId) => '$key.$userId';
 
@@ -333,6 +346,8 @@ class ProfileStore extends ChangeNotifier {
     _xboxId = null;
     _discordId = null;
     _connected.clear();
+    _servicesPending = false;
+    _serviceVersion++;
   }
 
   /// Loads the service names and connected flags saved for [userId].
@@ -342,20 +357,24 @@ class ProfileStore extends ChangeNotifier {
     _psnId = prefs.getString(_scoped('psn_id', userId));
     _xboxId = prefs.getString(_scoped('xbox_id', userId));
     _discordId = prefs.getString(_scoped('discord_id', userId));
-    final saved = prefs.getStringList(_scoped('connected_services', userId)) ?? const <String>[];
-    for (final service in ConnectedService.values) {
-      if (service != ConnectedService.steam && saved.contains(service.name)) {
-        _connected.add(service);
-      }
-    }
+    final saved = prefs.getStringList(_scoped('connected_services', userId));
+    _connected.addAll(connectedServicesFromDb(saved));
+    // No record means the list was saved before the server kept one: what this
+    // device has is then newer than the (empty) list on the server, and goes up.
+    _servicesPending =
+        prefs.getBool(_scoped(_servicesPendingKey, userId)) ?? _connected.isNotEmpty;
   }
 
+  static const _servicesPendingKey = 'services_pending';
+
+  /// Saves the connected services and whether the server has them yet.
   Future<void> _saveConnectedServices(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _scoped('connected_services', userId),
       _connected.map((e) => e.name).toList(),
     );
+    await prefs.setBool(_scoped(_servicesPendingKey, userId), _servicesPending);
   }
 
   // ---- Following ----
@@ -542,10 +561,99 @@ class ProfileStore extends ChangeNotifier {
       return;
     }
     if (!_connected.remove(s)) _connected.add(s);
+    _servicesPending = true;
+    _serviceVersion++;
     notifyListeners();
 
     final userId = _user?.id;
-    if (userId != null) await _saveConnectedServices(userId);
+    if (userId == null) return;
+    await _saveConnectedServices(userId);
+    unawaited(_pushServices(userAction: true));
+  }
+
+  // ---- Connected services on the server ----
+  //
+  // `profiles.connected_services` holds the NAMES of the connected services other
+  // than Steam, which is what another member's profile shows. It is a mirror of
+  // the list on the device, written as a whole, so sending it twice is harmless
+  // and there is no queue of edits: only whether the latest list has arrived.
+
+  /// The device has a change the server doesn't have yet. Saved with the list.
+  bool _servicesPending = false;
+
+  /// Bumped by every change made on the device and every send that reached the
+  /// server, so a read of the server's list that was under way meanwhile can tell
+  /// its answer is out of date.
+  int _serviceVersion = 0;
+
+  /// The send that is running, if any.
+  Future<void>? _servicesPush;
+
+  /// The server's list was just read. A change the device hasn't sent goes up
+  /// now; otherwise the server's list is the truth (another device may have
+  /// changed it) and replaces the device's. [versionBefore] is [_serviceVersion]
+  /// from before the read started.
+  void _applyServerServices(
+    String userId,
+    Set<ConnectedService> server,
+    int versionBefore,
+  ) {
+    if (versionBefore != _serviceVersion) return;
+    if (_servicesPending) {
+      unawaited(_pushServices());
+      return;
+    }
+    if (setEquals(server, _connected)) return;
+    _connected
+      ..clear()
+      ..addAll(server);
+    unawaited(_saveConnectedServices(userId));
+  }
+
+  /// Sends the connected services to the server while the device has a change it
+  /// hasn't received. Does nothing without a live session or with nothing to send,
+  /// and a second call joins the one running. A failed send leaves the change
+  /// pending: it is tried again when the profile next loads or the connection
+  /// comes back. [userAction] says the user just made the change, so they are told
+  /// when it did not get through.
+  Future<void> _pushServices({bool userAction = false}) {
+    final running = _servicesPush;
+    if (running != null) return running;
+    final user = _user;
+    if (user == null || !_servicesPending) return Future.value();
+    if (_auth.isSessionPending) {
+      if (userAction) _setNotice(queuedNotice);
+      return Future.value();
+    }
+    return _servicesPush = _sendServices(user, userAction).whenComplete(() {
+      _servicesPush = null;
+    });
+  }
+
+  Future<void> _sendServices(User user, bool userAction) async {
+    // Again while a change was made during the send.
+    while (_servicesPending && _user?.id == user.id) {
+      final sent = {..._connected};
+      try {
+        await _repository.setConnectedServices(sent);
+      } catch (e, st) {
+        debugPrint('Saving the connected services failed: $e\n$st');
+        if (userAction && _user?.id == user.id) {
+          _setNotice(
+            isConnectionFailure(e)
+                ? queuedNotice
+                : 'Could not update the accounts shown on your profile.',
+          );
+        }
+        return;
+      }
+      if (_user?.id != user.id) return;
+      _serviceVersion++;
+      if (setEquals(sent, _connected)) {
+        _servicesPending = false;
+        await _saveConnectedServices(user.id);
+      }
+    }
   }
 
   /// Saves [id] to the signed-in user's `profiles` row (not to the device).
@@ -596,15 +704,20 @@ class ProfileStore extends ChangeNotifier {
         debugPrint('setServiceId: ${service.name} has no stored ID.');
         return;
     }
-    _connected.add(service);
+    if (_connected.add(service)) {
+      _servicesPending = true;
+      _serviceVersion++;
+    }
     notifyListeners();
 
-    // Saved per account, so another account on this device doesn't see it.
+    // Saved per account, so another account on this device doesn't see it. Only
+    // the fact that the service is connected goes to the server, not the name.
     final userId = _user?.id;
     if (userId == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_scoped(prefKey, userId), id);
     await _saveConnectedServices(userId);
+    unawaited(_pushServices(userAction: true));
   }
 
   // ---- Editing the profile ----

@@ -5,16 +5,19 @@ import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/screens/profile/achievements_section.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/social_graph_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
-import 'package:checkpoint/widgets/cover_art.dart';
+import 'package:checkpoint/widgets/count_stat.dart';
+import 'package:checkpoint/widgets/favorite_games_row.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
@@ -33,6 +36,7 @@ class ProfileScreen extends StatelessWidget {
     final profileStore = context.watch<ProfileStore>();
     final library = context.watch<LibraryStore>();
     final p = profileStore.profile;
+    final userId = context.watch<AuthStore>().user?.id;
     final byPlatform = library.hoursByPlatform.entries.toList();
     final maxH = byPlatform.isEmpty ? 1.0 : byPlatform.first.value;
     final top = library.topRated;
@@ -129,10 +133,23 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
               ],
+              // Tapping a count opens the list behind it.
               Row(children: [
-                _CountStat(value: fmtCount(profileStore.followersCount), label: 'Followers'),
-                const SizedBox(width: 28),
-                _CountStat(value: fmtCount(profileStore.followingCount), label: 'Following'),
+                CountStat(
+                  value: fmtCount(profileStore.followersCount),
+                  label: 'Followers',
+                  onTap: userId == null
+                      ? null
+                      : () => openFollowList(context, userId: userId, kind: FollowListKind.followers, ownerName: p.name),
+                ),
+                const SizedBox(width: 14),
+                CountStat(
+                  value: fmtCount(profileStore.followingCount),
+                  label: 'Following',
+                  onTap: userId == null
+                      ? null
+                      : () => openFollowList(context, userId: userId, kind: FollowListKind.following, ownerName: p.name),
+                ),
               ]),
               const SizedBox(height: 14),
               SizedBox(
@@ -202,22 +219,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 )
               else
-                // Always lay out 4 equal slots so covers keep the same size
-                // whether the user has 1 favorite or 4.
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (var i = 0; i < 4; i++) ...[
-                    if (i > 0) const SizedBox(width: 10),
-                    Expanded(
-                      child: i < favorites.length
-                          ? GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => openGame(context, favorites[i].id),
-                              child: CoverArt(game: favorites[i]),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ]),
+                FavoriteGamesRow(games: favorites),
               const SizedBox(height: 32),
               Panel(
                 title: 'Connected accounts',
@@ -413,24 +415,17 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              if (userId != null) ...[
+                const SizedBox(height: 24),
+                // Fetched only when "View Achievements" is pressed.
+                AchievementsSection(userId: userId),
+              ],
             ],
           ),
         ),
       ),
     );
   }
-}
-
-class _CountStat extends StatelessWidget {
-  const _CountStat({required this.value, required this.label});
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        Text(label, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
-      ]);
 }
 
 class _ServiceTile extends StatelessWidget {

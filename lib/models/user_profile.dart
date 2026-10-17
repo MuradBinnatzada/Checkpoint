@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/models/connected_service.dart';
+
 @immutable
 class UserProfile {
   const UserProfile({
@@ -8,6 +10,7 @@ class UserProfile {
     this.bio,
     this.avatarUrl,
     this.steamId,
+    this.connectedServices = const {},
     required this.joined,
     this.followers = 248,
     this.following = 120,
@@ -19,6 +22,7 @@ class UserProfile {
         bio: json['bio'] as String?,
         avatarUrl: json['avatarUrl'] as String?,
         steamId: json['steamId'] as String?,
+        connectedServices: connectedServicesFromDb(json['connectedServices']),
         joined: DateTime.parse(json['joined'] as String).toLocal(),
         followers: (json['followers'] as num).toInt(),
         following: (json['following'] as num).toInt(),
@@ -32,6 +36,11 @@ class UserProfile {
   /// Steam ID64 from `profiles.steam_id`. Only ever populated for the signed-in
   /// user's own profile; it is never read for other members.
   final String? steamId;
+
+  /// The services besides Steam that `profiles.connected_services` says are
+  /// connected: the list other members see. The PSN / Xbox / Discord names behind
+  /// them are not on the server.
+  final Set<ConnectedService> connectedServices;
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
@@ -44,6 +53,7 @@ class UserProfile {
         'bio': bio,
         'avatarUrl': avatarUrl,
         'steamId': steamId,
+        'connectedServices': connectedServicesToDb(connectedServices),
         'joined': joined.toUtc().toIso8601String(),
         'followers': followers,
         'following': following,
@@ -64,6 +74,7 @@ class UserProfile {
         bio: bio ?? this.bio,
         avatarUrl: avatarUrl ?? this.avatarUrl,
         steamId: clearSteamId ? null : (steamId ?? this.steamId),
+        connectedServices: connectedServices,
         joined: joined,
         followers: followers,
         following: following,

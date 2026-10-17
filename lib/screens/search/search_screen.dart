@@ -7,7 +7,6 @@ import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/search/browse_results_screen.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
-import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/search_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -16,7 +15,7 @@ import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/load_more_footer.dart';
-import 'package:checkpoint/widgets/profile_avatar.dart';
+import 'package:checkpoint/widgets/member_tile.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -392,45 +391,9 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final profile = context.watch<ProfileStore>();
-    final following = profile.isFollowing(user.id);
-
-    void toggle() {
-      if (!context.read<AuthStore>().isLoggedIn) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Log in to follow people')));
-        return;
-      }
-      profile.toggleFollow(user.id);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(children: [
-        ProfileAvatar(name: user.name, size: 52),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(user.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            Text(user.handle, style: const TextStyle(color: Palette.accent, fontSize: 12.5, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text('${user.gamesLogged} games · ${fmtCount(user.followers)} followers', style: const TextStyle(color: Palette.muted, fontSize: 12)),
-          ]),
-        ),
-        const SizedBox(width: 8),
-        following
-            ? OutlinedButton(
-                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                onPressed: toggle,
-                child: const Text('Following'),
-              )
-            : FilledButton(
-                style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-                onPressed: toggle,
-                child: const Text('Follow'),
-              ),
-      ]),
+    return MemberTile(
+      user: user,
+      subtitle: '${user.gamesLogged} games · ${fmtCount(user.followers)} followers',
     );
   }
 }

@@ -7,7 +7,10 @@ import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/public_achievements_store.dart';
+import 'package:checkpoint/state/public_profile_store.dart';
 import 'package:checkpoint/state/search_store.dart';
+import 'package:checkpoint/state/social_graph_store.dart';
 
 /// Makes one store available to the widgets below it. There is one scope per
 /// store, each rebuilding only the widgets that [StoreContext.watch] that store,
@@ -57,7 +60,16 @@ class AppStoresScope extends StatelessWidget {
                 store: stores.search,
                 child: StoreScope<BrowseStore>(
                   store: stores.browse,
-                  child: child,
+                  child: StoreScope<PublicProfileStore>(
+                    store: stores.publicProfiles,
+                    child: StoreScope<SocialGraphStore>(
+                      store: stores.socialGraph,
+                      child: StoreScope<PublicAchievementsStore>(
+                        store: stores.publicAchievements,
+                        child: child,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/sync_failure.dart';
@@ -141,6 +142,28 @@ void main() {
   tearDown(() async {
     await client.dispose();
   });
+
+  /// Gives the client a stored session for [userId], which is where the
+  /// repository reads the signed-in user from. Nothing goes over the network.
+  Future<void> signIn(String userId) async {
+    await client.auth.recoverSession(
+      jsonEncode({
+        'access_token': 'token',
+        'refresh_token': 'refresh',
+        'token_type': 'bearer',
+        'expires_in': 3600,
+        'expires_at': DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000,
+        'user': {
+          'id': userId,
+          'aud': 'authenticated',
+          'app_metadata': <String, dynamic>{},
+          'user_metadata': <String, dynamic>{},
+          'created_at': '2026-01-01T00:00:00Z',
+        },
+      }),
+    );
+    api.requests.clear();
+  }
 
   group('fetchUserGames', () {
     test('turns a library row into a Game', () async {
@@ -400,6 +423,25 @@ void main() {
       expect(api.requests, hasLength(1)); // nothing was written
     });
 
+    test('the profile carries the connected services saved on the row, not the account names', () async {
+      api.reply({
+        'id': 'u1',
+        'display_name': 'Ada',
+        'handle': 'ada',
+        'connected_services': ['xbox', 'steam', 'epic'],
+      });
+
+      final profile = await repo.fetchProfile(testUser('u1'));
+
+      expect(profile.connectedServices, {ConnectedService.xbox});
+    });
+
+    test('a row without the column (migration not applied yet) has no connected services', () async {
+      api.reply({'id': 'u1', 'display_name': 'Ada', 'handle': 'ada'});
+
+      expect((await repo.fetchProfile(testUser('u1'))).connectedServices, isEmpty);
+    });
+
     test('a blank steam_id means no Steam account is connected', () async {
       api.reply({'id': 'u1', 'display_name': 'Ada', 'handle': 'ada', 'steam_id': '  '});
 
@@ -489,7 +531,7 @@ void main() {
   group('social', () {
     test('searchSocialUsers reads only public columns and flags a full page', () async {
       api.reply([
-        {'id': 'm1', 'handle': 'zed', 'display_name': 'Zed', 'avatar_url': null},
+        {'id': 'm1', 'handle': 'zed', 'display_name': 'Zed', 'avatar_url': 'https://example.com/z.png'},
         {'id': 'm2', 'handle': null, 'display_name': null, 'avatar_url': null},
       ]);
 
@@ -501,6 +543,7 @@ void main() {
       expect(page.hasMore, isTrue); // a full page: there may be another
       expect(page.items[0].name, 'Zed');
       expect(page.items[0].handle, '@zed');
+      expect(page.items[0].avatarUrl, 'https://example.com/z.png');
       expect(page.items[1].name, 'Player');
       expect(page.items[1].handle, startsWith('@player_'));
     });
@@ -546,6 +589,284 @@ void main() {
         {'follower_id': 'y'},
       ]);
       expect(await repo.fetchFollowersCount('u1'), 2);
+    });
+  });
+
+  group('other members', () {
+    Map<String, dynamic> publicGameRow(
+      String gameId, {
+      bool favorite = false,
+      Object? rating = 4.5,
+    }) => {
+      'game_id': gameId,
+      'status': 'completed',
+      'rating': rating,
+      'hours_played': 31.5,
+      'played_on': 'pc',
+      'date_added': '2026-03-01T10:00:00+00:00',
+      'is_favorite': favorite,
+      'igdb_id': 113112,
+      'steam_app_id': 1145360,
+      'title': 'Hades',
+      'publisher': 'Supergiant Games',
+      'developer': 'Supergiant Games',
+      'release_year': 2020,
+      'platforms': ['pc'],
+      'genres': ['Roguelike'],
+      'summary': 'Escape the underworld.',
+      'cover_url': 'https://images.igdb.com/hades.jpg',
+    };
+
+    test('fetchPublicProfile reads the public view, with the Steam flag but never the ID', () async {
+      api.reply({
+        'id': 'm1',
+        'handle': 'zed',
+        'display_name': 'Zed',
+        'avatar_url': ' https://example.com/zed.png ',
+        'steam_connected': true,
+      });
+
+      final profile = await repo.fetchPublicProfile('m1');
+
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, '/rest/v1/public_profiles');
+      expect(query['id'], 'eq.m1');
+      expect(query['select'], contains('steam_connected'));
+      expect(query['select'], isNot(contains('steam_id')));
+      expect(query['select'], isNot(contains('email')));
+      expect(query['select'], isNot(contains('bio')));
+      expect(profile!.name, 'Zed');
+      expect(profile.handle, '@zed');
+      expect(profile.avatarUrl, 'https://example.com/zed.png');
+      expect(profile.steamConnected, isTrue);
+    });
+
+    test('fetchPublicProfile reads which services are connected, as names only', () async {
+      api.reply({
+        'id': 'm1',
+        'handle': 'zed',
+        'display_name': 'Zed',
+        'steam_connected': false,
+        'connected_services': ['xbox', 'psn', 'nintendo', 'discord'],
+      });
+
+      final profile = (await repo.fetchPublicProfile('m1'))!;
+
+      final select = api.last.url.queryParameters['select']!;
+      expect(select, contains('connected_services'));
+      // Only the service names are asked for: never an account name or the Steam ID.
+      for (final private in ['psn_id', 'xbox_id', 'discord_id', 'steam_id']) {
+        expect(select, isNot(contains(private)));
+      }
+      expect(profile.services, {
+        ConnectedService.psn,
+        ConnectedService.xbox,
+        ConnectedService.discord,
+        ConnectedService.nintendo,
+      });
+      expect(profile.steamConnected, isFalse);
+      // The chips come out in the enum's order, Steam first when it is linked.
+      expect(profile.connectedServices.toList(), [
+        ConnectedService.discord,
+        ConnectedService.psn,
+        ConnectedService.xbox,
+        ConnectedService.nintendo,
+      ]);
+    });
+
+    test('Steam is its own flag and stays first next to the other services', () async {
+      api.reply({
+        'id': 'm1',
+        'handle': 'zed',
+        'display_name': 'Zed',
+        'steam_connected': true,
+        'connected_services': ['psn'],
+      });
+
+      final profile = (await repo.fetchPublicProfile('m1'))!;
+
+      expect(profile.connectedServices, {ConnectedService.steam, ConnectedService.psn});
+      expect(profile.connectedServices.first, ConnectedService.steam);
+    });
+
+    test('a service name this build does not know, or "steam", is skipped instead of failing the read', () async {
+      api.reply({
+        'id': 'm1',
+        'handle': 'zed',
+        'display_name': 'Zed',
+        'steam_connected': false,
+        'connected_services': ['psn', 'steam', 'epic', 7, null],
+      });
+
+      final profile = (await repo.fetchPublicProfile('m1'))!;
+
+      expect(profile.services, {ConnectedService.psn});
+      expect(profile.connectedServices, {ConnectedService.psn});
+    });
+
+    test('fetchPublicProfile is null for a member who does not exist', () async {
+      api.reply(null);
+
+      expect(await repo.fetchPublicProfile('ghost'), isNull);
+    });
+
+    test('a profile without a Steam flag or a name still reads', () async {
+      api.reply({'id': 'm9', 'handle': null, 'display_name': null});
+
+      final profile = (await repo.fetchPublicProfile('m9'))!;
+
+      expect(profile.name, 'Player');
+      expect(profile.handle, startsWith('@player_'));
+      expect(profile.steamConnected, isFalse);
+      expect(profile.services, isEmpty);
+      expect(profile.connectedServices, isEmpty);
+    });
+
+    test('fetchPublicProfileStats calls the function for that member and reads its one row', () async {
+      api.reply([
+        {'followers': 12, 'following': 3, 'viewer_follows': true, 'games': 40},
+      ]);
+
+      final stats = await repo.fetchPublicProfileStats('m1');
+
+      expect(api.last.url.path, '/rest/v1/rpc/public_profile_stats');
+      expect(api.bodyOf(api.last), {'target_user': 'm1'});
+      expect(stats.followers, 12);
+      expect(stats.following, 3);
+      expect(stats.viewerFollows, isTrue);
+      expect(stats.games, 40);
+    });
+
+    test('fetchPublicProfileStats fails when the server returns no row', () async {
+      api.reply(<Object?>[]); // no session
+
+      expect(repo.fetchPublicProfileStats('m1'), throwsStateError);
+    });
+
+    test('a profile\'s games come from the public view, without the price or achievements', () async {
+      api.reply([publicGameRow('g1', favorite: true)]);
+
+      final games = await repo.fetchPublicFavorites('m1');
+
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, '/rest/v1/public_user_games');
+      expect(query['user_id'], 'eq.m1');
+      expect(query['is_favorite'], 'eq.true');
+      expect(query['limit'], '4');
+      expect(query['select'], isNot(contains('purchase_price')));
+      expect(query['select'], isNot(contains('achievements')));
+      final game = games.single;
+      expect(game.id, 'g1');
+      expect(game.title, 'Hades');
+      expect(game.status, GameStatus.completed);
+      expect(game.rating, 4.5);
+      expect(game.hoursPlayed, 31.5);
+      expect(game.playedOn, GamePlatform.pc);
+      expect(game.isFavorite, isTrue);
+      expect(game.purchasePrice, 0);
+      expect(game.achievements, isNull);
+      expect(game.coverUrl, 'https://images.igdb.com/hades.jpg');
+    });
+
+    test('rated games are the best rated first', () async {
+      await repo.fetchPublicRatedGames('m1');
+
+      final query = api.last.url.queryParameters;
+      expect(query['rating'], 'gt.0');
+      expect(query['order'], startsWith('rating.desc'));
+      expect(query['limit'], '20');
+    });
+
+    test('the library is read a page at a time, newest first', () async {
+      await repo.fetchPublicLibrary('m1', offset: 30, limit: 30);
+
+      final query = api.last.url.queryParameters;
+      expect(query['user_id'], 'eq.m1');
+      expect(query['order'], startsWith('date_added.desc.nullslast'));
+      expect(query['offset'], '30');
+      expect(query['limit'], '30');
+    });
+
+    test('followers come from the followers view, newest follow first, with their photo', () async {
+      api.reply([
+        {'id': 'f1', 'handle': 'zed', 'display_name': 'Zed', 'avatar_url': 'https://example.com/z.png'},
+        {'id': 'f2', 'handle': 'amy', 'display_name': 'Amy', 'avatar_url': null},
+      ]);
+
+      final page = await repo.fetchFollowers('m1', limit: 2);
+
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, '/rest/v1/public_followers');
+      expect(query['user_id'], 'eq.m1');
+      expect(query['order'], 'followed_at.desc.nullslast,id.asc.nullslast');
+      expect(query['select'], isNot(contains('email')));
+      expect(page.hasMore, isTrue);
+      expect(page.items.map((u) => u.id), ['f1', 'f2']);
+      expect(page.items[0].handle, '@zed');
+      expect(page.items[0].avatarUrl, 'https://example.com/z.png');
+      expect(page.items[1].avatarUrl, isNull);
+    });
+
+    test('following comes from the following view, and a short page ends the list', () async {
+      api.reply([
+        {'id': 'f1', 'handle': 'zed', 'display_name': 'Zed'},
+      ]);
+
+      final page = await repo.fetchFollowing('m1', offset: 30);
+
+      expect(api.last.url.path, '/rest/v1/public_following');
+      expect(api.last.url.queryParameters['offset'], '30');
+      expect(page.hasMore, isFalse);
+    });
+
+    test('the achievement summary is one function call and reads counts, not achievements', () async {
+      api.reply([
+        {'game_id': 'g1', 'title': 'Hades', 'cover_url': ' ', 'unlocked': 12, 'total': 40},
+        {'game_id': 'g2', 'title': null, 'cover_url': 'https://images.igdb.com/c.jpg', 'unlocked': '3', 'total': '10'},
+      ]);
+
+      final games = await repo.fetchAchievementSummary('m1');
+
+      expect(api.last.url.path, '/rest/v1/rpc/public_achievement_summary');
+      expect(api.bodyOf(api.last), {'target_user': 'm1'});
+      expect(games[0].unlocked, 12);
+      expect(games[0].total, 40);
+      expect(games[0].coverUrl, isNull); // blank text is no cover
+      expect(games[1].title, 'Untitled Game');
+      expect(games[1].unlocked, 3);
+      expect(games[1].coverUrl, 'https://images.igdb.com/c.jpg');
+    });
+
+    test('one game\'s achievements come from the per-game function; null means none stored', () async {
+      api.reply([
+        {'name': 'First', 'description': 'd', 'icon_url': 'u', 'unlocked': true, 'unlocked_at': '2026-01-01T00:00:00Z'},
+      ]);
+
+      final achievements = await repo.fetchPublicGameAchievements('m1', 'g1');
+
+      expect(api.last.url.path, '/rest/v1/rpc/public_game_achievements');
+      expect(api.bodyOf(api.last), {'target_user': 'm1', 'target_game': 'g1'});
+      expect(achievements!.single.name, 'First');
+      expect(achievements.single.unlocked, isTrue);
+
+      api.reply(null);
+      expect(await repo.fetchPublicGameAchievements('m1', 'g2'), isNull);
+    });
+
+    test('no request for another member ever touches the private tables', () async {
+      api.reply({'id': 'm1', 'handle': 'zed', 'display_name': 'Zed'});
+      await repo.fetchPublicProfile('m1');
+      await repo.fetchPublicFavorites('m1');
+      await repo.fetchPublicRatedGames('m1');
+      await repo.fetchPublicLibrary('m1');
+      await repo.fetchFollowers('m1');
+      await repo.fetchFollowing('m1');
+
+      for (final request in api.requests) {
+        expect(request.url.path, isNot('/rest/v1/profiles'));
+        expect(request.url.path, isNot('/rest/v1/user_games'));
+        expect(request.url.path, isNot('/rest/v1/social_follows'));
+      }
     });
   });
 
@@ -622,6 +943,36 @@ void main() {
       expect(row['played_on'], 'retro'); // how Emulator is stored
       expect(row['date_added'], '2026-07-01T09:00:00.000Z');
       expect(row['is_favorite'], isFalse);
+    });
+
+    test('setConnectedServices replaces the list on the signed-in user\'s row with names only', () async {
+      await signIn('u1');
+
+      await repo.setConnectedServices({
+        ConnectedService.xbox,
+        ConnectedService.steam, // derived from steam_id, never stored
+        ConnectedService.psn,
+      });
+
+      expect(api.last.method, 'PATCH');
+      expect(api.last.url.path, '/rest/v1/profiles');
+      expect(api.last.url.queryParameters['id'], 'eq.u1');
+      expect(api.bodyOf(api.last), {
+        'connected_services': ['psn', 'xbox'],
+      });
+    });
+
+    test('setConnectedServices with nothing connected writes an empty list', () async {
+      await signIn('u1');
+
+      await repo.setConnectedServices({});
+
+      expect(api.bodyOf(api.last), {'connected_services': <String>[]});
+    });
+
+    test('setConnectedServices needs a signed-in user', () async {
+      await expectLater(repo.setConnectedServices({ConnectedService.psn}), throwsStateError);
+      expect(api.requests, isEmpty);
     });
 
     test('insertLogEntry trims the note', () async {

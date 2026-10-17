@@ -53,3 +53,26 @@ class Achievement {
     ]);
   }
 }
+
+/// Unlocked first (most recently unlocked on top), then locked in Steam's own
+/// order. `List.sort` isn't stable, so the original index is the tie-break.
+List<Achievement> sortAchievements(List<Achievement> source) {
+  final indexed = [for (var i = 0; i < source.length; i++) (index: i, item: source[i])];
+  indexed.sort((a, b) {
+    final x = a.item, y = b.item;
+    if (x.unlocked != y.unlocked) return x.unlocked ? -1 : 1;
+    if (x.unlocked) {
+      final xt = x.unlockedAt, yt = y.unlockedAt;
+      if (xt != null && yt != null) {
+        final byTime = yt.compareTo(xt);
+        if (byTime != 0) return byTime;
+      } else if (xt != null) {
+        return -1;
+      } else if (yt != null) {
+        return 1;
+      }
+    }
+    return a.index.compareTo(b.index);
+  });
+  return [for (final e in indexed) e.item];
+}

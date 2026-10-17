@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +10,7 @@ import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/widgets/achievement_tile.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
@@ -366,29 +366,6 @@ class _SessionsPanel extends StatelessWidget {
   }
 }
 
-/// Unlocked first (most recently unlocked on top), then locked in Steam's own
-/// order. `List.sort` isn't stable, so the original index is the tie-break.
-List<Achievement> _sortAchievements(List<Achievement> source) {
-  final indexed = [for (var i = 0; i < source.length; i++) (index: i, item: source[i])];
-  indexed.sort((a, b) {
-    final x = a.item, y = b.item;
-    if (x.unlocked != y.unlocked) return x.unlocked ? -1 : 1;
-    if (x.unlocked) {
-      final xt = x.unlockedAt, yt = y.unlockedAt;
-      if (xt != null && yt != null) {
-        final byTime = yt.compareTo(xt);
-        if (byTime != 0) return byTime;
-      } else if (xt != null) {
-        return -1;
-      } else if (yt != null) {
-        return 1;
-      }
-    }
-    return a.index.compareTo(b.index);
-  });
-  return [for (final e in indexed) e.item];
-}
-
 /// Steam achievements, loaded on demand: one Steam round trip per game, so
 /// they are not part of the bulk library sync.
 class _AchievementsPanel extends StatefulWidget {
@@ -489,7 +466,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
     final total = all.length;
     final unlocked = all.where((a) => a.unlocked).length;
     final percent = (unlocked * 100 / total).round();
-    final shown = _sortAchievements(all).take(_visible).toList();
+    final shown = sortAchievements(all).take(_visible).toList();
     final remaining = total - shown.length;
     final nextPage = remaining < _pageSize ? remaining : _pageSize;
 
@@ -510,7 +487,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
         ),
       ),
       const SizedBox(height: 14),
-      for (final a in shown) _AchievementTile(achievement: a),
+      for (final a in shown) AchievementTile(achievement: a),
       // "Show less" appears as soon as the list has been expanded past its
       // starting size, not only once everything is visible. The "Show more"
       // label is Flexible so the pair can't overflow on narrow screens.
@@ -573,98 +550,6 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
                   )
                 : _list(achievements),
       ),
-    );
-  }
-}
-
-class _AchievementTile extends StatelessWidget {
-  const _AchievementTile({required this.achievement});
-  final Achievement achievement;
-
-  @override
-  Widget build(BuildContext context) {
-    final a = achievement;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: a.unlocked ? Palette.star.withValues(alpha: 0.07) : Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: a.unlocked ? Palette.star.withValues(alpha: 0.28) : Colors.white.withValues(alpha: 0.06),
-        ),
-      ),
-      child: Row(children: [
-        _AchievementIcon(achievement: a),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              a.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: a.unlocked ? Colors.white : Colors.white70),
-            ),
-            if (a.description.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(
-                a.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, height: 1.3, color: Palette.muted),
-              ),
-            ],
-          ]),
-        ),
-        const SizedBox(width: 8),
-        if (a.unlocked)
-          Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Icon(Icons.emoji_events_rounded, size: 18, color: Palette.star),
-            if (a.unlockedAt != null)
-              Text(timeAgo(a.unlockedAt!), style: const TextStyle(fontSize: 11, color: Palette.muted)),
-          ])
-        else
-          const Icon(Icons.lock_outline_rounded, size: 18, color: Palette.muted),
-      ]),
-    );
-  }
-}
-
-class _AchievementIcon extends StatelessWidget {
-  const _AchievementIcon({required this.achievement});
-  final Achievement achievement;
-
-  // Steam also ships a grey icon, but desaturating the colour one means we only
-  // have to store (and fetch) a single URL per achievement.
-  static const ColorFilter _greyscale = ColorFilter.matrix(<double>[
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0, 0, 0, 1, 0,
-  ]);
-
-  @override
-  Widget build(BuildContext context) {
-    final a = achievement;
-    final Widget fallback = Container(
-      color: Colors.white.withValues(alpha: 0.06),
-      child: const Icon(Icons.emoji_events_outlined, size: 22, color: Palette.muted),
-    );
-    Widget image = a.iconUrl.isEmpty
-        ? fallback
-        : CachedNetworkImage(
-            imageUrl: a.iconUrl,
-            fit: BoxFit.cover,
-            memCacheWidth: 96, // 2x of the 44 px slot; keeps long lists light on memory
-            fadeInDuration: Duration.zero,
-            errorWidget: (_, _, _) => fallback,
-          );
-    if (!a.unlocked) {
-      image = Opacity(opacity: 0.55, child: ColorFiltered(colorFilter: _greyscale, child: image));
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(width: 44, height: 44, child: image),
     );
   }
 }

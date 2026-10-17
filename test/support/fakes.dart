@@ -2,10 +2,14 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/achievement.dart';
+import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
@@ -81,6 +85,16 @@ LogEntry testLog(String id, String gameId) => LogEntry(
   note: 'a note',
 );
 
+/// A member as the lists and the search show them.
+SocialUser testMember(String id, {String? name, String? avatarUrl}) => SocialUser(
+  id: id,
+  name: name ?? 'Member $id',
+  handle: '@member_$id',
+  gamesLogged: 0,
+  followers: 0,
+  avatarUrl: avatarUrl,
+);
+
 /// A [CheckpointRepository] that answers from memory. [offline] makes every read
 /// throw, like a dead connection; [gate] holds the library read until completed.
 class FakeRepository implements CheckpointRepository {
@@ -102,6 +116,10 @@ class FakeRepository implements CheckpointRepository {
   /// The Steam ID saved on the profile; null means no Steam account is connected.
   String? steamId;
 
+  /// `profiles.connected_services`: the services saved for the signed-in user, as
+  /// other members see them (Steam is never in it).
+  Set<ConnectedService> connectedServices = {};
+
   /// What `sync-steam` answers, or the error it throws when [syncError] is set.
   Object? syncData = {'success': true, 'delayed': null};
   Object? syncError;
@@ -109,6 +127,12 @@ class FakeRepository implements CheckpointRepository {
 
   /// Holds [follow] until completed, to have a request in flight.
   Completer<void>? followGate;
+
+  /// Holds [setConnectedServices] until completed.
+  Completer<void>? servicesGate;
+
+  /// Holds the signed-in user's own profile read ([ensureProfile]) until completed.
+  Completer<void>? profileLoadGate;
   Completer<void>? gate;
   int libraryFetches = 0;
 
@@ -147,12 +171,16 @@ class FakeRepository implements CheckpointRepository {
 
   @override
   Future<UserProfile> ensureProfile(User user) async {
+    // The row as it is when the request is made, like a read that is under way.
+    final services = {...connectedServices};
+    await profileLoadGate?.future;
     _checkOnline();
     return UserProfile(
       name: 'Ada',
       handle: '@ada',
       bio: '',
       steamId: steamId,
+      connectedServices: services,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -161,6 +189,14 @@ class FakeRepository implements CheckpointRepository {
 
   @override
   Future<UserProfile> fetchProfile(User user) => ensureProfile(user);
+
+  @override
+  Future<void> setConnectedServices(Set<ConnectedService> services) async {
+    await servicesGate?.future;
+    _checkWrite();
+    connectedServices = {...services};
+    writes.add('services:${connectedServicesToDb(services).join(',')}');
+  }
 
   @override
   Future<Object?> syncSteamLibrary() async {
@@ -251,6 +287,152 @@ class FakeRepository implements CheckpointRepository {
     return ResultsPage<SocialUser>(const [
       SocialUser(id: 'm1', name: 'Member', handle: '@member', gamesLogged: 0, followers: 0),
     ], hasMore: false);
+  }
+
+  // ---- Other members ----
+
+  /// Members the server knows, by id. A missing id is a deleted account.
+  final Map<String, PublicProfile> members = {
+    'm1': const PublicProfile(
+      id: 'm1',
+      name: 'Member One',
+      handle: '@member_one',
+      steamConnected: true,
+    ),
+  };
+
+  /// What `public_profile_stats` answers, per member (default: 5 / 2 / not
+  /// following / 2 games).
+  final Map<String, PublicProfileStats> stats = {};
+
+  /// A member's games. The profile's favorites, rated list and library pages are
+  /// cut from these the way the database does it.
+  final Map<String, List<Game>> memberGames = {};
+
+  /// Followers and following lists, per member id.
+  final Map<String, List<SocialUser>> followersOf = {};
+  final Map<String, List<SocialUser>> followingOf = {};
+
+  /// Per member: the progress per game, and the achievements of each game.
+  final Map<String, List<GameAchievementSummary>> achievementSummaries = {};
+  final Map<(String, String), List<Achievement>?> memberAchievements = {};
+
+  /// Holds profile reads / follower and following lists until completed, to
+  /// have a request in flight.
+  Completer<void>? profileGate;
+  Completer<void>? followListGate;
+
+  /// Fails these reads, as a dropped connection does.
+  bool failProfileReads = false;
+  bool failFollowLists = false;
+  bool failAchievementReads = false;
+
+  /// What was asked of the server about other members, in order.
+  final List<String> memberReads = [];
+
+  List<Game> _gamesOf(String userId) => memberGames[userId] ?? const [];
+
+  @override
+  Future<PublicProfile?> fetchPublicProfile(String userId) async {
+    memberReads.add('profile:$userId');
+    await profileGate?.future;
+    _checkOnline();
+    if (failProfileReads) throw Exception('profile read failed');
+    return members[userId];
+  }
+
+  @override
+  Future<PublicProfileStats> fetchPublicProfileStats(String userId) async {
+    memberReads.add('stats:$userId');
+    _checkOnline();
+    if (failProfileReads) throw Exception('profile read failed');
+    return stats[userId] ??
+        PublicProfileStats(
+          followers: 5,
+          following: 2,
+          viewerFollows: false,
+          games: _gamesOf(userId).length,
+        );
+  }
+
+  @override
+  Future<List<Game>> fetchPublicFavorites(String userId) async {
+    _checkOnline();
+    return [
+      for (final g in _gamesOf(userId))
+        if (g.isFavorite) g,
+    ].take(CheckpointRepository.publicFavoritesLimit).toList();
+  }
+
+  @override
+  Future<List<Game>> fetchPublicRatedGames(String userId) async {
+    _checkOnline();
+    return [
+      for (final g in _gamesOf(userId))
+        if (g.rating > 0) g,
+    ];
+  }
+
+  @override
+  Future<List<Game>> fetchPublicLibrary(
+    String userId, {
+    int offset = 0,
+    int limit = CheckpointRepository.publicLibraryPageSize,
+  }) async {
+    memberReads.add('library:$userId:$offset');
+    _checkOnline();
+    if (failProfileReads && offset > 0) throw Exception('page failed');
+    return _gamesOf(userId).skip(offset).take(limit).toList();
+  }
+
+  ResultsPage<SocialUser> _page(List<SocialUser> all, int offset, int limit) {
+    final items = all.skip(offset).take(limit).toList();
+    return ResultsPage<SocialUser>(items, hasMore: items.length >= limit);
+  }
+
+  @override
+  Future<ResultsPage<SocialUser>> fetchFollowers(
+    String userId, {
+    int offset = 0,
+    int limit = CheckpointRepository.followListPageSize,
+  }) async {
+    memberReads.add('followers:$userId:$offset');
+    await followListGate?.future;
+    _checkOnline();
+    if (failFollowLists) throw Exception('list failed');
+    return _page(followersOf[userId] ?? const [], offset, limit);
+  }
+
+  @override
+  Future<ResultsPage<SocialUser>> fetchFollowing(
+    String userId, {
+    int offset = 0,
+    int limit = CheckpointRepository.followListPageSize,
+  }) async {
+    memberReads.add('following:$userId:$offset');
+    await followListGate?.future;
+    _checkOnline();
+    if (failFollowLists) throw Exception('list failed');
+    return _page(followingOf[userId] ?? const [], offset, limit);
+  }
+
+  @override
+  Future<List<GameAchievementSummary>> fetchAchievementSummary(String userId) async {
+    memberReads.add('achievements:$userId');
+    _checkOnline();
+    if (failAchievementReads) throw Exception('achievements failed');
+    return achievementSummaries[userId] ?? const [];
+  }
+
+  @override
+  Future<List<Achievement>?> fetchPublicGameAchievements(
+    String userId,
+    String gameId,
+  ) async {
+    memberReads.add('achievements:$userId:$gameId');
+    _checkOnline();
+    if (failAchievementReads) throw Exception('achievements failed');
+    return memberAchievements[(userId, gameId)];
   }
 
   @override

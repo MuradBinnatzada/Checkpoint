@@ -15,3 +15,20 @@ enum ConnectedService {
   final Color color;
   final bool supportsSync;
 }
+
+/// Names for `profiles.connected_services`, the services other members can see
+/// are connected. Steam is left out: it is connected exactly when the profile has
+/// a Steam ID, so it never has a name of its own in that list. Sorted, so the same
+/// set always saves the same list.
+List<String> connectedServicesToDb(Iterable<ConnectedService> services) => [
+  for (final s in ConnectedService.values)
+    if (s != ConnectedService.steam && services.contains(s)) s.name,
+]..sort();
+
+/// The services named in a `connected_services` value. A name this build doesn't
+/// know (a newer app wrote it) and Steam are skipped rather than failing the read.
+Set<ConnectedService> connectedServicesFromDb(Object? value) => {
+  if (value is List)
+    for (final s in ConnectedService.values)
+      if (s != ConnectedService.steam && value.contains(s.name)) s,
+};

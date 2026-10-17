@@ -25,6 +25,7 @@ const u1Keys = {
   'pending.v1.follows.u1',
   'psn_id.u1',
   'connected_services.u1',
+  'services_pending.u1',
 };
 
 /// A device with u1 (the account that gets deleted), u2 and the app's own data
@@ -34,7 +35,10 @@ Future<void> seedDevice() async {
   SharedPreferences.setMockInitialValues({
     'psn_id.u1': 'ps_user',
     'connected_services.u1': ['psn'],
+    'services_pending.u1': true,
     'psn_id.u2': 'other',
+    'connected_services.u2': ['xbox'],
+    'services_pending.u2': false,
     'theme': 'dark',
   });
   final cache = LocalCache();
@@ -50,7 +54,15 @@ Future<void> seedDevice() async {
   await PendingEditsStorage().write('u2', PendingEdits()..markRemoved('b'));
 }
 
-const otherData = ['cache.v1.library.u2', 'pending.v1.u2', 'psn_id.u2', 'cache.v1.popular', 'theme'];
+const otherData = [
+  'cache.v1.library.u2',
+  'pending.v1.u2',
+  'psn_id.u2',
+  'connected_services.u2',
+  'services_pending.u2',
+  'cache.v1.popular',
+  'theme',
+];
 
 Future<Set<String>> savedKeys() async => (await SharedPreferences.getInstance()).getKeys();
 
