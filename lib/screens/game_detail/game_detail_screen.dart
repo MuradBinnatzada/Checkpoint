@@ -47,21 +47,13 @@ class GameDetailScreen extends StatelessWidget {
             child: Center(child: _RoundIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.maybePop(context))),
           ),
           actions: [
-            // Wishlist: for a game that is not in the library yet, or is only on the
-            // wishlist. A game being played or finished has moved past it.
-            if (isLoggedIn && (game.status == null || game.status == GameStatus.wishlist))
+            // Wishlist and favorite are always side by side, whatever the game's
+            // status. Favoriting a game that is not in the library adds it.
+            if (isLoggedIn) ...[
               Padding(
                 padding: const EdgeInsets.only(right: 10),
-                child: Center(
-                  child: _RoundIconButton(
-                    icon: game.status == GameStatus.wishlist ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-                    color: game.status == GameStatus.wishlist ? GameStatus.wishlist.color : Colors.white,
-                    tooltip: game.status == GameStatus.wishlist ? 'Remove from wishlist' : 'Add to wishlist',
-                    onTap: () => toggleWishlist(context, game),
-                  ),
-                ),
+                child: Center(child: _WishlistButton(game: game)),
               ),
-            if (game.status != null) // Only show heart if it's in the library
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Center(
@@ -73,6 +65,7 @@ class GameDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+            ],
           ],
           flexibleSpace: LayoutBuilder(builder: (context, c) {
             final top = MediaQuery.paddingOf(context).top;
@@ -175,13 +168,48 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
+/// The bookmark in the app bar. A game being played or finished has moved past
+/// the wishlist, so for it the bookmark is dimmed and tapping it explains why
+/// instead of changing the game's status.
+class _WishlistButton extends StatelessWidget {
+  const _WishlistButton({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) {
+    final wishlisted = game.status == GameStatus.wishlist;
+    final movedPast = game.inLibrary && !wishlisted;
+    return _RoundIconButton(
+      icon: wishlisted ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+      color: wishlisted
+          ? GameStatus.wishlist.color
+          : movedPast
+              ? Colors.white38
+              : Colors.white,
+      tooltip: wishlisted
+          ? 'Remove from wishlist'
+          : movedPast
+              ? 'Already in your library'
+              : 'Add to wishlist',
+      onTap: () => toggleWishlist(context, game),
+    );
+  }
+}
+
 /// Puts [game] on the wishlist, or takes it off. A wishlisted game is a library
 /// entry with the Wishlist status, so unlike favorites (four at most) there is no
-/// limit. The snack bar can undo it.
+/// limit. The snack bar can undo it. A game already in the library with another
+/// status is left alone.
 void toggleWishlist(BuildContext context, Game game) {
   final store = context.read<LibraryStore>();
   final messenger = ScaffoldMessenger.of(context);
   final wishlisted = game.status == GameStatus.wishlist;
+  if (game.inLibrary && !wishlisted) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('${game.title} is already in your library as ${game.status!.label}')));
+    return;
+  }
   if (wishlisted) {
     store.removeFromLibrary(game.id);
   } else {
@@ -352,12 +380,6 @@ class _StatusActions extends StatelessWidget {
           onPressed: () => change(GameStatus.playing, 'Started playing'),
           icon: const Icon(Icons.play_circle_rounded, size: 18),
           label: const Text('Start Playing'),
-        ),
-      if (game.status == null)
-        TextButton.icon(
-          onPressed: () => toggleWishlist(context, game),
-          icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-          label: const Text('Add to Wishlist'),
         ),
       if (game.status != null) ...[
         const SizedBox(width: double.infinity, height: 4),

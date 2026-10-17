@@ -650,8 +650,10 @@ void main() {
         'psn_id': 'zed_psn',
         'xbox_id': '  ',
         'discord_id': 'zed#1',
+        'instagram_id': 'zed.gram',
+        'twitch_id': ' ',
         'joined_at': '2026-03-04T00:00:00+00:00',
-        'connected_services': ['xbox', 'psn', 'nintendo', 'discord'],
+        'connected_services': ['xbox', 'psn', 'nintendo', 'discord', 'instagram', 'twitch'],
       });
 
       final profile = (await repo.fetchPublicProfile('m1'))!;
@@ -664,6 +666,8 @@ void main() {
         'psn_id',
         'xbox_id',
         'discord_id',
+        'instagram_id',
+        'twitch_id',
         'joined_at',
       ]) {
         expect(select, contains(column));
@@ -674,20 +678,26 @@ void main() {
       expect(profile.psnId, 'zed_psn');
       expect(profile.xboxId, isNull); // blank text is no name
       expect(profile.discordId, 'zed#1');
+      expect(profile.instagramId, 'zed.gram');
+      expect(profile.twitchId, isNull);
       expect(profile.joined!.toUtc(), DateTime.utc(2026, 3, 4));
       expect(profile.services, {
         ConnectedService.psn,
         ConnectedService.xbox,
         ConnectedService.discord,
         ConnectedService.nintendo,
+        ConnectedService.instagram,
+        ConnectedService.twitch,
       });
-      // The icons come out in the enum's order, Steam first when it is linked.
+      // The accounts come out in the enum's order, Steam first when it is linked.
       expect(profile.connectedServices.toList(), [
         ConnectedService.steam,
-        ConnectedService.discord,
         ConnectedService.psn,
         ConnectedService.xbox,
         ConnectedService.nintendo,
+        ConnectedService.discord,
+        ConnectedService.instagram,
+        ConnectedService.twitch,
       ]);
     });
 
@@ -1062,19 +1072,24 @@ void main() {
           ConnectedService.steam, // derived from steam_id, never stored
           ConnectedService.psn,
           ConnectedService.nintendo,
+          ConnectedService.instagram,
         },
         psnId: ' ps_user ',
         xboxId: 'gamer',
+        instagramId: 'gamer.gram',
+        twitchId: 'left_over', // not connected
       ));
 
       expect(api.last.method, 'PATCH');
       expect(api.last.url.path, '/rest/v1/profiles');
       expect(api.last.url.queryParameters['id'], 'eq.u1');
       expect(api.bodyOf(api.last), {
-        'connected_services': ['nintendo', 'psn', 'xbox'],
+        'connected_services': ['instagram', 'nintendo', 'psn', 'xbox'],
         'psn_id': 'ps_user',
         'xbox_id': 'gamer',
         'discord_id': null,
+        'instagram_id': 'gamer.gram',
+        'twitch_id': null,
       });
     });
 
@@ -1086,6 +1101,8 @@ void main() {
         psnId: 'ps_user',
         xboxId: 'left_over',
         discordId: 'left_over#1',
+        instagramId: 'left_over',
+        twitchId: 'left_over',
       ));
 
       expect(api.bodyOf(api.last), {
@@ -1093,6 +1110,8 @@ void main() {
         'psn_id': 'ps_user',
         'xbox_id': null,
         'discord_id': null,
+        'instagram_id': null,
+        'twitch_id': null,
       });
     });
 
@@ -1120,6 +1139,8 @@ void main() {
         'psn_id': null,
         'xbox_id': null,
         'discord_id': null,
+        'instagram_id': null,
+        'twitch_id': null,
       });
     });
 

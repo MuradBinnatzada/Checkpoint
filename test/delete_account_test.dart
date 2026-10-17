@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException, FunctionsFetchException;
 
 import 'package:checkpoint/models/user_profile.dart';
-import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
+import 'package:checkpoint/screens/settings/account_section.dart';
+import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/services/delete_account_failure.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
@@ -166,7 +167,7 @@ void main() {
     });
   });
 
-  group('Delete account on the Edit Profile screen', () {
+  group('Delete account in Settings > Account', () {
     late FakeAuthService authService;
     late AppStores stores;
 
@@ -195,7 +196,7 @@ void main() {
                 body: Center(
                   child: TextButton(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const EditProfileScreen()),
+                      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
                     ),
                     child: const Text('open'),
                   ),
@@ -217,6 +218,15 @@ void main() {
     final confirmButton = find.widgetWithText(TextButton, 'Delete account');
 
     Future<void> askToDelete(WidgetTester tester) async {
+      // The list builds what is near the window: scroll until the button exists.
+      await tester.scrollUntilVisible(
+        deleteButton,
+        300,
+        scrollable: find.descendant(
+          of: find.byType(AccountSection),
+          matching: find.byType(Scrollable),
+        ),
+      );
       await tester.ensureVisible(deleteButton);
       await tester.pumpAndSettle();
       await tester.tap(deleteButton);
@@ -232,7 +242,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(authService.deleteCalls, 0);
-      expect(find.byType(EditProfileScreen), findsOneWidget);
+      expect(find.byType(SettingsScreen), findsOneWidget);
       expect(find.text('Delete your account?'), findsNothing);
     });
 
@@ -248,7 +258,7 @@ void main() {
 
       expect(authService.deleteCalls, 1);
       expect(stores.auth.isLoggedIn, isFalse);
-      expect(find.byType(EditProfileScreen), findsNothing);
+      expect(find.byType(SettingsScreen), findsNothing);
       expect(find.text('Your account was deleted'), findsOneWidget);
       expect((await savedKeys()).intersection(u1Keys), isEmpty);
     });
@@ -266,10 +276,10 @@ void main() {
 
       expect(authService.deleteCalls, 1);
       expect(stores.auth.isLoggedIn, isTrue);
-      expect(find.byType(EditProfileScreen), findsOneWidget);
+      expect(find.byType(SettingsScreen), findsOneWidget);
       expect(find.textContaining('Try again in a moment'), findsOneWidget);
       // Back to normal: the button works again.
-      expect(tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed, isNotNull);
+      expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete account')).onPressed, isNotNull);
     });
   });
 }

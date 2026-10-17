@@ -161,7 +161,8 @@ class CheckpointRepository {
   }
 
   /// Saves which services the signed-in user has connected, and the account
-  /// names behind PSN, Xbox and Discord, on their own `profiles` row. This is what
+  /// names behind PSN, Xbox, Discord, Instagram and Twitch, on their own
+  /// `profiles` row. This is what
   /// other members see on the profile: the icons, and what tapping one opens.
   /// Replaces everything, so sending the same accounts twice is harmless, and a
   /// service that is not connected has its name cleared. Never Steam: it follows
@@ -185,6 +186,8 @@ class CheckpointRepository {
           Db.psnId: name(ConnectedService.psn),
           Db.xboxId: name(ConnectedService.xbox),
           Db.discordId: name(ConnectedService.discord),
+          Db.instagramId: name(ConnectedService.instagram),
+          Db.twitchId: name(ConnectedService.twitch),
         })
         .eq(Db.id, userId);
   }
@@ -486,6 +489,8 @@ class CheckpointRepository {
     Db.psnId,
     Db.xboxId,
     Db.discordId,
+    Db.instagramId,
+    Db.twitchId,
     Db.joinedAt,
   ].join(', ');
 
@@ -663,6 +668,24 @@ class CheckpointRepository {
         .map<SocialUser>(_socialUserFromProfile)
         .toList(growable: false);
     return ResultsPage<SocialUser>(users, hasMore: users.length >= limit);
+  }
+
+  /// [userId]'s achievements added up: unlocked, total, games with any and games
+  /// finished. Counted in the database and one small row, so it is fine to load
+  /// with a profile. Empty (all zeros) when they have none.
+  Future<AchievementTotals> fetchAchievementTotals(String userId) async {
+    final data = await _client.rpc(
+      Db.rpcAchievementTotals,
+      params: {'target_user': userId},
+    );
+    final row = data is List ? (data.isEmpty ? null : data.first) : data;
+    if (row is! Map) return const AchievementTotals();
+    return AchievementTotals(
+      unlocked: _int(row['unlocked']),
+      total: _int(row['total']),
+      games: _int(row['games']),
+      completedGames: _int(row['completed_games']),
+    );
   }
 
   /// Which of [userId]'s games have achievements, and how far they got in each.
@@ -855,6 +878,8 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     psnId: _firstText([row[Db.psnId]]),
     xboxId: _firstText([row[Db.xboxId]]),
     discordId: _firstText([row[Db.discordId]]),
+    instagramId: _firstText([row[Db.instagramId]]),
+    twitchId: _firstText([row[Db.twitchId]]),
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,
@@ -891,6 +916,8 @@ PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
     psnId: _firstText([row[Db.psnId]]),
     xboxId: _firstText([row[Db.xboxId]]),
     discordId: _firstText([row[Db.discordId]]),
+    instagramId: _firstText([row[Db.instagramId]]),
+    twitchId: _firstText([row[Db.twitchId]]),
     joined: _date(row[Db.joinedAt]),
   );
 }

@@ -12,20 +12,57 @@ import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/achievement_tile.dart';
 import 'package:checkpoint/widgets/panel.dart';
 
-/// A member's achievements, behind a button. Nothing is fetched until it is
-/// pressed: achievements are large and personal, so they are not part of a
-/// profile. Pressing it loads the progress per game; opening a game loads that
-/// game's achievements.
-class AchievementsSection extends StatelessWidget {
+/// A member's achievements. The count over all their games shows at once (one
+/// small row from the database); the games behind it, and each game's
+/// achievements, are fetched only when asked for: achievements are large and
+/// personal, so they are not part of a profile. The button loads the progress per
+/// game; opening a game loads that game's achievements.
+class AchievementsSection extends StatefulWidget {
   const AchievementsSection({super.key, required this.userId});
 
   final String userId;
 
   @override
+  State<AchievementsSection> createState() => _AchievementsSectionState();
+}
+
+class _AchievementsSectionState extends State<AchievementsSection> {
+  @override
+  void initState() {
+    super.initState();
+    _loadTotalsAfterFrame();
+  }
+
+  @override
+  void didUpdateWidget(AchievementsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) _loadTotalsAfterFrame();
+  }
+
+  /// After the frame: loading notifies, which isn't allowed during build.
+  void _loadTotalsAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTotals());
+  }
+
+  void _loadTotals({bool force = false}) {
+    if (!mounted) return;
+    unawaited(
+      context.read<PublicAchievementsStore>().loadTotals(
+        widget.userId,
+        force: force,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final userId = widget.userId;
     final store = context.watch<PublicAchievementsStore>();
+    final totalsView = store.totalsOf(userId);
     final summary = store.summaryOf(userId);
-    Future<void> load({bool force = false}) => context
+    final totals = totalsView.totals;
+    final counted = totalsView.status == LoadStatus.ready;
+    Future<void> loadSummary({bool force = false}) => context
         .read<PublicAchievementsStore>()
         .loadSummary(userId, force: force);
 
@@ -33,7 +70,10 @@ class AchievementsSection extends StatelessWidget {
       LoadStatus.ready => IconButton(
         tooltip: 'Refresh achievements',
         visualDensity: VisualDensity.compact,
-        onPressed: () => unawaited(load(force: true)),
+        onPressed: () {
+          _loadTotals(force: true);
+          unawaited(loadSummary(force: true));
+        },
         icon: const Icon(Icons.refresh_rounded, color: Palette.muted),
       ),
       LoadStatus.loading => const Padding(
@@ -44,23 +84,23 @@ class AchievementsSection extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
+      _ when counted => Icon(
+        totals.allUnlocked
+            ? Icons.emoji_events_rounded
+            : Icons.emoji_events_outlined,
+        color: totals.allUnlocked ? Palette.star : Palette.muted,
+      ),
       _ => const Icon(Icons.lock_outline_rounded, color: Palette.muted),
     };
 
-    final Widget child = switch (summary.status) {
-      LoadStatus.idle => _Locked(onPressed: () => unawaited(load())),
+    // The per-game part: behind a button until asked for.
+    final Widget games = switch (summary.status) {
+      LoadStatus.idle => _Locked(onPressed: () => unawaited(loadSummary())),
       LoadStatus.loading => const SizedBox(height: 4),
-      LoadStatus.failed => _Failed(onRetry: () => unawaited(load())),
+      LoadStatus.failed => _Failed(onRetry: () => unawaited(loadSummary())),
       LoadStatus.ready =>
         summary.games.isEmpty
-            ? const Text(
-                'No achievements to show yet.',
-                style: TextStyle(
-                  color: Palette.muted,
-                  fontSize: 12.5,
-                  height: 1.35,
-                ),
-              )
+            ? const _Empty()
             : Column(
                 children: [
                   for (final game in summary.games)
@@ -69,7 +109,162 @@ class AchievementsSection extends StatelessWidget {
               ),
     };
 
+    final Widget child = switch (totalsView.status) {
+      LoadStatus.idle || LoadStatus.loading => const SizedBox(
+        height: 56,
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      LoadStatus.ready when totals.isEmpty => const _Empty(),
+      LoadStatus.ready => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TotalsHeader(totals: totals),
+          const SizedBox(height: 14),
+          games,
+        ],
+      ),
+      // The count could not be read (offline, or the function is not deployed
+      // yet): the button still works.
+      LoadStatus.failed => games,
+    };
+
     return Panel(title: 'Achievements', trailing: trailing, child: child);
+  }
+}
+
+class _Empty extends StatelessWidget {
+  const _Empty();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      'No achievements to show yet.',
+      style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+    );
+  }
+}
+
+/// A gold glow around [child] while [active]: a ring and a soft shadow. Still,
+/// not pulsing, so nothing keeps animating on a screen that is just being read.
+class _Glow extends StatelessWidget {
+  const _Glow({
+    required this.active,
+    required this.child,
+    this.radius = 14,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final bool active;
+  final Widget child;
+  final double radius;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: active ? Palette.star.withValues(alpha: 0.08) : null,
+        border: active
+            ? Border.all(color: Palette.star.withValues(alpha: 0.6))
+            : null,
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: Palette.star.withValues(alpha: 0.35),
+                  blurRadius: 18,
+                ),
+              ]
+            : const [],
+      ),
+      child: child,
+    );
+  }
+}
+
+/// The count that is always there: unlocked out of all, over every game with
+/// achievements. Glows once all of them are unlocked.
+class _TotalsHeader extends StatelessWidget {
+  const _TotalsHeader({required this.totals});
+
+  final AchievementTotals totals;
+
+  @override
+  Widget build(BuildContext context) {
+    final done = totals.allUnlocked;
+    // Floor, so 99.6% never reads as 100% while something is still locked.
+    final percent = done ? 100 : (totals.progress * 100).floor();
+    final games = '${totals.games} ${totals.games == 1 ? 'game' : 'games'}';
+    final detail = done
+        ? 'Every achievement unlocked · $games'
+        : '$percent% · $games'
+              '${totals.completedGames > 0 ? ' · ${totals.completedGames} completed' : ''}';
+
+    return Semantics(
+      container: true,
+      label:
+          '${totals.unlocked} of ${totals.total} achievements unlocked. $detail',
+      excludeSemantics: true,
+      child: _Glow(
+        active: done,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '${totals.unlocked}',
+                  style: TextStyle(
+                    fontSize: 30,
+                    height: 1.05,
+                    fontWeight: FontWeight.w800,
+                    color: done ? Palette.star : null,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '/ ${totals.total} unlocked',
+                  style: const TextStyle(
+                    color: Palette.muted,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: totals.progress,
+                minHeight: 8,
+                color: Palette.star,
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              detail,
+              style: TextStyle(
+                color: done ? Palette.star : Palette.muted,
+                fontSize: 12.5,
+                fontWeight: done ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -155,6 +350,8 @@ class _GameAchievementsState extends State<_GameAchievements> {
   Widget build(BuildContext context) {
     final game = widget.game;
     final percent = (game.progress * 100).round();
+    // Every achievement of the game is unlocked.
+    final complete = game.total > 0 && game.unlocked == game.total;
     final view = context.watch<PublicAchievementsStore>().gameOf(
       widget.userId,
       game.gameId,
@@ -170,7 +367,11 @@ class _GameAchievementsState extends State<_GameAchievements> {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
               children: [
-                _Cover(url: game.coverUrl),
+                _Glow(
+                  active: complete,
+                  radius: 10,
+                  child: _Cover(url: game.coverUrl),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -186,12 +387,27 @@ class _GameAchievementsState extends State<_GameAchievements> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        '${game.unlocked} / ${game.total} · $percent%',
-                        style: const TextStyle(
-                          color: Palette.muted,
-                          fontSize: 12.5,
-                        ),
+                      Row(
+                        children: [
+                          if (complete) ...[
+                            const Icon(
+                              Icons.emoji_events_rounded,
+                              size: 14,
+                              color: Palette.star,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            '${game.unlocked} / ${game.total} · $percent%',
+                            style: TextStyle(
+                              color: complete ? Palette.star : Palette.muted,
+                              fontSize: 12.5,
+                              fontWeight: complete
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       ClipRRect(

@@ -418,7 +418,14 @@ class LibraryStore extends ChangeNotifier {
       return;
     }
 
-    final next = game.copyWith(isFavorite: !isCurrentlyFavorite);
+    // A game that is not in the library comes in with its heart, as it does with
+    // a rating or a platform (setRating, setPlayedOn). Without a status there is
+    // no row to save the favorite on.
+    final next = game.copyWith(
+      isFavorite: !isCurrentlyFavorite,
+      status: game.status ?? GameStatus.playing,
+      dateAdded: game.dateAdded ?? DateTime.now(),
+    );
     _replaceGame(next);
     await _saveUserGame(next);
   }

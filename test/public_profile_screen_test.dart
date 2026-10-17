@@ -19,6 +19,7 @@ import 'package:checkpoint/screens/profile/public_profile_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
+import 'package:checkpoint/widgets/connected_account_icons.dart';
 import 'package:checkpoint/widgets/count_stat.dart';
 
 import 'support/fakes.dart';
@@ -62,8 +63,15 @@ void main() {
       bio: 'Speedrunner and soulslike enjoyer.',
       steamConnected: true,
       steamId: '76561198000000000',
-      services: {ConnectedService.discord, ConnectedService.nintendo},
+      services: {
+        ConnectedService.discord,
+        ConnectedService.nintendo,
+        ConnectedService.instagram,
+        ConnectedService.twitch,
+      },
       discordId: 'member#1',
+      instagramId: 'member.one',
+      twitchId: 'memberone',
       joined: DateTime.utc(2026, 3, 4),
     );
     repo.members['m2'] = const PublicProfile(
@@ -180,15 +188,54 @@ void main() {
         expect(find.text('@member_one'), findsOneWidget);
         expect(find.text('Member since Mar 2026'), findsOneWidget);
         expect(find.text('Speedrunner and soulslike enjoyer.'), findsOneWidget);
-        // The icons, as on your own profile; tapping one opens the account.
-        expect(find.byTooltip('Open Steam profile'), findsOneWidget);
-        expect(find.byTooltip('Copy Discord username'), findsOneWidget);
-        expect(find.byTooltip('Nintendo'), findsOneWidget); // nothing to open
       },
     );
 
     testWidgets(
-      'lays the page out in order: favorites, recent activity, playtime, boxes, hours, ratings, menu',
+      'shows the connected accounts as small icons above the bio: game profiles, then social media',
+      (tester) async {
+        await openProfile(tester);
+
+        // Tapping an icon opens the account (Discord copies the username).
+        expect(find.byTooltip('Open Steam profile'), findsOneWidget);
+        expect(find.byTooltip('Copy Discord username'), findsOneWidget);
+        expect(find.byTooltip('Open Instagram profile'), findsOneWidget);
+        expect(find.byTooltip('Open Twitch channel'), findsOneWidget);
+        // Nintendo is connected but has nothing to open; PSN and Xbox are not connected.
+        expect(find.byTooltip('Nintendo'), findsOneWidget);
+        expect(find.byTooltip('PSN'), findsNothing);
+        expect(find.byTooltip('Xbox'), findsNothing);
+        // Icons only: no box, no names, nothing to change.
+        expect(find.text('Connected accounts'), findsNothing);
+        expect(find.text('GAME PROFILES'), findsNothing);
+        expect(find.text('memberone'), findsNothing);
+        expect(find.text('Connect'), findsNothing);
+        expect(find.text('Sync Library'), findsNothing);
+
+        // One row, game profiles first.
+        final icons = [
+          find.byTooltip('Open Steam profile'),
+          find.byTooltip('Nintendo'),
+          find.byTooltip('Copy Discord username'),
+          find.byTooltip('Open Instagram profile'),
+          find.byTooltip('Open Twitch channel'),
+        ];
+        final lefts = [for (final i in icons) tester.getTopLeft(i).dx];
+        expect(lefts, orderedEquals([...lefts]..sort()));
+        for (final i in icons) {
+          expect(top(tester, i), top(tester, icons.first));
+        }
+        // Under the name, above the bio.
+        expect(top(tester, find.text('Member One')), lessThan(top(tester, icons.first)));
+        expect(
+          top(tester, icons.first),
+          lessThan(top(tester, find.text('Speedrunner and soulslike enjoyer.'))),
+        );
+      },
+    );
+
+    testWidgets(
+      'lays the page out in order: favorites, recent activity, playtime, boxes, hours, ratings, achievements, menu last',
       (tester) async {
         await openProfile(tester);
 
@@ -199,8 +246,9 @@ void main() {
           top(tester, find.text('Playing').first),
           top(tester, find.text('Hours by platform')),
           top(tester, find.text('Ratings')),
-          top(tester, find.text('Wishlist')),
+          top(tester, find.text('Achievements')),
           top(tester, find.text('View Achievements')),
+          top(tester, find.text('Wishlist')),
         ];
         expect(order, orderedEquals([...order]..sort()));
         // The follow button comes before all of it, where Edit Profile is on yours.
@@ -259,6 +307,7 @@ void main() {
         expect(find.text('No hours logged yet.'), findsOneWidget);
         expect(find.text('No rated games yet.'), findsOneWidget);
         expect(find.text('Total Playtime: 0 hours'), findsOneWidget);
+        expect(find.byType(ConnectedAccountIcons), findsNothing);
         expect(find.byTooltip('Open Steam profile'), findsNothing);
       },
     );
@@ -289,7 +338,7 @@ void main() {
       expect(find.text('Discord username copied to clipboard'), findsOneWidget);
     });
 
-    testWidgets('a service without a saved name is not tappable', (
+    testWidgets('a service without a saved name is shown but not tappable', (
       tester,
     ) async {
       repo.members['m1'] = const PublicProfile(
@@ -300,8 +349,24 @@ void main() {
       );
       await openProfile(tester);
 
-      expect(find.byTooltip('PSN'), findsOneWidget); // not "Open PSN profile"
+      expect(find.byTooltip('PSN'), findsOneWidget);
       expect(find.byTooltip('Open PSN profile'), findsNothing);
+    });
+
+    testWidgets('a name that is not one Instagram allows gets no link', (
+      tester,
+    ) async {
+      repo.members['m1'] = const PublicProfile(
+        id: 'm1',
+        name: 'Member One',
+        handle: '@member_one',
+        services: {ConnectedService.instagram},
+        instagramId: '../explore/tags',
+      );
+      await openProfile(tester);
+
+      expect(find.byTooltip('Instagram'), findsOneWidget);
+      expect(find.byTooltip('Open Instagram profile'), findsNothing);
     });
 
     testWidgets('shows the name from the tapped row while it loads', (
@@ -641,7 +706,7 @@ void main() {
         repo.followersOf['u1'] = [testMember('f9', name: 'Fan Nine')];
         await openOwn(tester);
 
-        await tester.tap(find.text('Followers'));
+        await tester.tap(find.text('Followers').first);
         await tester.pumpAndSettle();
 
         expect(find.byType(FollowsScreen), findsOneWidget);
@@ -658,7 +723,7 @@ void main() {
       repo.followingOf['u1'] = [testMember('f1', name: 'Friend One')];
       await openOwn(tester);
 
-      await tester.tap(find.text('Following'));
+      await tester.tap(find.text('Following').first);
       await tester.pumpAndSettle();
 
       expect(find.text('Friend One'), findsOneWidget);
@@ -674,17 +739,22 @@ void main() {
       );
     }
 
+    Iterable<String> reads(String prefix) =>
+        repo.memberReads.where((r) => r.startsWith(prefix));
+
     testWidgets(
-      'stay locked, and unrequested, until "View Achievements" is pressed',
+      'the count is there at once; the games and their achievements wait for a tap',
       (tester) async {
         await openProfile(tester);
         await scrollToAchievements(tester);
 
+        expect(find.text('1'), findsWidgets);
+        expect(find.text('/ 2 unlocked'), findsOneWidget);
         expect(find.text('View Achievements'), findsOneWidget);
-        expect(
-          repo.memberReads.where((r) => r.startsWith('achievements')),
-          isEmpty,
-        );
+        expect(reads('achievement-totals'), ['achievement-totals:m1']);
+        // Neither the per-game progress nor a single achievement was fetched.
+        expect(reads('achievements'), isEmpty);
+        expect(find.text('1 / 2 · 50%'), findsNothing);
       },
     );
 
@@ -697,9 +767,7 @@ void main() {
         await tester.tap(find.text('View Achievements'));
         await tester.pumpAndSettle();
 
-        expect(repo.memberReads.where((r) => r.startsWith('achievements')), [
-          'achievements:m1',
-        ]);
+        expect(reads('achievements'), ['achievements:m1']);
         expect(find.text('1 / 2 · 50%'), findsOneWidget);
         expect(find.text('Hidden Gem'), findsNothing); // not fetched yet
 
@@ -716,6 +784,7 @@ void main() {
       repo.failAchievementReads = true;
       await openProfile(tester);
       await scrollToAchievements(tester);
+      expect(find.text('/ 2 unlocked'), findsOneWidget); // the count is fine
 
       await tester.tap(find.text('View Achievements'));
       await tester.pumpAndSettle();
@@ -730,18 +799,80 @@ void main() {
       expect(find.text('1 / 2 · 50%'), findsOneWidget);
     });
 
-    testWidgets('a member without any says so', (tester) async {
+    testWidgets(
+      'without the count (offline, or the function is missing) the button still works',
+      (tester) async {
+        repo.failAchievementTotals = true;
+        await openProfile(tester);
+        await scrollToAchievements(tester);
+        expect(find.textContaining('unlocked'), findsNothing);
+
+        await tester.tap(find.text('View Achievements'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 / 2 · 50%'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a member without any says so, with no button', (tester) async {
       repo.achievementSummaries['m1'] = [];
       await openProfile(tester);
+      await tester.scrollUntilVisible(
+        find.text('No achievements to show yet.'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.text('No achievements to show yet.'), findsOneWidget);
+      expect(find.text('View Achievements'), findsNothing);
+    });
+
+    // The glow is a box with a shadow; nothing else on the page has one.
+    Finder glow() => find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration! as BoxDecoration).boxShadow?.isNotEmpty == true,
+    );
+
+    testWidgets('a count with something still locked does not glow', (
+      tester,
+    ) async {
+      await openProfile(tester);
       await scrollToAchievements(tester);
+      await tester.tap(find.text('View Achievements'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Every achievement unlocked'), findsNothing);
+      expect(glow(), findsNothing);
+    });
+
+    testWidgets('all of them unlocked: the count glows, and so does the game', (
+      tester,
+    ) async {
+      repo.achievementSummaries['m1'] = [
+        const GameAchievementSummary(
+          gameId: 'fav',
+          title: 'Favourite Quest',
+          unlocked: 2,
+          total: 2,
+        ),
+      ];
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+      expect(find.textContaining('Every achievement unlocked'), findsOneWidget);
+      expect(glow(), findsOneWidget); // the count
 
       await tester.tap(find.text('View Achievements'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No achievements to show yet.'), findsOneWidget);
+      expect(find.text('2 / 2 · 100%'), findsOneWidget);
+      expect(glow(), findsNWidgets(2)); // the count and the finished game
     });
 
-    testWidgets('your own profile has the same locked section', (tester) async {
+    testWidgets('your own profile has the same count and button', (
+      tester,
+    ) async {
       repo.achievementSummaries['u1'] = [
         const GameAchievementSummary(
           gameId: 'fav',
@@ -752,10 +883,8 @@ void main() {
       ];
       await open(tester, const Scaffold(body: ProfileScreen()));
       await scrollToAchievements(tester);
-      expect(
-        repo.memberReads.where((r) => r.startsWith('achievements')),
-        isEmpty,
-      );
+      expect(find.text('/ 4 unlocked'), findsOneWidget);
+      expect(reads('achievements'), isEmpty);
 
       await tester.tap(find.text('View Achievements'));
       await tester.pumpAndSettle();

@@ -24,11 +24,12 @@ import 'package:checkpoint/state/auth_store.dart';
 /// connection is back ([flushPending]). One the server refuses is reverted
 /// instead.
 ///
-/// Which services are connected, and the account names behind PSN, Xbox and
-/// Discord, are saved on the device first and mirrored to the profile row
-/// (`connected_services`, `psn_id`, `xbox_id`, `discord_id`), which is what other
-/// members' profile pages show and open. A change the server hasn't received is
-/// remembered and sent when the connection is back; see [_pushServices].
+/// Which services are connected, and the account names behind PSN, Xbox, Discord,
+/// Instagram and Twitch, are saved on the device first and mirrored to the profile
+/// row (`connected_services`, `psn_id`, `xbox_id`, `discord_id`, `instagram_id`,
+/// `twitch_id`), which is what other members' profile pages show and open. A change
+/// the server hasn't received is remembered and sent when the connection is back;
+/// see [_pushServices].
 class ProfileStore extends ChangeNotifier {
   ProfileStore({
     required this._repository,
@@ -331,7 +332,7 @@ class ProfileStore extends ChangeNotifier {
     }
   }
 
-  // ---- Per-account local data: PSN / Xbox / Discord names + connected flags ----
+  // ---- Per-account local data: account names + connected flags ----
   // Steam is not stored here. It is connected exactly when the signed-in user's
   // profile has a Steam ID (see [steamConnected]).
   //
@@ -346,6 +347,8 @@ class ProfileStore extends ChangeNotifier {
     _psnId = null;
     _xboxId = null;
     _discordId = null;
+    _instagramId = null;
+    _twitchId = null;
     _connected.clear();
     _servicesPending = false;
     _serviceVersion++;
@@ -358,6 +361,8 @@ class ProfileStore extends ChangeNotifier {
     _psnId = prefs.getString(_scoped('psn_id', userId));
     _xboxId = prefs.getString(_scoped('xbox_id', userId));
     _discordId = prefs.getString(_scoped('discord_id', userId));
+    _instagramId = prefs.getString(_scoped('instagram_id', userId));
+    _twitchId = prefs.getString(_scoped('twitch_id', userId));
     final saved = prefs.getStringList(_scoped('connected_services', userId));
     _connected.addAll(connectedServicesFromDb(saved));
     // No record means the accounts were saved before the server kept them (the
@@ -579,7 +584,8 @@ class ProfileStore extends ChangeNotifier {
   // ---- Connected accounts on the server ----
   //
   // `profiles.connected_services` names the connected services other than Steam,
-  // and `psn_id` / `xbox_id` / `discord_id` hold the account names behind them:
+  // and `psn_id` / `xbox_id` / `discord_id` / `instagram_id` / `twitch_id` hold the
+  // account names behind them:
   // what another member's profile shows, and what its icons open. They are a
   // mirror of what the device has, written as a whole, so sending them twice is
   // harmless and there is no queue of edits: only whether the latest arrived.
@@ -591,6 +597,8 @@ class ProfileStore extends ChangeNotifier {
     psnId: _connected.contains(ConnectedService.psn) ? _psnId : null,
     xboxId: _connected.contains(ConnectedService.xbox) ? _xboxId : null,
     discordId: _connected.contains(ConnectedService.discord) ? _discordId : null,
+    instagramId: _connected.contains(ConnectedService.instagram) ? _instagramId : null,
+    twitchId: _connected.contains(ConnectedService.twitch) ? _twitchId : null,
   );
 
   /// The device has a change the server doesn't have yet. Saved with the list.
@@ -624,6 +632,8 @@ class ProfileStore extends ChangeNotifier {
       psnId: server.psnId,
       xboxId: server.xboxId,
       discordId: server.discordId,
+      instagramId: server.instagramId,
+      twitchId: server.twitchId,
     );
     if (onServer == _accounts) return;
 
@@ -637,6 +647,12 @@ class ProfileStore extends ChangeNotifier {
     if (listed(ConnectedService.xbox)) _xboxId = server.xboxId ?? _xboxId;
     if (listed(ConnectedService.discord)) {
       _discordId = server.discordId ?? _discordId;
+    }
+    if (listed(ConnectedService.instagram)) {
+      _instagramId = server.instagramId ?? _instagramId;
+    }
+    if (listed(ConnectedService.twitch)) {
+      _twitchId = server.twitchId ?? _twitchId;
     }
     unawaited(_saveAccountNames(userId));
     if (onServer != _accounts) {
@@ -656,6 +672,8 @@ class ProfileStore extends ChangeNotifier {
       ('psn_id', _psnId),
       ('xbox_id', _xboxId),
       ('discord_id', _discordId),
+      ('instagram_id', _instagramId),
+      ('twitch_id', _twitchId),
     ]) {
       if (name != null) await prefs.setString(_scoped(key, userId), name);
     }
@@ -732,13 +750,36 @@ class ProfileStore extends ChangeNotifier {
   String? _psnId;
   String? _xboxId;
   String? _discordId;
+  String? _instagramId;
+  String? _twitchId;
   String? get psnId => _psnId;
   String? get xboxId => _xboxId;
   String? get discordId => _discordId;
+  String? get instagramId => _instagramId;
+  String? get twitchId => _twitchId;
 
-  /// Saves the username for PSN, Xbox or Discord, marks that service as
-  /// connected, and persists both the ID and the connected-services list.
-  /// Steam uses [setSteamId] (stored on the profile); Nintendo has no stored ID.
+  /// The name saved for each connected service that has one, for the Connected
+  /// accounts box on the Profile tab: the Steam ID and the PSN, Xbox, Discord,
+  /// Instagram and Twitch names. A service that is not connected is left out.
+  Map<ConnectedService, String> get accountNames => {
+    for (final s in connectedServices)
+      if (_nameOf(s)?.trim() case final name? when name.isNotEmpty) s: name,
+  };
+
+  String? _nameOf(ConnectedService s) => switch (s) {
+    ConnectedService.steam => steamId,
+    ConnectedService.psn => _psnId,
+    ConnectedService.xbox => _xboxId,
+    ConnectedService.discord => _discordId,
+    ConnectedService.instagram => _instagramId,
+    ConnectedService.twitch => _twitchId,
+    ConnectedService.nintendo => null,
+  };
+
+  /// Saves the username for PSN, Xbox, Discord, Instagram or Twitch, marks that
+  /// service as connected, and persists both the ID and the connected-services
+  /// list. Steam uses [setSteamId] (stored on the profile); Nintendo has no stored
+  /// ID.
   void setServiceId(ConnectedService service, String id) async {
     final String prefKey;
     switch (service) {
@@ -751,6 +792,12 @@ class ProfileStore extends ChangeNotifier {
       case ConnectedService.discord:
         _discordId = id;
         prefKey = 'discord_id';
+      case ConnectedService.instagram:
+        _instagramId = id;
+        prefKey = 'instagram_id';
+      case ConnectedService.twitch:
+        _twitchId = id;
+        prefKey = 'twitch_id';
       case ConnectedService.steam || ConnectedService.nintendo:
         debugPrint('setServiceId: ${service.name} has no stored ID.');
         return;

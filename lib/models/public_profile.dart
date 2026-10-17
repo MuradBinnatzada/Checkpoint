@@ -20,6 +20,8 @@ class PublicProfile {
     this.psnId,
     this.xboxId,
     this.discordId,
+    this.instagramId,
+    this.twitchId,
     this.joined,
   });
 
@@ -37,13 +39,15 @@ class PublicProfile {
   /// Null when they wrote none.
   final String? bio;
 
-  /// Steam ID64, PSN id, Xbox gamertag and Discord username, as the member
-  /// entered them. Null when not given (a service can be connected without a
-  /// name, until the member's app has uploaded it).
+  /// Steam ID64, PSN id, Xbox gamertag and the Discord, Instagram and Twitch
+  /// usernames, as the member entered them. Null when not given (a service can be
+  /// connected without a name, until the member's app has uploaded it).
   final String? steamId;
   final String? psnId;
   final String? xboxId;
   final String? discordId;
+  final String? instagramId;
+  final String? twitchId;
 
   /// When they joined.
   final DateTime? joined;
@@ -53,6 +57,20 @@ class PublicProfile {
   Set<ConnectedService> get connectedServices => {
     if (steamConnected) ConnectedService.steam,
     ...services.where((s) => s != ConnectedService.steam),
+  };
+
+  /// The names behind [connectedServices] that the member gave, for the
+  /// Connected accounts box.
+  Map<ConnectedService, String> get accountNames => {
+    for (final (service, name) in [
+      (ConnectedService.steam, steamId),
+      (ConnectedService.psn, psnId),
+      (ConnectedService.xbox, xboxId),
+      (ConnectedService.discord, discordId),
+      (ConnectedService.instagram, instagramId),
+      (ConnectedService.twitch, twitchId),
+    ])
+      if (name?.trim() case final text? when text.isNotEmpty) service: text,
   };
 }
 

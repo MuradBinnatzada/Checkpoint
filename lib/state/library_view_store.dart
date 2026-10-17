@@ -48,9 +48,9 @@ class LibraryViewStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Jumps to the Library tab on [status], clearing the platform filter. With
-  /// [sortBy], also sorts by that field, highest first.
-  void openTab(GameStatus status, {SortField? sortBy}) {
+  /// Jumps to the Library tab on [status] (`null` is "All"), clearing the
+  /// platform filter. With [sortBy], also sorts by that field, highest first.
+  void openTab(GameStatus? status, {SortField? sortBy}) {
     _selectedStatus = status;
     _platformFilter = null;
     if (sortBy != null) {

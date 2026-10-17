@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/screens/settings/account_section.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/state/app_stores.dart';
@@ -133,7 +134,7 @@ void main() {
     expect(find.textContaining('Can\'t reach Checkpoint'), findsNothing);
   });
 
-  testWidgets('Profile shows "Sync Delayed" when Steam is rate limiting, and the next sync clears it', (tester) async {
+  testWidgets('Settings shows "Sync Delayed" when Steam is rate limiting, and the next sync clears it', (tester) async {
     repo.steamId = '76561198000000000';
     repo.syncError = const FunctionException(
       status: 429,
@@ -143,11 +144,23 @@ void main() {
     await start(tester);
     stores.nav.select(NavTab.profile);
     await tester.pump(const Duration(milliseconds: 400));
+    // The sync lives with the Steam account, under Connect accounts in Settings.
+    expect(find.text('Sync Library'), findsNothing);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Settings'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Sync Delayed'), findsNothing);
 
-    await tester.scrollUntilVisible(find.text('Sync Library'), 300);
-    // "Visible" can still mean under the bottom bar: bring it clear of it.
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -150));
+    await tester.scrollUntilVisible(
+      find.text('Sync Library'),
+      300,
+      scrollable: find.descendant(
+        of: find.byType(AccountSection),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    // Built can still mean below the window: bring it fully on screen.
+    await tester.ensureVisible(find.text('Sync Library'));
     await tester.pump();
     await tester.tap(find.text('Sync Library'));
     await tester.pump(const Duration(milliseconds: 100));

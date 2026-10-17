@@ -115,16 +115,21 @@ class FakeRepository implements CheckpointRepository {
   /// Who the signed-in user follows on the server.
   Set<String> following = {'friend-1'};
 
+  /// The bio saved on the signed-in user's profile.
+  String profileBio = '';
+
   /// The Steam ID saved on the profile; null means no Steam account is connected.
   String? steamId;
 
   /// `profiles.connected_services`: the services saved for the signed-in user, as
   /// other members see them (Steam is never in it), and the account names saved
-  /// with them (`psn_id`, `xbox_id`, `discord_id`).
+  /// with them (`psn_id`, `xbox_id`, `discord_id`, `instagram_id`, `twitch_id`).
   Set<ConnectedService> connectedServices = {};
   String? savedPsnId;
   String? savedXboxId;
   String? savedDiscordId;
+  String? savedInstagramId;
+  String? savedTwitchId;
 
   /// What `sync-steam` answers, or the error it throws when [syncError] is set.
   Object? syncData = {'success': true, 'delayed': null};
@@ -184,12 +189,14 @@ class FakeRepository implements CheckpointRepository {
     return UserProfile(
       name: 'Ada',
       handle: '@ada',
-      bio: '',
+      bio: profileBio,
       steamId: steamId,
       connectedServices: services,
       psnId: savedPsnId,
       xboxId: savedXboxId,
       discordId: savedDiscordId,
+      instagramId: savedInstagramId,
+      twitchId: savedTwitchId,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -207,7 +214,23 @@ class FakeRepository implements CheckpointRepository {
     savedPsnId = accounts.psnId;
     savedXboxId = accounts.xboxId;
     savedDiscordId = accounts.discordId;
+    savedInstagramId = accounts.instagramId;
+    savedTwitchId = accounts.twitchId;
     writes.add('services:${connectedServicesToDb(accounts.services).join(',')}');
+  }
+
+  @override
+  Future<void> setSteamId(String id) async {
+    _checkWrite();
+    steamId = id.trim();
+    writes.add('steam:$steamId');
+  }
+
+  @override
+  Future<void> clearSteamId() async {
+    _checkWrite();
+    steamId = null;
+    writes.add('steam:');
   }
 
   @override
@@ -339,6 +362,9 @@ class FakeRepository implements CheckpointRepository {
   bool failFollowLists = false;
   bool failAchievementReads = false;
 
+  /// Fails only the count, as a database without `public_achievement_totals` does.
+  bool failAchievementTotals = false;
+
   /// What was asked of the server about other members, in order.
   final List<String> memberReads = [];
 
@@ -442,6 +468,21 @@ class FakeRepository implements CheckpointRepository {
     return _page(followingOf[userId] ?? const [], offset, limit);
   }
 
+  /// Added up from [achievementSummaries], as the database does.
+  @override
+  Future<AchievementTotals> fetchAchievementTotals(String userId) async {
+    memberReads.add('achievement-totals:$userId');
+    _checkOnline();
+    if (failAchievementTotals) throw Exception('achievement totals failed');
+    final games = achievementSummaries[userId] ?? const <GameAchievementSummary>[];
+    return AchievementTotals(
+      unlocked: games.fold(0, (sum, g) => sum + g.unlocked),
+      total: games.fold(0, (sum, g) => sum + g.total),
+      games: games.length,
+      completedGames: games.where((g) => g.unlocked == g.total).length,
+    );
+  }
+
   @override
   Future<List<GameAchievementSummary>> fetchAchievementSummary(String userId) async {
     memberReads.add('achievements:$userId');
@@ -522,6 +563,20 @@ class FakeAuthService implements AuthService {
     final error = deleteError;
     if (error != null) throw error;
     emit(null);
+  }
+
+  @override
+  Future<void> signOut() async => emit(null);
+
+  /// What [signOutOtherDevices] throws, when set.
+  Object? signOutOthersError;
+  int signOutOthersCalls = 0;
+
+  @override
+  Future<void> signOutOtherDevices() async {
+    signOutOthersCalls++;
+    final error = signOutOthersError;
+    if (error != null) throw error;
   }
 
   @override

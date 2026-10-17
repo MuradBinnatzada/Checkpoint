@@ -217,16 +217,25 @@ void main() {
       expect(find.text('Game not found'), findsNothing);
     });
 
-    testWidgets('a game being played has moved past the wishlist: no bookmark, but the heart', (
-      tester,
-    ) async {
-      repo.library = [testGame('g1', status: GameStatus.playing, cover: false)];
-      await openGameScreen(tester, 'g1');
+    testWidgets(
+      'a game being played keeps both buttons: the bookmark is dimmed and explains, the status stays',
+      (tester) async {
+        repo.library = [testGame('g1', status: GameStatus.playing, cover: false)];
+        await openGameScreen(tester, 'g1');
 
-      expect(add(), findsNothing);
-      expect(remove(), findsNothing);
-      expect(find.byTooltip('Add to favorites'), findsOneWidget);
-    });
+        expect(add(), findsNothing);
+        expect(remove(), findsNothing);
+        expect(find.byTooltip('Already in your library'), findsOneWidget);
+        expect(find.byTooltip('Add to favorites'), findsOneWidget);
+
+        await tester.tap(find.byTooltip('Already in your library'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Game g1 is already in your library as Playing'), findsOneWidget);
+        expect(stores.library.maybeGame('g1')!.status, GameStatus.playing);
+        expect(repo.writes.where((w) => w.startsWith('game:g1')), isEmpty);
+      },
+    );
 
     testWidgets('a wishlisted game can be a favorite too', (tester) async {
       repo.library = [testGame('g1', status: GameStatus.wishlist, cover: false)];
@@ -247,24 +256,68 @@ void main() {
       expect(add(), findsNothing);
     });
 
-    testWidgets('"Add to Wishlist" is also among the status actions of a game that is not in the library', (
+    testWidgets('a game that is not in the library has both the bookmark and the heart at the top', (
+      tester,
+    ) async {
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      expect(add(), findsOneWidget);
+      expect(find.byTooltip('Add to favorites'), findsOneWidget);
+      // Both are in the app bar, next to each other and on the same row.
+      expect(
+        tester.getCenter(add()).dy,
+        tester.getCenter(find.byTooltip('Add to favorites')).dy,
+      );
+      expect(
+        tester.getCenter(add()).dx,
+        lessThan(tester.getCenter(find.byTooltip('Add to favorites')).dx),
+      );
+    });
+
+    testWidgets('the status actions no longer repeat "Add to Wishlist"', (
       tester,
     ) async {
       repo.popular = [testGame('g1', status: null, cover: false)];
       await openGameScreen(tester, 'g1');
       await tester.scrollUntilVisible(
-        find.text('Add to Wishlist'),
+        find.text('Start Playing'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
 
-      await tester.ensureVisible(find.text('Add to Wishlist'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to Wishlist'));
+      expect(find.text('Start Playing'), findsOneWidget);
+      expect(find.text('Add to Wishlist'), findsNothing);
+    });
+
+    testWidgets('the heart on a game that is not in the library adds it, as a favorite', (
+      tester,
+    ) async {
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      await tester.tap(find.byTooltip('Add to favorites'));
       await tester.pumpAndSettle();
 
-      expect(stores.library.maybeGame('g1')!.status, GameStatus.wishlist);
-      expect(find.text('Add to Wishlist'), findsNothing);
+      final game = stores.library.maybeGame('g1')!;
+      expect(game.isFavorite, isTrue);
+      expect(game.status, GameStatus.playing); // the same default as a rating
+      expect(repo.writes.any((w) => w.startsWith('game:g1')), isTrue);
+      expect(find.byTooltip('Remove from favorites'), findsOneWidget);
+    });
+
+    testWidgets('the heart on a wishlisted game keeps it on the wishlist', (
+      tester,
+    ) async {
+      repo.library = [testGame('g1', status: GameStatus.wishlist, cover: false)];
+      await openGameScreen(tester, 'g1');
+
+      await tester.tap(find.byTooltip('Add to favorites'));
+      await tester.pumpAndSettle();
+
+      final game = stores.library.maybeGame('g1')!;
+      expect(game.isFavorite, isTrue);
+      expect(game.status, GameStatus.wishlist);
     });
 
     testWidgets('there is no limit, unlike favorites', (tester) async {

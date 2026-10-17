@@ -41,10 +41,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _initialized = false;
   bool _saving = false;
-  bool _deleting = false;
 
   /// Something is being sent to the server; the form and its buttons wait.
-  bool get _locked => _saving || _deleting;
+  bool get _locked => _saving;
 
   String _profileName = '';
   String _originalHandle = '';
@@ -262,91 +261,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // ---- Delete account ------------------------------------------------------
-
-  Future<void> _confirmDelete() async {
-    if (_locked || _uploadingAvatar) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text(
-          'This permanently deletes your profile, library, play logs, follows '
-          'and photo, and removes your sign-in. It can\'t be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: _errorColor),
-            child: const Text('Delete account'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _deleteAccount();
-  }
-
-  Future<void> _deleteAccount() async {
-    _debounce?.cancel();
-    FocusScope.of(context).unfocus();
-    final store = context.read<ProfileStore>();
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-
-    setState(() => _deleting = true);
-    final error = await store.deleteAccount();
-    if (!mounted) return;
-
-    if (error == null) {
-      // Signed out now: leave every screen that was opened from the signed-in app.
-      navigator.popUntil((route) => route.isFirst);
-    } else {
-      setState(() => _deleting = false);
-    }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(error ?? 'Your account was deleted')));
-  }
-
-  Widget _buildDeleteAccount() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Delete account',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Permanently deletes your profile, library, play logs, follows and '
-          'photo, and removes your sign-in. This can\'t be undone.',
-          style: TextStyle(color: Palette.muted, height: 1.4),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _locked || _uploadingAvatar ? null : _confirmDelete,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _errorColor,
-            side: const BorderSide(color: _errorColor),
-          ),
-          icon: _deleting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.delete_forever_rounded),
-          label: const Text('Delete account'),
-        ),
-      ],
-    );
-  }
-
   // ---- UI ------------------------------------------------------------------
 
   Widget _buildAvatarPicker(BuildContext context) {
@@ -456,11 +370,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Leaving mid-deletion would hide whether it worked.
-    return PopScope(canPop: !_deleting, child: _buildScaffold(context));
-  }
-
-  Widget _buildScaffold(BuildContext context) {
     final busy = _locked || _uploadingAvatar;
 
     return Scaffold(
@@ -569,10 +478,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
-                const Divider(height: 1),
-                const SizedBox(height: 24),
-                _buildDeleteAccount(),
               ],
             ),
           ),

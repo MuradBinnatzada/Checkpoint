@@ -47,9 +47,76 @@ void main() {
   });
 
   test('nothing is fetched until a viewer asks', () {
+    expect(store.totalsOf('m1').status, LoadStatus.idle);
     expect(store.summaryOf('m1').status, LoadStatus.idle);
     expect(store.gameOf('m1', 'g1').status, LoadStatus.idle);
     expect(repo.memberReads, isEmpty);
+  });
+
+  group('the totals', () {
+    test('are one small read, added up over the games', () async {
+      repo.achievementSummaries['m1'] = [
+        summary,
+        const GameAchievementSummary(
+          gameId: 'g2',
+          title: 'Celeste',
+          unlocked: 8,
+          total: 8,
+        ),
+      ];
+
+      await store.loadTotals('m1');
+
+      final view = store.totalsOf('m1');
+      expect(view.status, LoadStatus.ready);
+      expect(view.totals.unlocked, 20);
+      expect(view.totals.total, 48);
+      expect(view.totals.games, 2);
+      expect(view.totals.completedGames, 1);
+      expect(view.totals.allUnlocked, isFalse);
+      // No per-game progress and no achievement was asked for.
+      expect(repo.memberReads, ['achievement-totals:m1']);
+      expect(store.summaryOf('m1').status, LoadStatus.idle);
+    });
+
+    test('are "all unlocked" only when nothing is left locked', () {
+      expect(const AchievementTotals(unlocked: 5, total: 5).allUnlocked, isTrue);
+      expect(const AchievementTotals(unlocked: 4, total: 5).allUnlocked, isFalse);
+      // No achievements at all is not "all of them".
+      expect(const AchievementTotals().allUnlocked, isFalse);
+      expect(const AchievementTotals().isEmpty, isTrue);
+    });
+
+    test('are asked for once, unless forced', () async {
+      await store.loadTotals('m1');
+      await store.loadTotals('m1');
+      expect(repo.memberReads, ['achievement-totals:m1']);
+
+      await store.loadTotals('m1', force: true);
+      expect(repo.memberReads, hasLength(2));
+    });
+
+    test('a member with none gets empty, ready totals', () async {
+      await store.loadTotals('m2');
+
+      expect(store.totalsOf('m2').status, LoadStatus.ready);
+      expect(store.totalsOf('m2').totals.isEmpty, isTrue);
+    });
+
+    test('a failure is "failed", and a refresh that fails keeps the count', () async {
+      repo.failAchievementTotals = true;
+      await store.loadTotals('m1');
+      expect(store.totalsOf('m1').status, LoadStatus.failed);
+
+      repo.failAchievementTotals = false;
+      await store.loadTotals('m1');
+      expect(store.totalsOf('m1').status, LoadStatus.ready);
+
+      repo.failAchievementTotals = true;
+      await store.loadTotals('m1', force: true);
+      expect(store.totalsOf('m1').status, LoadStatus.ready);
+      expect(store.totalsOf('m1').totals.total, 40);
+    });
   });
 
   group('the summary', () {
@@ -148,12 +215,14 @@ void main() {
   });
 
   test('everything is dropped when the account changes', () async {
+    await store.loadTotals('m1');
     await store.loadSummary('m1');
     await store.loadGame('m1', 'g1');
 
     authService.emit(testUser('u2'));
     await pumpEventQueue();
 
+    expect(store.totalsOf('m1').status, LoadStatus.idle);
     expect(store.summaryOf('m1').status, LoadStatus.idle);
     expect(store.gameOf('m1', 'g1').status, LoadStatus.idle);
   });

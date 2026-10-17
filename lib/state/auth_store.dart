@@ -25,6 +25,19 @@ class AuthStore extends ChangeNotifier {
   User? get user => _user;
   bool get isLoggedIn => _user != null;
 
+  /// The signed-in account's email address, if the provider shared one.
+  String? get email {
+    final text = _user?.email?.trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  /// How the account signs in, as Supabase names it: `google`, `email`, ... Null
+  /// while the session is only a stand-in (see [isSessionPending]).
+  String? get provider {
+    final value = _user?.appMetadata['provider'];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
   /// The device has a saved session for this account, but it could not be
   /// refreshed (the app started offline with an expired access token), so there
   /// is no live session yet. The data stores show what is saved on the device and
@@ -114,6 +127,15 @@ class AuthStore extends ChangeNotifier {
       return;
     }
     await _service.signOut();
+  }
+
+  /// Signs the account out on every other device and keeps this one signed in.
+  /// Throws when there is no live session to ask with ([SessionPending]) or the
+  /// server could not do it.
+  Future<void> signOutOtherDevices() async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    await _service.signOutOtherDevices();
   }
 
   /// Permanently deletes the signed-in account and everything stored for it on

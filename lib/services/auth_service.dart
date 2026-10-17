@@ -248,6 +248,10 @@ class AuthService {
     await signOut();
   }
 
+  /// Ends the sessions of this account on every other device, and keeps this one
+  /// signed in. Throws the [AuthException] of a failed call.
+  Future<void> signOutOtherDevices() => _auth.signOut(scope: SignOutScope.others);
+
   Future<void> signOut() async {
     await _auth.signOut();
     if (_usesNativeGoogle) {

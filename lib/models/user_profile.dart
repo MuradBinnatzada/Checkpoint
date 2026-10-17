@@ -14,6 +14,8 @@ class UserProfile {
     this.psnId,
     this.xboxId,
     this.discordId,
+    this.instagramId,
+    this.twitchId,
     required this.joined,
     this.followers = 248,
     this.following = 120,
@@ -29,6 +31,8 @@ class UserProfile {
         psnId: json['psnId'] as String?,
         xboxId: json['xboxId'] as String?,
         discordId: json['discordId'] as String?,
+        instagramId: json['instagramId'] as String?,
+        twitchId: json['twitchId'] as String?,
         joined: DateTime.parse(json['joined'] as String).toLocal(),
         followers: (json['followers'] as num).toInt(),
         following: (json['following'] as num).toInt(),
@@ -48,11 +52,13 @@ class UserProfile {
   /// them are not on the server.
   final Set<ConnectedService> connectedServices;
 
-  /// The account names the server has for PSN, Xbox and Discord
-  /// (`profiles.psn_id` and so on): what other members' icons open.
+  /// The account names the server has for PSN, Xbox, Discord, Instagram and
+  /// Twitch (`profiles.psn_id` and so on): what other members' links open.
   final String? psnId;
   final String? xboxId;
   final String? discordId;
+  final String? instagramId;
+  final String? twitchId;
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
@@ -69,6 +75,8 @@ class UserProfile {
         'psnId': psnId,
         'xboxId': xboxId,
         'discordId': discordId,
+        'instagramId': instagramId,
+        'twitchId': twitchId,
         'joined': joined.toUtc().toIso8601String(),
         'followers': followers,
         'following': following,
@@ -93,6 +101,8 @@ class UserProfile {
         psnId: psnId,
         xboxId: xboxId,
         discordId: discordId,
+        instagramId: instagramId,
+        twitchId: twitchId,
         joined: joined,
         followers: followers,
         following: following,

@@ -404,6 +404,74 @@ void main() {
     );
   });
 
+  group('Instagram and Twitch', () {
+    test('connecting them saves the names on the device and on the server', () async {
+      await start();
+
+      profile.setServiceId(ConnectedService.instagram, 'ada.plays');
+      profile.setServiceId(ConnectedService.twitch, 'ada_live');
+      await pumpEventQueue();
+
+      expect(profile.isConnected(ConnectedService.instagram), isTrue);
+      expect(profile.instagramId, 'ada.plays');
+      expect(profile.twitchId, 'ada_live');
+      expect(profile.accountNames, {
+        ConnectedService.instagram: 'ada.plays',
+        ConnectedService.twitch: 'ada_live',
+      });
+      expect(repo.connectedServices, {ConnectedService.instagram, ConnectedService.twitch});
+      expect(repo.savedInstagramId, 'ada.plays');
+      expect(repo.savedTwitchId, 'ada_live');
+      final saved = await prefs();
+      expect(saved.getString('instagram_id.u1'), 'ada.plays');
+      expect(saved.getString('twitch_id.u1'), 'ada_live');
+    });
+
+    test('disconnecting one clears its name on the server', () async {
+      await start();
+      profile.setServiceId(ConnectedService.twitch, 'ada_live');
+      await pumpEventQueue();
+
+      profile.toggleService(ConnectedService.twitch);
+      await pumpEventQueue();
+
+      expect(profile.isConnected(ConnectedService.twitch), isFalse);
+      expect(profile.accountNames, isEmpty);
+      expect(repo.connectedServices, isEmpty);
+      expect(repo.savedTwitchId, isNull);
+    });
+
+    test('the names on the server are adopted on load, so a second device shows them', () async {
+      repo.connectedServices = {ConnectedService.instagram};
+      repo.savedInstagramId = 'from_server';
+      await start();
+
+      expect(profile.isConnected(ConnectedService.instagram), isTrue);
+      expect(profile.instagramId, 'from_server');
+      expect(profile.accountNames[ConnectedService.instagram], 'from_server');
+      expect((await prefs()).getString('instagram_id.u1'), 'from_server');
+    });
+  });
+
+  group('cleanAccountName', () {
+    test('trims, and drops a leading @ for Instagram and Twitch', () {
+      expect(cleanAccountName(ConnectedService.instagram, '  @ada.plays '), 'ada.plays');
+      expect(cleanAccountName(ConnectedService.twitch, '@@ada_live'), 'ada_live');
+      expect(cleanAccountName(ConnectedService.psn, ' ps_user '), 'ps_user');
+      // Discord names may have anything in them, an @ included.
+      expect(cleanAccountName(ConnectedService.discord, '@ada#1'), '@ada#1');
+    });
+
+    test('refuses nothing, too long, or a name the service does not allow', () {
+      expect(cleanAccountName(ConnectedService.psn, '   '), isNull);
+      expect(cleanAccountName(ConnectedService.psn, 'x' * (accountNameMaxLength + 1)), isNull);
+      expect(cleanAccountName(ConnectedService.instagram, '../explore'), isNull);
+      expect(cleanAccountName(ConnectedService.instagram, 'a' * 31), isNull);
+      expect(cleanAccountName(ConnectedService.twitch, 'has space'), isNull);
+      expect(cleanAccountName(ConnectedService.twitch, 'a' * 26), isNull);
+    });
+  });
+
   group('accounts', () {
     test(
       'another account on the device does not inherit the list, or send it',
