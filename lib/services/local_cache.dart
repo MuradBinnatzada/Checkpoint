@@ -148,6 +148,25 @@ class LocalCache {
     }
   }
 
+  /// Deletes everything this device holds for [userId], for an account that no
+  /// longer exists: the saved copy ([clearAccount]) and also what a sign-out
+  /// leaves behind on purpose (follows and library edits still waiting for the
+  /// server, the PSN / Xbox / Discord names).
+  ///
+  /// Every per-account key on the device ends in `.<user id>` (ids are UUIDs, so
+  /// the suffix can't match another account), which keeps this working for keys
+  /// that other classes own.
+  Future<void> eraseAccount(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in prefs.getKeys()) {
+        if (key.endsWith('.$userId')) await prefs.remove(key);
+      }
+    } catch (e, st) {
+      debugPrint('Erasing the account from the device failed: $e\n$st');
+    }
+  }
+
   static Map<String, dynamic> _asMap(Object? data) =>
       Map<String, dynamic>.from(data as Map);
 

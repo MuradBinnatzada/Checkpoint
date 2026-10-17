@@ -236,6 +236,18 @@ class AuthService {
     }
   }
 
+  /// Permanently deletes the signed-in user's account through the `delete-account`
+  /// Edge Function (their data, uploaded photo and sign-in), then ends the local
+  /// session. Nothing is signed out when the function fails, so the user can try
+  /// again. The function ignores any body: it deletes the caller and no one else.
+  /// Throws the [FunctionException] of a failed call.
+  Future<void> deleteAccount() async {
+    await _client.functions.invoke('delete-account');
+    // The account is gone, so the server may answer the sign-out with a 401/403/404;
+    // gotrue ignores those and still ends the local session.
+    await signOut();
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
     if (_usesNativeGoogle) {

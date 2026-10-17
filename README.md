@@ -15,7 +15,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 
 - **App:** Flutter / Dart (Android, iOS, web, desktop targets)
 - **Backend:** [Supabase](https://supabase.com) (auth, Postgres, Edge Functions)
-- **Edge Functions** (`supabase/functions`): `igdb-handler`, `sync-steam`, `sync-achievements`. Third-party API credentials (Twitch/IGDB, Steam) live server-side only.
+- **Edge Functions** (`supabase/functions`): `igdb-handler`, `sync-steam`, `sync-achievements`, `delete-account`. Third-party API credentials (Twitch/IGDB, Steam) live server-side only.
 
 ## Project layout
 
@@ -57,6 +57,10 @@ GitHub Actions (`.github/workflows`):
 ### Edge Function errors
 
 The functions answer a failure with `{ "error": "...", "code": "...", "retry_after": 60 }` and a `Retry-After` header when waiting helps. The app turns the `code` into a message (`lib/services/sync_failure.dart`): rate limiting or downtime at Steam or IGDB shows **Sync Delayed** on the Profile tab, and a sync that IGDB only got part of the way through reports the games left for the next one in `delayed`.
+
+### Account deletion
+
+**Edit Profile > Delete account** (required by the App Store and Google Play) asks for confirmation, then calls the `delete-account` Edge Function. It identifies the caller from their JWT and, using the service role, removes their avatar files, log entries, library, follows (both directions) and profile, clears `created_by` on catalog games they added (the games stay for other members), and finally deletes the Supabase auth user. The identity goes last, so a failure part way leaves an account that can still sign in and retry. The app then signs out and erases everything it held on the device for that account (saved copy, queued offline edits, service names). It needs no extra secrets.
 
 ### Using your own backend
 

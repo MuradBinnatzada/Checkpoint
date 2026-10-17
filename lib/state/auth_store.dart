@@ -116,5 +116,16 @@ class AuthStore extends ChangeNotifier {
     await _service.signOut();
   }
 
+  /// Permanently deletes the signed-in account and everything stored for it on
+  /// the server, then signs out ([userChanges] announces it like any sign-out).
+  /// Throws when there is no live session to ask with ([SessionPending]) or the
+  /// server could not do it; the account is untouched then. See
+  /// `deleteAccountMessage` for text to show.
+  Future<void> deleteAccount() async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    await _service.deleteAccount();
+  }
+
   String messageFor(Object e) => AuthService.messageFor(e);
 }

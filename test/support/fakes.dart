@@ -286,6 +286,19 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> discardPersistedSession() async => persistedId = null;
 
+  /// What [deleteAccount] throws, when set; the account is untouched then.
+  Object? deleteError;
+  int deleteCalls = 0;
+
+  /// Like the real one: the server removes the account, then the session ends.
+  @override
+  Future<void> deleteAccount() async {
+    deleteCalls++;
+    final error = deleteError;
+    if (error != null) throw error;
+    emit(null);
+  }
+
   @override
   Stream<AuthState> get changes => _changes.stream;
 

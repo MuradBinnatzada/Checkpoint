@@ -10,6 +10,7 @@ import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
+import 'package:checkpoint/services/delete_account_failure.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -681,6 +682,27 @@ class ProfileStore extends ChangeNotifier {
       debugPrint('Profile update failed: $e\n$st');
       return 'Could not save your profile. Please try again.';
     }
+  }
+
+  // ---- Deleting the account ----
+
+  /// Permanently deletes the signed-in account: its profile, library, play logs,
+  /// follows and photo on the server, then the sign-in, and then everything this
+  /// device holds for it. Signs out. Returns null on success, or a message that is
+  /// safe to show; the account is untouched then, and this can be tried again.
+  Future<String?> deleteAccount() async {
+    final current = _user;
+    if (current == null) return deleteAccountMessage(StateError('Not signed in.'));
+    try {
+      await _auth.deleteAccount();
+    } catch (e, st) {
+      debugPrint('Deleting the account failed: $e\n$st');
+      return deleteAccountMessage(e);
+    }
+    // The account is gone and the session ended; the stores have dropped what they
+    // held in memory. What is left is on disk, and must not outlive the account.
+    await _cache.eraseAccount(current.id);
+    return null;
   }
 
   /// Saves the profile as it is now, after an edit the server accepted.
