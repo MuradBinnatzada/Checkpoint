@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -115,6 +117,18 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     const key = 'cache.v1.library.u1';
     await prefs.setString(key, '{"v":1,"savedAt":"2026-01-01T00:00:00Z","data":[{"id":');
+
+    expect(await cache.readLibrary('u1'), isNull);
+    expect(prefs.containsKey(key), isFalse);
+  });
+
+  test('an entry with a game missing a required field reads as null and is deleted', () async {
+    final prefs = await SharedPreferences.getInstance();
+    const key = 'cache.v1.library.u1';
+    await cache.writeLibrary('u1', [testGame('a'), testGame('b')]);
+    final entry = jsonDecode(prefs.getString(key)!) as Map<String, dynamic>;
+    ((entry['data'] as List)[1] as Map<String, dynamic>)['title'] = null;
+    await prefs.setString(key, jsonEncode(entry));
 
     expect(await cache.readLibrary('u1'), isNull);
     expect(prefs.containsKey(key), isFalse);

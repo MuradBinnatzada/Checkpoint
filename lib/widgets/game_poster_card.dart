@@ -6,13 +6,18 @@ import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/star_rating.dart';
 
-/// Poster + title + stars (+ optional caption). Used in horizontal carousels.
+/// Poster + title + stars (+ optional caption). Used in horizontal carousels and
+/// the browse grids.
 class GamePosterCard extends StatelessWidget {
-  const GamePosterCard({super.key, required this.game, required this.width, this.subtitle, this.subtitleIcon});
+  const GamePosterCard({super.key, required this.game, required this.width, this.subtitle, this.subtitleIcon, this.showUnrated = true});
   final Game game;
   final double width;
   final String? subtitle;
   final IconData? subtitleIcon;
+
+  /// Whether a game the user hasn't rated says "Not rated". Catalog lists turn it
+  /// off: there it would sit under nearly every poster.
+  final bool showUnrated;
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +30,12 @@ class GamePosterCard extends StatelessWidget {
           CoverArt(game: game),
           const SizedBox(height: 8),
           Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 4),
-          game.rating > 0
-              ? StarRating(rating: game.rating, size: 14)
-              : const Text('Not rated', style: TextStyle(fontSize: 11, color: Palette.muted)),
+          if (game.rating > 0 || showUnrated) ...[
+            const SizedBox(height: 4),
+            game.rating > 0
+                ? StarRating(rating: game.rating, size: 14)
+                : const Text('Not rated', style: TextStyle(fontSize: 11, color: Palette.muted)),
+          ],
           if (subtitle != null) ...[
             const SizedBox(height: 4),
             Row(children: [

@@ -4,7 +4,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 
 ## Features
 
-- Search games (powered by IGDB) and add them to your library
+- Search games (powered by IGDB) and add them to your library, or browse the most popular, highest rated and newest releases
 - Track status, playtime, and ratings per game
 - Import your Steam library and sync achievements
 - Follow other players and browse their libraries

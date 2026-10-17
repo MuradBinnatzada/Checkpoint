@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
@@ -54,7 +55,10 @@ class AppStoresScope extends StatelessWidget {
               store: stores.libraryView,
               child: StoreScope<SearchStore>(
                 store: stores.search,
-                child: child,
+                child: StoreScope<BrowseStore>(
+                  store: stores.browse,
+                  child: child,
+                ),
               ),
             ),
           ),

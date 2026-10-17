@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -11,6 +12,7 @@ import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
+import 'package:checkpoint/services/game_api_service.dart';
 
 User testUser(String id) => User(
   id: id,
@@ -27,16 +29,18 @@ Game testGame(
   double hours = 12.5,
   bool favorite = false,
   bool cover = true,
+  int year = 2020,
+  List<GamePlatform> platforms = const [GamePlatform.pc, GamePlatform.ps5],
+  GamePlatform? playedOn,
 }) {
   final name = title ?? 'Game $id';
   const genres = ['RPG'];
-  const platforms = [GamePlatform.pc, GamePlatform.ps5];
   return Game(
     id: id,
     title: name,
     publisher: 'Publisher',
     developer: 'Developer',
-    releaseYear: 2020,
+    releaseYear: year,
     platforms: platforms,
     genres: genres,
     synopsis: 'A game.',
@@ -48,12 +52,25 @@ Game testGame(
     status: status,
     rating: 4.5,
     hoursPlayed: hours,
-    playedOn: status == null ? null : GamePlatform.pc,
+    playedOn: playedOn ?? (status == null ? null : GamePlatform.pc),
     purchasePrice: 19.99,
     dateAdded: status == null ? null : DateTime.utc(2026, 1, 2, 3, 4, 5),
     isFavorite: favorite,
   );
 }
+
+/// A game in a browse list. [score] and [released] are what the list captions
+/// show. Like a game from IGDB it has no rating: that is the user's own.
+BrowseEntry testEntry(
+  String id, {
+  String? title,
+  double? score = 92.4,
+  DateTime? released,
+}) => BrowseEntry(
+  testGame(id, title: title, status: null, cover: false).copyWith(rating: 0),
+  score: score,
+  releaseDate: released,
+);
 
 LogEntry testLog(String id, String gameId) => LogEntry(
   id: id,
@@ -328,4 +345,33 @@ class FakeConnectivity implements ConnectivityService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A [GameApiService] whose browse lists the test controls. [answer] gives the
+/// page for a mode and offset (null = the request failed); by default every mode
+/// has one page of two games named after it. [gate] holds every answer until
+/// completed, to have a request in flight.
+class FakeBrowseApi extends GameApiService {
+  ResultsPage<BrowseEntry>? Function(BrowseMode mode, int offset) answer =
+      (mode, offset) => ResultsPage([
+        testEntry('${mode.name}-1'),
+        testEntry('${mode.name}-2'),
+      ], hasMore: false);
+  Completer<void>? gate;
+
+  /// What was asked, in order.
+  final List<(BrowseMode, int)> calls = [];
+
+  int callsFor(BrowseMode mode) => calls.where((c) => c.$1 == mode).length;
+
+  @override
+  Future<ResultsPage<BrowseEntry>?> browseGames(
+    BrowseMode mode, {
+    int offset = 0,
+    int limit = GameApiService.browsePageSize,
+  }) async {
+    calls.add((mode, offset));
+    await gate?.future;
+    return answer(mode, offset);
+  }
 }

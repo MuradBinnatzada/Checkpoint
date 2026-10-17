@@ -54,6 +54,13 @@ enum GamePlatform {
   final IconData icon;
   final Color color;
 
+  /// True for the ways of playing a game that are never a release platform: no
+  /// game is "released on" Steam Deck or an emulator. They can be chosen as
+  /// "played on" (see [Game.playedOnOptions]) but are not part of
+  /// [Game.platforms], which holds release platforms only.
+  bool get isManualOnly =>
+      this == GamePlatform.steamDeck || this == GamePlatform.emulator;
+
   /// Platforms offered in the "Played on" pickers. The generic Nintendo entry
   /// is left out because Switch covers it; it stays in the enum so existing
   /// data and the game's own platform badges still work.
@@ -61,6 +68,18 @@ enum GamePlatform {
     for (final p in values)
       if (p != GamePlatform.nintendo) p,
   ];
+
+  /// Console and handheld families a game can be played on an emulator from.
+  /// Not PC or mobile (they are the platform the emulator itself runs on), and
+  /// not VR.
+  static const Set<GamePlatform> _emulatable = {
+    GamePlatform.ps5,
+    GamePlatform.ps4,
+    GamePlatform.playstation,
+    GamePlatform.xbox,
+    GamePlatform.nswitch,
+    GamePlatform.nintendo,
+  };
 }
 
 // Emulator is stored under its original name, 'retro', so saved rows keep
@@ -101,6 +120,20 @@ GamePlatform? gamePlatformFromDb(Object? value) {
   };
 }
 
+/// A game's release platforms from a stored list (`games.platforms`, or the
+/// offline cache): known spellings only, de-duplicated, in stored order. The
+/// manual-only "played on" choices (Steam Deck, Emulator) are dropped: they are
+/// never a release platform, so a stored one is stray data and would put a
+/// platform on a game that was never released there.
+List<GamePlatform> releasePlatformsFromDb(Iterable<Object?> values) {
+  final result = <GamePlatform>{};
+  for (final value in values) {
+    final platform = gamePlatformFromDb(value);
+    if (platform != null && !platform.isManualOnly) result.add(platform);
+  }
+  return result.toList();
+}
+
 /// `games.release_year` only accepts 1950-2100 or NULL (`games_release_year_check`).
 /// Returns [year] when it fits, otherwise null. This covers the model's
 /// `0 = unknown` placeholder as well as any out-of-range value.
@@ -116,6 +149,10 @@ int? releaseYearFromUnixSeconds(Object? seconds) {
   final year = DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true).year;
   return sanitizeReleaseYear(year);
 }
+
+/// Prefix of the ids of legacy Steam-keyed catalog rows, which sync-steam hasn't
+/// adopted into an IGDB id yet (see `steamUuid` in sync-steam).
+const legacySteamIdPrefix = '57e40000-';
 
 /// The `games.id` for an IGDB game. A game's identity is its IGDB id: the
 /// database makes `games.id` a pure function of `games.igdb_id` (constraint
@@ -194,10 +231,7 @@ class Game {
     final id = json['id'] as String;
     final title = json['title'] as String;
     final genres = [for (final g in json['genres'] as List) '$g'];
-    final platforms = [
-      for (final p in json['platforms'] as List)
-        ?gamePlatformFromDb(p),
-    ];
+    final platforms = releasePlatformsFromDb(json['platforms'] as List);
     final dateAdded = json['dateAdded'];
     return Game(
       id: id,
@@ -249,6 +283,27 @@ class Game {
       };
 
   bool get inLibrary => status != null;
+
+  /// What the "Played on" pickers offer for this game, in [GamePlatform] order:
+  /// the platforms it was released on, the saved choice (so it never vanishes),
+  /// Steam Deck when there is a PC release (Steam Deck plays PC games), and
+  /// Emulator when there is a console release to emulate. A game with no known
+  /// release platform offers every choice, as nothing says which are wrong.
+  List<GamePlatform> get playedOnOptions {
+    final options = <GamePlatform>{
+      ...platforms,
+      ?playedOn,
+      if (platforms.contains(GamePlatform.pc)) GamePlatform.steamDeck,
+      if (platforms.any(GamePlatform._emulatable.contains))
+        GamePlatform.emulator,
+    };
+    if (options.isEmpty) options.addAll(GamePlatform.selectable);
+    return options.toList()..sort((a, b) => a.index.compareTo(b.index));
+  }
+
+  /// [releaseYear] is 0 when the catalog has no (valid) release date.
+  bool get hasReleaseYear => releaseYear > 0;
+
   double? get costPerHour =>
       (purchasePrice <= 0 || hoursPlayed <= 0) ? null : purchasePrice / hoursPlayed;
 

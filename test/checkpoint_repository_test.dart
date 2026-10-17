@@ -210,12 +210,40 @@ void main() {
       expect(game.publisher, 'Unknown publisher');
       expect(game.developer, 'Unknown developer');
       expect(game.releaseYear, 0);
-      expect(game.platforms, [GamePlatform.pc]); // no platform data falls back to PC
+      expect(game.platforms, isEmpty); // no platform data is not guessed to be PC
       expect(game.genres, ['Strategy']);
       expect(game.synopsis, '');
       expect(game.coverUrl, isNull);
       expect(game.igdbId, 42);
       expect(game.steamAppId, isNull);
+    });
+
+    test('a game owned on Steam with no platform data is a PC game', () async {
+      api.reply([
+        userGameRow('g1', gameOverrides: {'platforms': <String>[], 'steam_app_id': 440}),
+        userGameRow(
+          '57e40000-0000-0000-0000-000000000730',
+          gameOverrides: {'platforms': null, 'steam_app_id': null, 'igdb_id': null},
+        ),
+      ]);
+
+      final games = await repo.fetchUserGames('u1');
+
+      expect(games.map((g) => g.platforms), everyElement([GamePlatform.pc]));
+    });
+
+    test('Steam Deck and Emulator are never read as release platforms', () async {
+      api.reply([
+        userGameRow('g1', gameOverrides: {
+          'platforms': ['steamdeck', 'mobile', 'retro', 'emulator', 'android', 'Steam Deck'],
+          'steam_app_id': null,
+        }),
+      ]);
+
+      final game = (await repo.fetchUserGames('u1')).single;
+
+      expect(game.platforms, [GamePlatform.mobile]);
+      expect(game.playedOnOptions, [GamePlatform.ps5, GamePlatform.mobile]); // + the saved "ps5"
     });
 
     test('returns the newest additions first, undated rows last', () async {
@@ -306,6 +334,47 @@ void main() {
       expect(logs[1].note, 'first run');
       expect(logs[1].timestamp.toUtc(), DateTime.utc(2026, 2, 1, 8));
     });
+  });
+
+  group('sessions with missing fields', () {
+    test(
+      'a session row with null or unreadable columns still parses',
+      () async {
+        api.reply([
+          {
+            'id': 'l1',
+            'game_id': 'g1',
+            'logged_at': null, // falls back to now
+            'hours': null,
+            'platform': null,
+            'note': '   ',
+          },
+          {
+            'id': 'l2',
+            'game_id': 'g1',
+            'logged_at': 'not a date',
+            'hours': 'a lot',
+            'platform': 'retro',
+          },
+        ]);
+
+        final logs = await repo.fetchLogEntries('u1');
+
+        expect(logs, hasLength(2));
+        for (final log in logs) {
+          expect(log.hours, 0);
+          expect(log.note, '');
+          expect(
+            log.timestamp.difference(DateTime.now()).abs(),
+            lessThan(const Duration(minutes: 1)),
+          );
+        }
+        expect(
+          logs.map((l) => l.platform),
+          containsAll([GamePlatform.pc, GamePlatform.emulator]),
+        );
+      },
+    );
   });
 
   group('profiles', () {

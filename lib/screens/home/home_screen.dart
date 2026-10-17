@@ -229,7 +229,7 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final platform = game.playedOn ?? game.platforms.first;
+    final platform = game.playedOn ?? game.platforms.firstOrNull;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Stack(
@@ -257,24 +257,30 @@ class _HeroCard extends StatelessWidget {
                           height: 1.15,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(platform.icon, size: 14, color: Colors.white70),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              platform.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
+                      if (platform != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              platform.icon,
+                              size: 14,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                platform.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                       const Spacer(),
                       Row(
                         children: [

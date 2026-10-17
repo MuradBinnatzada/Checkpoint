@@ -601,7 +601,16 @@ SocialUser _socialUserFromProfile(Map<String, dynamic> row) {
 Game _gameFromCatalogRow(Map<String, dynamic> row) {
   final id = '${row[Db.id]}';
   final title = _firstText([row[Db.title]]) ?? 'Untitled Game';
-  final platforms = _platforms(row[Db.platforms]);
+  final steamAppId = _intOrNull(row[Db.steamAppId]);
+  // Release platforms only: a stored Steam Deck / Emulator is stray data (see
+  // releasePlatformsFromDb). Steam sync used to leave the list empty, and a game
+  // owned on Steam is a PC game; any other game with none known keeps none rather
+  // than being given a platform it may never have been released on.
+  var platforms = releasePlatformsFromDb(_strings(row[Db.platforms]));
+  if (platforms.isEmpty &&
+      (steamAppId != null || id.startsWith(legacySteamIdPrefix))) {
+    platforms = const [GamePlatform.pc];
+  }
   final genres = _strings(row[Db.genres]);
   return Game(
     id: id,
@@ -609,14 +618,14 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
     publisher: _firstText([row[Db.publisher]]) ?? 'Unknown publisher',
     developer: _firstText([row[Db.developer]]) ?? 'Unknown developer',
     releaseYear: _int(row[Db.releaseYear]),
-    platforms: platforms.isEmpty ? const [GamePlatform.pc] : platforms,
+    platforms: platforms,
     genres: genres,
     synopsis: _firstText([row[Db.summary]]) ?? '',
     coverColors: coverColorsFor(id, title),
     coverIcon: coverIconFor(genres, platforms),
     coverUrl: _firstText([row[Db.coverUrl]]),
     igdbId: _intOrNull(row[Db.igdbId]),
-    steamAppId: _intOrNull(row[Db.steamAppId]),
+    steamAppId: steamAppId,
   );
 }
 
@@ -656,9 +665,6 @@ List<String> _strings(Object? value) {
   if (value is String && value.trim().isNotEmpty) return [value.trim()];
   return const [];
 }
-
-List<GamePlatform> _platforms(Object? value) =>
-    _strings(value).map(gamePlatformFromDb).whereType<GamePlatform>().toList();
 
 String? _firstText(List<Object?> values) {
   for (final value in values) {

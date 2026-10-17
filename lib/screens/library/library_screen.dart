@@ -115,7 +115,10 @@ class _LibraryScreenState extends State<LibraryScreen>
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                   ),
                 ),
-                _PlatformFilterButton(selected: view.platformFilter),
+                _PlatformFilterButton(
+                  selected: view.platformFilter,
+                  options: view.filterOptions(library.libraryGames),
+                ),
                 _SortButton(
                   field: view.sortField,
                   descending: view.sortDescending,
@@ -433,8 +436,9 @@ class _SortButton extends StatelessWidget {
 }
 
 class _PlatformFilterButton extends StatelessWidget {
-  const _PlatformFilterButton({required this.selected});
+  const _PlatformFilterButton({required this.selected, required this.options});
   final GamePlatform? selected;
+  final List<GamePlatform> options;
 
   @override
   Widget build(BuildContext context) {
@@ -459,7 +463,7 @@ class _PlatformFilterButton extends StatelessWidget {
             ),
           ),
         ),
-        for (final p in GamePlatform.values)
+        for (final p in options)
           PopupMenuItem<Object>(
             value: p,
             child: Row(
@@ -725,18 +729,20 @@ class _LibraryListTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ],
+                      if (platform != null && game.hasReleaseYear)
                         const Text(
                           '  ·  ',
                           style: TextStyle(color: Palette.muted),
                         ),
-                      ],
-                      Text(
-                        '${game.releaseYear}',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Palette.muted,
+                      if (game.hasReleaseYear)
+                        Text(
+                          '${game.releaseYear}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Palette.muted,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),

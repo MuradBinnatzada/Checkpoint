@@ -20,6 +20,11 @@ String timeAgo(DateTime t) {
   return '${d.inDays ~/ 30}mo ago';
 }
 
+const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// "Oct 14": the calendar day of [d] as stored, without shifting it to local time.
+String fmtMonthDay(DateTime d) => '${_monthNames[d.month - 1]} ${d.day}';
+
 String initials(String name) => name
     .trim()
     .split(RegExp(r'\s+'))

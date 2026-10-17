@@ -47,6 +47,22 @@ void main() {
     expect(view.count(library, null), 3);
   });
 
+  test('the platform filter offers only platforms the library is on', () {
+    // testGame: released on PC and PS5, played on PC.
+    expect(view.filterOptions(library), [GamePlatform.pc]);
+    expect(view.filterOptions(const []), isEmpty);
+
+    // Not yet played anywhere: counted for where it was released.
+    final unplayed = testGame('d', status: null);
+    expect(view.filterOptions([unplayed]), [GamePlatform.pc, GamePlatform.ps5]);
+  });
+
+  test('the active platform filter stays in the menu so it can be seen', () {
+    view.setPlatformFilter(GamePlatform.mobile);
+
+    expect(view.filterOptions(library), [GamePlatform.pc, GamePlatform.mobile]);
+  });
+
   test('tab index 0 is "All", then one tab per status', () {
     expect(view.currentTabIndex, 0);
     expect(view.selectedStatus, isNull);

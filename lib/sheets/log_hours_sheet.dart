@@ -39,8 +39,7 @@ class LogHoursSheet extends StatefulWidget {
 
 class _LogHoursSheetState extends State<LogHoursSheet> {
   late final Game _game = context.read<LibraryStore>().gameById(widget.gameId);
-  // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
-  late final List<GamePlatform> _availablePlatforms = {..._game.platforms, if (_game.playedOn != null) _game.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
+  late final List<GamePlatform> _availablePlatforms = _game.playedOnOptions;
   late final TextEditingController _total = TextEditingController(text: fmtHours(_game.hoursPlayed));
   final _note = TextEditingController();
   late GamePlatform? _platform = _game.playedOn ?? (_game.platforms.isEmpty ? null : _game.platforms.first);

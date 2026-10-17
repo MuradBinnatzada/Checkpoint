@@ -1,10 +1,18 @@
 // supabase/functions/igdb-handler/index.ts
 //
-// Proxies game searches to IGDB so the Twitch credentials never ship in the app.
-// Only logged-in Supabase users may call it.
+// Proxies game searches and browse lists to IGDB so the Twitch credentials never
+// ship in the app. Only logged-in Supabase users may call it.
 //
 // Request  (POST, JSON): { "query": "zelda", "limit": 20, "offset": 0 }
-//                        limit optional, 1-50; offset optional, for paging
+//                        or, to browse instead of search:
+//                        { "mode": "popular" | "top_rated" | "new_releases",
+//                          "limit": 20, "offset": 0 }
+//                        limit optional, 1-50; offset optional, for paging.
+//                        With a `mode` the `query` is ignored. Modes:
+//                          popular       most popular first (IGDB visits)
+//                          top_rated     best total_rating, with more than 50 ratings
+//                          new_releases  released in the last 90 days, newest first
+//                        (the queries live in _shared/browse_queries.ts)
 //          Header:       Authorization: Bearer <user access token>
 // Response (JSON):       the raw IGDB /v4/games array, or
 //                        { "error": "...", "code": "...", "retry_after"?: seconds }
@@ -34,9 +42,20 @@ import {
   fetchWithBackoff,
   parseRetryAfter,
 } from "../_shared/backoff.ts";
+import {
+  type BrowseMode,
+  gamesByIdQuery,
+  inRankOrder,
+  isBrowseMode,
+  newReleasesQuery,
+  popularityQuery,
+  rankedGameIds,
+  topRatedQuery,
+} from "../_shared/browse_queries.ts";
 
 const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_URL = "https://api.igdb.com/v4/games";
+const IGDB_POPULARITY_URL = "https://api.igdb.com/v4/popularity_primitives";
 
 // The Apicalypse query is built here, not by the client, so this function can't
 // be used as an open proxy to spend your IGDB quota on arbitrary queries.
@@ -44,6 +63,8 @@ const GAME_FIELDS = [
   "name",
   "cover.url",
   "first_release_date",
+  "total_rating",
+  "total_rating_count",
   "platforms.id",
   "platforms.name",
   "genres.name",
@@ -239,10 +260,14 @@ async function getToken(forceRefresh = false): Promise<string> {
 // IGDB
 // ---------------------------------------------------------------------------
 
-async function igdbRequest(apicalypse: string, token: string): Promise<Response> {
+async function igdbRequest(
+  url: string,
+  apicalypse: string,
+  token: string,
+): Promise<Response> {
   try {
     return await fetchWithBackoff(() =>
-      fetch(IGDB_GAMES_URL, {
+      fetch(url, {
         method: "POST",
         headers: {
           "Client-ID": Deno.env.get("TWITCH_CLIENT_ID")!,
@@ -280,22 +305,16 @@ function parseOffset(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-async function searchGames(
-  term: string,
-  limit: number,
-  offset: number,
-): Promise<unknown> {
-  const apicalypse =
-    `search "${term}"; fields ${GAME_FIELDS}; limit ${limit}; offset ${offset};`;
-
+// Runs one Apicalypse query against an IGDB endpoint and returns the parsed body.
+async function queryIgdb(url: string, apicalypse: string): Promise<unknown> {
   throwIfCoolingDown();
   let token = await getToken();
-  let res = await igdbRequest(apicalypse, token);
+  let res = await igdbRequest(url, apicalypse, token);
 
   // Token revoked or expired early: refresh once and retry.
   if (res.status === 401) {
     token = await getToken(true);
-    res = await igdbRequest(apicalypse, token);
+    res = await igdbRequest(url, apicalypse, token);
   }
 
   if (!res.ok) throw upstreamError(res, "IGDB request");
@@ -303,6 +322,53 @@ async function searchGames(
   return await res.json().catch(() => {
     throw new HttpError(502, "IGDB_ERROR", "Unexpected response from IGDB");
   });
+}
+
+function searchGames(
+  term: string,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
+  return queryIgdb(
+    IGDB_GAMES_URL,
+    `search "${term}"; fields ${GAME_FIELDS}; limit ${limit}; offset ${offset};`,
+  );
+}
+
+async function browseGames(
+  mode: BrowseMode,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
+  switch (mode) {
+    case "top_rated":
+      return await queryIgdb(
+        IGDB_GAMES_URL,
+        topRatedQuery(GAME_FIELDS, limit, offset),
+      );
+    case "new_releases":
+      return await queryIgdb(
+        IGDB_GAMES_URL,
+        newReleasesQuery(GAME_FIELDS, limit, offset, Math.floor(Date.now() / 1000)),
+      );
+    case "popular": {
+      // IGDB ranks game ids on one endpoint and describes games on another.
+      const primitives = await queryIgdb(
+        IGDB_POPULARITY_URL,
+        popularityQuery(limit, offset),
+      );
+      if (!Array.isArray(primitives)) {
+        throw new HttpError(502, "IGDB_ERROR", "Unexpected response from IGDB");
+      }
+      const ids = rankedGameIds(primitives);
+      if (ids.length === 0) return [];
+      const games = await queryIgdb(
+        IGDB_GAMES_URL,
+        gamesByIdQuery(GAME_FIELDS, ids),
+      );
+      return inRankOrder(ids, games);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -356,9 +422,21 @@ Deno.serve(async (req: Request) => {
 
     const payload = await req.json().catch(() => null);
 
+    // A `mode` browses a list; without one the request is a text search.
+    const mode = payload?.mode ?? null;
+    if (mode !== null && !isBrowseMode(mode)) {
+      return jsonResponse(
+        {
+          error: "`mode` must be one of: popular, top_rated, new_releases",
+          code: "BAD_REQUEST",
+        },
+        400,
+      );
+    }
+
     const rawQuery = typeof payload?.query === "string" ? payload.query : "";
     const term = sanitizeSearchTerm(rawQuery.slice(0, MAX_QUERY_LENGTH));
-    if (!term) {
+    if (mode === null && !term) {
       return jsonResponse(
         { error: "A non-empty `query` string is required", code: "BAD_REQUEST" },
         400,
@@ -370,7 +448,10 @@ Deno.serve(async (req: Request) => {
     // spending an IGDB request.
     if (offset >= MAX_RESULTS) return jsonResponse([]);
 
-    const games = await searchGames(term, parseLimit(payload?.limit), offset);
+    const limit = parseLimit(payload?.limit);
+    const games = mode === null
+      ? await searchGames(term, limit, offset)
+      : await browseGames(mode, limit, offset);
     return jsonResponse(games);
   } catch (err) {
     if (err instanceof HttpError) return errorResponse(err);

@@ -32,8 +32,6 @@ class GameDetailScreen extends StatelessWidget {
       return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.error_outline_rounded, title: 'Game not found', message: 'It may have been removed.'));
     }
     final bottom = MediaQuery.paddingOf(context).bottom;
-    // Official release platforms + the saved selection (so it never disappears) + the manual-only Steam Deck and Emulator options.
-    final availablePlatforms = {...game.platforms, if (game.playedOn != null) game.playedOn!, GamePlatform.steamDeck, GamePlatform.emulator}.toList();
     return Scaffold(
       body: CustomScrollView(slivers: [
         SliverAppBar(
@@ -109,7 +107,7 @@ class GameDetailScreen extends StatelessWidget {
                     title: 'Played on',
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       PlatformChips(
-                        platforms: availablePlatforms,
+                        platforms: game.playedOnOptions,
                         selected: game.playedOn,
                         onSelected: (p) => context.read<LibraryStore>().setPlayedOn(game.id, p),
                       ),
@@ -189,8 +187,16 @@ class _DetailHeaderArt extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text('Released ${game.releaseYear}', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                      if (game.hasReleaseYear) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Released ${game.releaseYear}',
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                 const SizedBox(height: 10),
                 Wrap(spacing: 6, runSpacing: 6, children: [for (final p in game.platforms) PlatformBadge(p, dense: true)]),
               ]),
@@ -431,7 +437,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
     return context.watch<ProfileStore>().isConnected(ConnectedService.steam) &&
         g.inLibrary &&
         (g.playedOn == GamePlatform.pc || g.playedOn == GamePlatform.steamDeck) &&
-        (g.steamAppId != null || g.id.startsWith('57e40000-'));
+        (g.steamAppId != null || g.id.startsWith(legacySteamIdPrefix));
   }
 
   Future<void> _load() async {

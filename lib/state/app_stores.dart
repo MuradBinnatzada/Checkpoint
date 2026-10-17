@@ -8,6 +8,7 @@ import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
@@ -19,7 +20,9 @@ import 'package:checkpoint/state/search_store.dart';
 ///  * [ProfileStore], [LibraryStore] and [SearchStore] follow [AuthStore] for who
 ///    is signed in, and load or drop their data when it changes;
 ///  * [LibraryStore] reads [ProfileStore] for the Steam connection, and
-///    [SearchStore] for a search result being opened or added;
+///    [SearchStore] and [BrowseStore] for a search result or a browse-list game
+///    being opened or added; [BrowseStore] depends on nothing, its lists are the
+///    same for everyone;
 ///  * [SearchStore] and [LibraryViewStore] use [NavStore] (leaving the Search tab
 ///    clears its results; opening a Library tab switches to it).
 class AppStores {
@@ -46,13 +49,14 @@ class AppStores {
       nav: nav,
       apiService: apiService,
     );
+    browse = BrowseStore(apiService: apiService);
     library = LibraryStore(
       repository: repository,
       auth: auth,
       profile: profile,
       cache: localCache,
       connectivity: network,
-      externalGame: search.resultById,
+      externalGame: (id) => search.resultById(id) ?? browse.gameById(id),
     );
     libraryView = LibraryViewStore(nav: nav);
   }
@@ -66,6 +70,7 @@ class AppStores {
   late final NavStore nav;
   late final ProfileStore profile;
   late final SearchStore search;
+  late final BrowseStore browse;
   late final LibraryStore library;
   late final LibraryViewStore libraryView;
 
@@ -81,6 +86,7 @@ class AppStores {
   }
 
   void dispose() {
+    browse.dispose();
     search.dispose();
     library.dispose();
     libraryView.dispose();

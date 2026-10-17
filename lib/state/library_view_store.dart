@@ -80,8 +80,22 @@ class LibraryViewStore extends ChangeNotifier {
   bool _matchesPlatform(Game g) {
     final p = _platformFilter;
     if (p == null) return true;
-    return g.playedOn == p || (g.playedOn == null && g.platforms.contains(p));
+    return _isOn(g, p);
   }
+
+  /// A game counts for the platform it was played on, or, until that is chosen,
+  /// for the platforms it was released on.
+  static bool _isOn(Game g, GamePlatform p) =>
+      g.playedOn == p || (g.playedOn == null && g.platforms.contains(p));
+
+  /// The platforms the platform filter should offer: those at least one game of
+  /// [library] is on, in [GamePlatform] order, so the menu never lists a platform
+  /// that would only show an empty library. The active filter stays listed so it
+  /// can still be seen and changed.
+  List<GamePlatform> filterOptions(Iterable<Game> library) => [
+    for (final p in GamePlatform.values)
+      if (p == _platformFilter || library.any((g) => _isOn(g, p))) p,
+  ];
 
   int _compare(Game a, Game b) {
     final c = switch (_sortField) {

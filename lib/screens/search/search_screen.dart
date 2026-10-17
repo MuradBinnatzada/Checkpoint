@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/screens/search/browse_results_screen.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -13,6 +15,7 @@ import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
+import 'package:checkpoint/widgets/load_more_footer.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
 
@@ -26,9 +29,6 @@ class SearchScreen extends StatefulWidget {
 enum SearchKind { games, users }
 
 class _SearchScreenState extends State<SearchScreen> {
-  // Placeholders until the browse screens exist.
-  static const _browseItems = ['Most popular', 'Highest rated', 'New releases'];
-
   final _controller = TextEditingController();
   final _searchFocus = FocusNode();
   String _query = '';
@@ -273,24 +273,38 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildBrowseBy() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _SectionLabel('Browse by'),
-      Expanded(
-        child: ListView.separated(
-          padding: const EdgeInsets.only(bottom: 32),
-          itemCount: _browseItems.length,
-          separatorBuilder: (_, _) => const _RowDivider(),
-          itemBuilder: (_, i) => ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            title: Text(_browseItems[i], style: const TextStyle(fontWeight: FontWeight.w600)),
-            trailing: const Icon(Icons.chevron_right_rounded, color: Palette.muted),
-            onTap: () => ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(SnackBar(content: Text('${_browseItems[i]} is coming soon'))),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionLabel('Browse by'),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.only(bottom: 32),
+            itemCount: BrowseMode.values.length,
+            separatorBuilder: (_, _) => const _RowDivider(),
+            itemBuilder: (_, i) {
+              final mode = BrowseMode.values[i];
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                title: Text(
+                  mode.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Palette.muted,
+                ),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => BrowseResultsScreen(mode: mode),
+                  ),
+                ),
+              );
+            },
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -360,7 +374,7 @@ class _ResultsPane extends StatelessWidget {
                 itemCount: count + (showFooter ? 1 : 0),
                 itemBuilder: (context, i) {
                   if (i < count) return itemBuilder(context, i);
-                  return _LoadMoreFooter(
+                  return LoadMoreFooter(
                     loading: loadingMore,
                     failed: loadMoreFailed,
                     onLoadMore: onLoadMore,
@@ -369,71 +383,6 @@ class _ResultsPane extends StatelessWidget {
               ),
       ),
     ]);
-  }
-}
-
-/// End-of-list row of a paged [_ResultsPane]. Being built means the end of the
-/// list is near, so it asks for the next page (after the current frame, never
-/// during build). The store ignores the call when a page is already on its way.
-class _LoadMoreFooter extends StatefulWidget {
-  const _LoadMoreFooter({
-    required this.loading,
-    required this.failed,
-    required this.onLoadMore,
-  });
-  final bool loading;
-  final bool failed;
-  final VoidCallback? onLoadMore;
-
-  @override
-  State<_LoadMoreFooter> createState() => _LoadMoreFooterState();
-}
-
-class _LoadMoreFooterState extends State<_LoadMoreFooter> {
-  @override
-  void initState() {
-    super.initState();
-    _requestNextPage();
-  }
-
-  @override
-  void didUpdateWidget(_LoadMoreFooter oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // A page just landed and the footer is still in view: keep going.
-    _requestNextPage();
-  }
-
-  void _requestNextPage() {
-    if (widget.loading || widget.failed) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !widget.loading && !widget.failed) widget.onLoadMore?.call();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.failed) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: TextButton.icon(
-            onPressed: widget.onLoadMore,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Couldn’t load more. Tap to retry'),
-          ),
-        ),
-      );
-    }
-    return const SizedBox(
-      height: 56,
-      child: Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2.5),
-        ),
-      ),
-    );
   }
 }
 
@@ -504,7 +453,7 @@ class _SearchTile extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(game.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
-              Text('${game.publisher} · ${game.releaseYear}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+              Text(game.hasReleaseYear ? '${game.publisher} · ${game.releaseYear}' : game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 4, children: [
                 for (final p in game.platforms.take(4)) Icon(p.icon, size: 16, color: p.color),

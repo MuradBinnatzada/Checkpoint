@@ -75,6 +75,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shared/backoff.ts'
+import { steamGamePlatformsToDb } from '../_shared/platforms.ts'
 import { failureDelayMs, shouldStopBatch, successDelayMs } from '../_shared/sync_schedule.ts'
 
 const corsHeaders = {
@@ -197,14 +198,14 @@ interface IgdbGame {
   name?: string
   cover?: { url?: string }
   first_release_date?: number
-  platforms?: { name?: string }[]
+  platforms?: { id?: number; name?: string }[]
   genres?: { name?: string }[]
   summary?: string
   involved_companies?: { company?: { name?: string } }[]
 }
 
 const IGDB_FIELDS =
-  'name, cover.url, first_release_date, platforms.name, genres.name, summary, involved_companies.company.name'
+  'name, cover.url, first_release_date, platforms.id, platforms.name, genres.name, summary, involved_companies.company.name'
 
 // Non-game software Steam lists alongside games. Word boundaries keep short
 // terms like "obs" from matching titles such as "Observer". (No `g` flag: .test() stays stateless.)
@@ -596,6 +597,8 @@ function toGameRow(g: IgdbGame): Record<string, unknown> {
     developer: company,
     publisher: company,
     release_year: releaseYearFromUnixSeconds(g.first_release_date),
+    // Release platforms (never Steam Deck / Emulator, which are "played on" picks).
+    platforms: steamGamePlatformsToDb(g.platforms),
     genres: (g.genres ?? []).map((x) => x.name).filter((n): n is string => !!n),
     summary: g.summary ?? '',
     cover_url: coverUrl,
