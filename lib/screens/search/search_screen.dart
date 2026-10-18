@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
@@ -253,7 +254,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 title: 'Log in to search games',
                 message: 'Games come from IGDB, which Checkpoint only reaches for signed-in users.',
                 actionLabel: 'Log in',
-                onAction: context.read<AuthStore>().logIn,
+                onAction: () => logIn(context),
               )
             : !filtering
             ? EmptyState(
@@ -391,7 +392,7 @@ class _SearchScreenState extends State<SearchScreen> {
         title: 'Log in to search studios',
         message: 'Studios come from IGDB, which Checkpoint only reaches for signed-in users.',
         actionLabel: 'Log in',
-        onAction: auth.logIn,
+        onAction: () => logIn(context),
       );
     }
     if (!hasQuery) {

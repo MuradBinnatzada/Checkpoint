@@ -24,13 +24,29 @@ class AuthGate extends StatelessWidget {
               child: EmptyState(
                 icon: Icons.lock_outline_rounded,
                 title: 'Log in to track games',
-                message: 'You can still browse and search. Log in to build your library and log your hours.',
+                message: 'Log in to build your library, log your hours and search every game on IGDB.',
                 actionLabel: 'Log in',
-                onAction: context.read<AuthStore>().logIn,
+                onAction: () => logIn(context),
               ),
             ),
           ),
         ),
     ]);
+  }
+}
+
+/// What the "Log in" buttons call: starts Google sign-in and, when it didn't
+/// work (cancelled, no browser, a misconfigured client), says why. [AuthStore]
+/// only throws, so without this a failed sign-in looks like a dead button.
+Future<void> logIn(BuildContext context) async {
+  final auth = context.read<AuthStore>();
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await auth.logIn();
+  } catch (e) {
+    debugPrint('Sign-in failed: $e');
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(auth.messageFor(e))));
   }
 }

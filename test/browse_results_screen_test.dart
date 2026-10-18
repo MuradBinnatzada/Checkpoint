@@ -139,8 +139,10 @@ void main() {
   );
 
   testWidgets('shows a spinner while the first page loads', (tester) async {
-    await start(tester);
+    // Held from the start: Home asks for the popular list as soon as it builds,
+    // and the list screen shows that same request.
     api.gate = Completer<void>();
+    await start(tester);
 
     await tester.tap(find.text('Most popular'));
     await tester.pump(); // push

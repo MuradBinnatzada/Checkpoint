@@ -417,6 +417,10 @@ class LibraryStore extends ChangeNotifier {
 
     // Remove from local library list
     _libraryGames = List.unmodifiable(_libraryGames.where((g) => g.id != id));
+    // Its play sessions go with it, as on the server (deleteUserGame), which
+    // Realtime doesn't announce. Left here, Home would look up a game that is
+    // no longer in any list.
+    _logs = List.unmodifiable(_logs.where((l) => l.gameId != id));
 
     // Rebuild the combined list from its sources (popular + library) so the
     // removed game's library state can't linger in it. The game stays in the
@@ -436,7 +440,12 @@ class LibraryStore extends ChangeNotifier {
       _auth.requireSession();
       await _repository.deleteUserGame(current.id, id);
       _pending.removed.remove(id);
-      if (_pending.games.remove(id) != null) _savePending();
+      final queuedLogs = _pending.logs.length;
+      _pending.logs.removeWhere((l) => l.gameId == id);
+      if (_pending.games.remove(id) != null ||
+          _pending.logs.length != queuedLogs) {
+        _savePending();
+      }
       // Realtime doesn't announce deletes, so the saved copy is told directly.
       unawaited(_cache.removeGame(current.id, id));
     } catch (e) {
@@ -445,6 +454,11 @@ class LibraryStore extends ChangeNotifier {
         _pending.markRemoved(id);
         _savePending();
         _queuedNotice();
+      } else {
+        // The server kept it: say so, and put back what it has.
+        _setNotice('Could not remove that game.');
+        unawaited(_refreshLibrary(current));
+        unawaited(_refreshLogs(current.id));
       }
     }
   }
@@ -671,26 +685,12 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
-  // ---- Home carousels (the "players" and "friends" figures are placeholders) ----
+  // ---- Home carousel ----
 
-  int _seed(Game g) =>
-      g.id.codeUnits.fold<int>(7, (s, c) => (s * 31 + c) & 0x7fffffff);
-
-  List<Game> get popularThisMonth {
-    final list = List.of(_popularGames)
-      ..sort((a, b) => ((_seed(b) * 37) % 101).compareTo((_seed(a) * 37) % 101));
-    return list.take(10).toList();
-  }
-
-  List<Game> get trendingAmongFriends {
-    final list = List.of(_libraryGames)
-      ..sort((a, b) => ((_seed(b) * 53) % 97).compareTo((_seed(a) * 53) % 97));
-    if (list.isEmpty) return popularThisMonth;
-    return list.take(10).toList();
-  }
-
-  String playersLabel(Game g) => '${12 + _seed(g) % 88}k players';
-  int friendsPlaying(Game g) => 1 + _seed(g) % 5;
+  /// The games most recently added to the catalog, newest first: what Home shows
+  /// when IGDB's popular list isn't there (signed out, still loading, or IGDB
+  /// can't be reached).
+  List<Game> get recentlyAdded => _popularGames.take(10).toList();
 
   // ---- Steam ----
 
@@ -1005,12 +1005,13 @@ class LibraryStore extends ChangeNotifier {
       dateAdded: g.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);
-    final logId = 'local-${DateTime.now().microsecondsSinceEpoch}';
+    final now = DateTime.now();
+    final logId = 'local-${now.microsecondsSinceEpoch}';
     _logs = [
       LogEntry(
         id: logId,
         gameId: gameId,
-        timestamp: DateTime.now(),
+        timestamp: now,
         hours: hours,
         platform: p,
         note: note.trim(),
@@ -1023,6 +1024,7 @@ class LibraryStore extends ChangeNotifier {
     final inserted = await _insertLog(
       userId: current.id,
       localId: logId,
+      loggedAt: now,
       gameId: gameId,
       hours: hours,
       platform: p,
@@ -1039,6 +1041,7 @@ class LibraryStore extends ChangeNotifier {
   }) async {
     final current = _user;
     if (current == null) return;
+    final now = DateTime.now();
     final g = gameById(gameId);
     final delta = totalHours - g.hoursPlayed;
     final p = platform ?? g.playedOn ?? (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
@@ -1056,7 +1059,8 @@ class LibraryStore extends ChangeNotifier {
     if (delta > 0.01) {
       final inserted = await _insertLog(
         userId: current.id,
-        localId: 'local-${DateTime.now().microsecondsSinceEpoch}',
+        localId: 'local-${now.microsecondsSinceEpoch}',
+        loggedAt: now,
         gameId: gameId,
         hours: delta,
         platform: p,
@@ -1158,10 +1162,12 @@ class LibraryStore extends ChangeNotifier {
   }
 
   /// Inserts a play session. When the server can't be reached it is queued
-  /// instead (and shown now); returns whether it reached the server.
+  /// instead (and shown now), keeping [loggedAt] as its time; returns whether
+  /// it reached the server.
   Future<bool> _insertLog({
     required String userId,
     required String localId,
+    required DateTime loggedAt,
     required String gameId,
     required double hours,
     required GamePlatform platform,
@@ -1186,7 +1192,7 @@ class LibraryStore extends ChangeNotifier {
           hours: hours,
           platform: platform,
           note: note.trim(),
-          timestamp: DateTime.now(),
+          timestamp: loggedAt,
         );
         _pending.logs.add(log);
         _savePending();
@@ -1213,9 +1219,16 @@ class LibraryStore extends ChangeNotifier {
     return byId.values.toList();
   }
 
-  List<LogEntry> _withPendingLogs(List<LogEntry> logs) => _pending.logs.isEmpty
+  /// [logs] with the queued sessions on top, and without the sessions of games
+  /// whose delete is queued (the delete takes them too, see [removeFromLibrary]).
+  List<LogEntry> _withPendingLogs(List<LogEntry> logs) =>
+      _pending.logs.isEmpty && _pending.removed.isEmpty
       ? logs
-      : [for (final l in _pending.logs.reversed) l.toEntry(), ...logs];
+      : [
+          for (final l in _pending.logs.reversed) l.toEntry(),
+          for (final l in logs)
+            if (!_pending.removed.contains(l.gameId)) l,
+        ];
 
   /// Sends the queued edits to the server, deletes first, then games, then
   /// sessions. Stops at the first one the server can't be reached for (the rest
@@ -1277,6 +1290,8 @@ class LibraryStore extends ChangeNotifier {
             hours: log.hours,
             platform: log.platform,
             note: log.note,
+            // When it was played, not when the connection came back.
+            loggedAt: log.timestamp,
           ),
           () => _pending.logs.remove(log),
         );

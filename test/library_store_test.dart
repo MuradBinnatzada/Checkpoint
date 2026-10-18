@@ -189,7 +189,7 @@ void main() {
 
     await library.initialize();
 
-    expect(ids(library.popularThisMonth), ['p1']);
+    expect(ids(library.recentlyAdded), ['p1']);
     expect(library.loadError, isNull);
   });
 
@@ -203,6 +203,20 @@ void main() {
 
     expect(ids(library.libraryGames), ['b']);
     expect(ids((await cache.readLibrary('u1'))!.value), ['b']);
+  });
+
+  test('removing a game takes its play sessions off screen too', () async {
+    repo.library = [testGame('a'), testGame('b')];
+    repo.logs = [testLog('l1', 'a'), testLog('l2', 'b')];
+    await library.initialize();
+    await pumpEventQueue();
+
+    await library.removeFromLibrary('a');
+
+    // The server deletes them with the game, and Realtime doesn't say so: left
+    // on screen, Home would look up a game that is no longer there.
+    expect(library.logsFor('a'), isEmpty);
+    expect([for (final l in library.recentActivity()) l.gameId], ['b']);
   });
 
   test('an edit made while the server is out of reach is kept and shown', () async {

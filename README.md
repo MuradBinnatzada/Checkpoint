@@ -54,6 +54,10 @@ GitHub Actions (`.github/workflows`):
 - **CI** (`ci.yml`) runs `flutter analyze` and `flutter test` on every pull request and push to `main`, type-checks the Edge Functions with `deno check`, and runs the shared helpers' tests (`deno test supabase/functions/_shared/`).
 - **Deploy Supabase** (`deploy-supabase.yml`) applies new migrations (`supabase db push`) and deploys the Edge Functions when `supabase/` changes on `main`, or when started by hand. It needs the repository secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` and the variable `SUPABASE_PROJECT_ID`. It runs in the `production` environment, where you can require a reviewer before migrations touch the live database.
 
+### Naming migrations
+
+A migration's file name starts with its timestamp, and `supabase db push` applies them in that order. It refuses a new file that sorts before one the database already has. The files here run up to `20261025120000`, ahead of the dates they were written. Until that date has passed, don't take the name `supabase migration new` gives (today's date): name a new migration after the newest file in `supabase/migrations`, e.g. `20261026120000_<what_it_does>.sql`.
+
 ### Edge Function errors
 
 The functions answer a failure with `{ "error": "...", "code": "...", "retry_after": 60 }` and a `Retry-After` header when waiting helps. The app turns the `code` into a message (`lib/services/sync_failure.dart`): rate limiting or downtime at Steam or IGDB shows **Sync Delayed** on the Profile tab, and a sync that IGDB only got part of the way through reports the games left for the next one in `delayed`.

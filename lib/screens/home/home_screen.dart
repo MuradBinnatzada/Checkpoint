@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
+import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
@@ -112,25 +115,88 @@ class HomeScreen extends StatelessWidget {
           ),
           const SectionHeader('Recent Activity'),
           const _RecentActivityRow(),
-          const SectionHeader('Popular This Month'),
-          _GameCarousel(
-            games: library.popularThisMonth,
-            icon: Icons.local_fire_department_rounded,
-            caption: library.playersLabel,
-          ),
-          const SectionHeader('Trending Among Friends'),
-          _GameCarousel(
-            games: library.trendingAmongFriends,
-            icon: Icons.group_rounded,
-            caption: (g) {
-              final n = library.friendsPlaying(g);
-              return '$n friend${n == 1 ? '' : 's'} playing';
-            },
-          ),
+          const _PopularRow(),
         ],
       ),
     );
   }
+}
+
+/// What is popular on IGDB right now: Discover's "Most popular" list, with each
+/// game's IGDB score. IGDB answers signed-in members only, so for a visitor, and
+/// while the list loads (or when IGDB can't be reached), the games most recently
+/// added to the catalog stand in, under a title that says so.
+class _PopularRow extends StatefulWidget {
+  const _PopularRow();
+
+  @override
+  State<_PopularRow> createState() => _PopularRowState();
+}
+
+class _PopularRowState extends State<_PopularRow> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Runs again whenever a store watched in build changes. [BrowseStore.load]
+    // does nothing while the list is loading or fresh, and a list that failed is
+    // left alone (the catalog stands in), so this can't loop.
+    final browse = context.read<BrowseStore>();
+    if (context.read<AuthStore>().isLoggedIn &&
+        !browse.hasFailed(BrowseMode.popular)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) browse.load(BrowseMode.popular);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loggedIn = context.watch<AuthStore>().isLoggedIn;
+    final popular = context.watch<BrowseStore>().entries(BrowseMode.popular);
+    if (loggedIn && popular.isNotEmpty) {
+      final scores = {for (final e in popular) e.game.id: e.score};
+      return _CarouselSection(
+        title: 'Popular Right Now',
+        games: [for (final e in popular.take(10)) e.game],
+        icon: Icons.star_rounded,
+        caption: (g) {
+          final score = scores[g.id];
+          return score == null ? null : '${score.round()} / 100';
+        },
+      );
+    }
+    final recent = context.watch<LibraryStore>().recentlyAdded;
+    if (recent.isEmpty) return const SizedBox.shrink();
+    return _CarouselSection(
+      title: 'Recently Added',
+      games: recent,
+      icon: Icons.event_rounded,
+      caption: (g) => g.hasReleaseYear ? '${g.releaseYear}' : null,
+    );
+  }
+}
+
+/// A [SectionHeader] over a [_GameCarousel].
+class _CarouselSection extends StatelessWidget {
+  const _CarouselSection({
+    required this.title,
+    required this.games,
+    required this.caption,
+    required this.icon,
+  });
+  final String title;
+  final List<Game> games;
+  final String? Function(Game) caption;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SectionHeader(title),
+      _GameCarousel(games: games, caption: caption, icon: icon),
+    ],
+  );
 }
 
 class _GameCarousel extends StatelessWidget {
@@ -140,7 +206,7 @@ class _GameCarousel extends StatelessWidget {
     required this.icon,
   });
   final List<Game> games;
-  final String Function(Game) caption;
+  final String? Function(Game) caption;
   final IconData icon;
 
   @override
@@ -342,7 +408,12 @@ class _RecentActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final library = context.watch<LibraryStore>();
-    final entries = library.recentActivity(limit: 10);
+    // A session whose game can't be found is left out, rather than failing the
+    // whole tab.
+    final entries = [
+      for (final e in library.recentActivity(limit: 10))
+        if (library.maybeGame(e.gameId) != null) e,
+    ];
     if (entries.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 20),

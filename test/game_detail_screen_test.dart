@@ -617,4 +617,47 @@ void main() {
       addTearDown(stores.dispose);
     });
   });
+
+  group('removing a game', () {
+    setUp(() {
+      stores = AppStores(
+        repository: repo,
+        authService: FakeAuthService(testUser('u1')),
+        connectivity: FakeConnectivity(),
+        apiService: detailsApi,
+      );
+    });
+
+    Future<void> tapRemove(WidgetTester tester) async {
+      await tester.tap(find.text('Remove from Library'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('asks first, and says its play sessions go with it', (tester) async {
+      // Tall enough to have the button on screen.
+      tester.view.physicalSize = const Size(800, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      repo.library = [testGame('g1', title: 'Skyrim', cover: false)];
+      repo.logs = [testLog('l1', 'g1'), testLog('l2', 'g1')];
+      await start(tester, const GameDetailScreen(gameId: 'g1'));
+      await tester.pumpAndSettle();
+
+      await tapRemove(tester);
+      expect(find.text('Remove Skyrim?'), findsOneWidget);
+      expect(find.textContaining('along with 2 play sessions'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(repo.writes, isNot(contains('delete:g1')));
+      expect(stores.library.maybeGame('g1')!.inLibrary, isTrue);
+
+      await tapRemove(tester);
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(repo.writes, contains('delete:g1'));
+      expect(stores.library.libraryGames, isEmpty);
+      expect(find.text('Removed Skyrim from library'), findsOneWidget);
+    });
+  });
 }

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
@@ -71,7 +72,7 @@ class _BrowseResultsScreenState extends State<BrowseResultsScreen> {
               title: 'Log in to browse games',
               message: 'Game lists come from IGDB, which Checkpoint only reaches for signed-in users.',
               actionLabel: 'Log in',
-              onAction: context.read<AuthStore>().logIn,
+              onAction: () => logIn(context),
             );
     }
     if (store.isLoaded(mode) && !store.isLoading(mode)) {

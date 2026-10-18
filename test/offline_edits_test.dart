@@ -108,6 +108,39 @@ void main() {
     expect(library.isOffline, isTrue);
   });
 
+  test('a session logged offline keeps the time it was logged, not the time it was sent', () async {
+    await library.initialize();
+    await pumpEventQueue();
+    repo.offline = true;
+    await library.logSession(gameId: 'a', hours: 2);
+    final loggedAt = library.logsFor('a').single.timestamp;
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    repo.offline = false;
+    await library.flushPending();
+
+    expect(repo.writes, contains('log:a:2.0'));
+    expect(repo.logTimes, hasLength(1));
+    expect(repo.logTimes.single!.isAtSameMomentAs(loggedAt), isTrue);
+  });
+
+  test('a game removed while offline keeps its sessions hidden after a restart', () async {
+    repo.logs = [testLog('l1', 'b')];
+    await library.initialize();
+    await pumpEventQueue();
+    repo.offline = true;
+    await library.removeFromLibrary('b');
+    await pumpEventQueue();
+    library.dispose();
+
+    library = newLibrary(); // the saved copy still has the game's sessions
+    await library.initialize();
+
+    expect(library.libraryGames.map((g) => g.id), ['a']);
+    expect(library.logsFor('b'), isEmpty);
+    expect(library.recentActivity(), isEmpty);
+  });
+
   test('queued changes go out as deletes, then games, then sessions', () async {
     await library.initialize();
     await pumpEventQueue();
@@ -149,6 +182,22 @@ void main() {
 
     expect(library.notice, 'Could not save that game update.');
     expect(library.pendingCount, 0);
+  });
+
+  test('a delete the server refuses says so and brings the game back', () async {
+    repo.logs = [testLog('l1', 'b')];
+    await library.initialize();
+    await pumpEventQueue();
+    repo.rejectWrites = true;
+
+    await library.removeFromLibrary('b');
+
+    expect(library.notice, 'Could not remove that game.');
+    expect(library.pendingCount, 0);
+    // The server still has it: the library is read again (after its debounce).
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(library.libraryGames.map((g) => g.id), containsAll(['a', 'b']));
+    expect(library.logsFor('b'), hasLength(1));
   });
 
   test('a queued edit the server later refuses is dropped with a notice', () async {

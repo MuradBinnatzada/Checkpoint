@@ -387,10 +387,16 @@ class FakeRepository implements CheckpointRepository {
     required double hours,
     required GamePlatform platform,
     required String note,
+    DateTime? loggedAt,
   }) async {
     _checkWrite();
     writes.add('log:$gameId:$hours');
+    logTimes.add(loggedAt);
   }
+
+  /// The `logged_at` each inserted session was sent with, in order (null: the
+  /// server's own time).
+  final List<DateTime?> logTimes = [];
 
   @override
   Future<void> upsertUserGame({
@@ -631,6 +637,18 @@ class FakeRepository implements CheckpointRepository {
     return memberAchievements[(userId, gameId)];
   }
 
+  /// The signed-in user's stored list for one of their games (null: never
+  /// loaded). It sits with every member's in [memberAchievements], as in the
+  /// database, where both are the `achievements` column of a library row.
+  @override
+  Future<List<Achievement>?> fetchGameAchievements(
+    String userId,
+    String gameId,
+  ) async {
+    _checkOnline();
+    return memberAchievements[(userId, gameId)];
+  }
+
   /// Like the function, stores what Steam answered where the database keeps it.
   @override
   Future<List<Achievement>?> fetchSteamGameAchievements(
@@ -712,6 +730,16 @@ class FakeAuthService implements AuthService {
 
   @override
   Future<void> signOut() async => emit(null);
+
+  /// What [signInWithGoogle] throws, when set; otherwise it signs `u1` in.
+  Object? signInError;
+
+  @override
+  Future<void> signInWithGoogle() async {
+    final error = signInError;
+    if (error != null) throw error;
+    emit(testUser('u1'));
+  }
 
   /// What [signOutOtherDevices] throws, when set.
   Object? signOutOthersError;

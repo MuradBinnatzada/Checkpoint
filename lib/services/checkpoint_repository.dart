@@ -893,12 +893,16 @@ class CheckpointRepository {
     }, onConflict: '${Db.userId},${Db.gameId}');
   }
 
+  /// Inserts a play session. [loggedAt] is when it was logged, for a session
+  /// that was kept on the device while the server was out of reach; without it
+  /// the server stamps the time it arrives.
   Future<void> insertLogEntry({
     required String userId,
     required String gameId,
     required double hours,
     required GamePlatform platform,
     required String note,
+    DateTime? loggedAt,
   }) async {
     await _client.from(Db.logEntries).insert({
       Db.userId: userId,
@@ -906,6 +910,7 @@ class CheckpointRepository {
       Db.hours: hours,
       Db.platform: gamePlatformToDb(platform),
       Db.note: note.trim(),
+      if (loggedAt != null) Db.loggedAt: loggedAt.toUtc().toIso8601String(),
     });
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, FunctionException;
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/nav_tab.dart';
@@ -28,6 +28,8 @@ void main() {
       repository: repo,
       authService: authService,
       connectivity: FakeConnectivity(),
+      // Home asks IGDB for what is popular.
+      apiService: FakeBrowseApi(),
     );
   });
 
@@ -193,5 +195,32 @@ void main() {
         tab == NavTab.library || tab == NavTab.profile ? findsOneWidget : findsNothing,
       );
     }
+  });
+
+  testWidgets('a sign-in that fails says why instead of doing nothing', (tester) async {
+    authService.signInError = AuthException('Google sign-in was cancelled.');
+    await start(tester);
+    stores.nav.select(NavTab.library);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.pump();
+
+    expect(find.text('Google sign-in was cancelled.'), findsOneWidget);
+    expect(stores.auth.isLoggedIn, isFalse);
+  });
+
+  testWidgets('a sign-in that works lifts the log-in overlay', (tester) async {
+    await start(tester);
+    stores.nav.select(NavTab.library);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    // The stores load the account that signed in.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(stores.auth.isLoggedIn, isTrue);
+    expect(find.text('Log in to track games'), findsNothing);
   });
 }

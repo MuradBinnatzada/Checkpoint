@@ -437,13 +437,7 @@ class _StatusActions extends StatelessWidget {
       if (game.status != null) ...[
         const SizedBox(width: double.infinity, height: 4),
         TextButton.icon(
-          onPressed: () {
-            store.removeFromLibrary(game.id);
-            Navigator.maybePop(context);
-            messenger
-              ..hideCurrentSnackBar()
-              ..showSnackBar(SnackBar(content: Text('Removed ${game.title} from library')));
-          },
+          onPressed: () => _confirmRemove(context, game),
           style: TextButton.styleFrom(foregroundColor: Palette.danger),
           icon: const Icon(Icons.delete_outline_rounded, size: 18),
           label: const Text('Remove from Library'),
@@ -451,6 +445,40 @@ class _StatusActions extends StatelessWidget {
       ]
     ]);
   }
+}
+
+/// Asks before taking [game] out of the library: its play sessions are deleted
+/// with it (see `deleteUserGame`), and nothing brings them back.
+Future<void> _confirmRemove(BuildContext context, Game game) async {
+  final store = context.read<LibraryStore>();
+  final messenger = ScaffoldMessenger.of(context);
+  final sessions = store.logsFor(game.id).length;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Remove ${game.title}?'),
+      content: Text(
+        sessions == 0
+            ? 'Your status, rating and hours for it are removed. It can\'t be undone.'
+            : 'Your status, rating and hours for it are removed, along with '
+                '$sessions play session${sessions == 1 ? '' : 's'}. It can\'t be undone.',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(foregroundColor: Palette.danger),
+          child: const Text('Remove'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  store.removeFromLibrary(game.id);
+  Navigator.maybePop(context);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('Removed ${game.title} from library')));
 }
 
 class _SessionsPanel extends StatelessWidget {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -112,7 +113,7 @@ class _CompanyScreenState extends State<CompanyScreen> {
           title: 'Log in to see studios',
           message: 'Studios and their games come from IGDB, which Checkpoint only reaches for signed-in users.',
           actionLabel: 'Log in',
-          onAction: context.read<AuthStore>().logIn,
+          onAction: () => logIn(context),
         ),
       );
     }
