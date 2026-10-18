@@ -9,6 +9,7 @@ import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
@@ -27,8 +28,10 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///  * [ProfileStore], [LibraryStore] and [SearchStore] follow [AuthStore] for who
 ///    is signed in, and load or drop their data when it changes;
 ///  * [LibraryStore] reads [ProfileStore] for the Steam connection, and
-///    [SearchStore], [BrowseStore] and [GameDetailsStore] for a search result, a
-///    browse-list game or a similar game being opened or added;
+///    [SearchStore], [BrowseStore], [GameDetailsStore] and [CompanyStore] for a
+///    search result, a browse-list game, a similar game or a game on a company's
+///    page being opened or added; [CompanyStore], like [BrowseStore], depends on
+///    nothing;
 ///    [GameDetailsStore] hands each game's exact platforms and genres back to
 ///    [LibraryStore] when they load (a callback set here, not a dependency); [BrowseStore] depends on nothing, its lists are the
 ///    same for everyone; [LibraryStore] also fills in, in the background, the
@@ -77,6 +80,7 @@ class AppStores {
       apiService: apiService,
     );
     browse = BrowseStore(apiService: apiService);
+    companies = CompanyStore(apiService: apiService);
     // Hands what it loads to the library (exact platforms and genres), which is
     // built below: the callback only runs later, by when `library` exists.
     gameDetails = GameDetailsStore(
@@ -104,6 +108,7 @@ class AppStores {
           search.resultById(id) ??
           browse.gameById(id) ??
           gameDetails.similarGameById(id) ??
+          companies.gameById(id) ??
           publicProfiles.gameById(id) ??
           publicLibraries.gameById(id),
       onCleared: publicAchievements.markCleared,
@@ -128,6 +133,7 @@ class AppStores {
   late final ProfileStore profile;
   late final SearchStore search;
   late final BrowseStore browse;
+  late final CompanyStore companies;
   late final GameDetailsStore gameDetails;
   late final PublicProfileStore publicProfiles;
   late final PublicLibraryStore publicLibraries;
@@ -162,6 +168,7 @@ class AppStores {
     publicLibraries.dispose();
     publicProfiles.dispose();
     gameDetails.dispose();
+    companies.dispose();
     browse.dispose();
     search.dispose();
     library.dispose();

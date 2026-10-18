@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
@@ -78,7 +79,10 @@ class AppStoresScope extends StatelessWidget {
                               store: stores.libraryAttributes,
                               child: StoreScope<GameFriendsStore>(
                                 store: stores.gameFriends,
-                                child: child,
+                                child: StoreScope<CompanyStore>(
+                                  store: stores.companies,
+                                  child: child,
+                                ),
                               ),
                             ),
                           ),

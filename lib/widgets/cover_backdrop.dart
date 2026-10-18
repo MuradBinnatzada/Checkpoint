@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
@@ -49,6 +50,7 @@ class CoverBackdrop extends StatelessWidget {
         if (url != null && url.isNotEmpty)
           ExcludeSemantics(
             child: CachedNetworkImage(
+              imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
               imageUrl: _smallUrl(url),
               fit: BoxFit.cover,
               memCacheWidth: _decodeWidth,
@@ -74,6 +76,7 @@ class CoverBackdrop extends StatelessWidget {
         CoverBackdrop(game: game.withBackdrop(null), scrim: scrim),
         ExcludeSemantics(
           child: CachedNetworkImage(
+            imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
             imageUrl: url,
             fit: BoxFit.cover,
             memCacheWidth: _artDecodeWidth,

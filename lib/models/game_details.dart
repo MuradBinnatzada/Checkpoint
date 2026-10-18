@@ -56,6 +56,7 @@ class GameDetails {
     this.engines = const [],
     this.developers = const [],
     this.publishers = const [],
+    this.companyIds = const {},
     this.storyline,
     this.similarGames = const [],
     this.timeToBeat,
@@ -74,6 +75,10 @@ class GameDetails {
   /// The main developers and the publishers, not the supporting studios.
   final List<String> developers;
   final List<String> publishers;
+
+  /// IGDB's company id of each of [developers] and [publishers] it gave one
+  /// for, by name: what opens the company's page.
+  final Map<String, int> companyIds;
   final String? storyline;
 
   /// Games IGDB considers alike, as catalog games (none of the user's state).

@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/achievement.dart';
@@ -148,6 +149,7 @@ class _AchievementIcon extends StatelessWidget {
     Widget image = a.iconUrl.isEmpty
         ? fallback
         : CachedNetworkImage(
+            imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
             imageUrl: a.iconUrl,
             fit: BoxFit.cover,
             memCacheWidth:

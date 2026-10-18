@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
@@ -253,6 +254,7 @@ class GameApiService {
     // supporting. With no flags at all, the first company stands in for both.
     final developers = <String>{};
     final publishers = <String>{};
+    final companyIds = <String, int>{};
     String? firstCompany;
     final involved = game['involved_companies'];
     if (involved is List) {
@@ -262,6 +264,9 @@ class GameApiService {
         final name = company is Map ? _text(company['name']) : null;
         if (name == null) continue;
         firstCompany ??= name;
+        if (company['id'] case final num id when id > 0) {
+          companyIds.putIfAbsent(name, () => id.toInt());
+        }
         if (entry['supporting'] == true) continue;
         if (entry['developer'] == true) developers.add(name);
         if (entry['publisher'] == true) publishers.add(name);
@@ -283,6 +288,7 @@ class GameApiService {
       engines: names(game['game_engines']),
       developers: developers.toList(growable: false),
       publishers: publishers.toList(growable: false),
+      companyIds: Map.unmodifiable(companyIds),
       storyline: _text(game['storyline']),
       similarGames: [
         if (similar is List)
@@ -292,6 +298,40 @@ class GameApiService {
       ],
       timeToBeat: TimeToBeat.fromJson(response['time_to_beat']),
     );
+  }
+
+  /// One hit of a company's games (the `company_games` request) as a
+  /// [CompanyGame], or null when it is not a usable game, or when [companyId]
+  /// did not have [role] on it. IGDB may match the company and the role on two
+  /// different involved companies of a game, so its own entry decides.
+  static CompanyGame? companyGameFromHit(
+    Object? hit,
+    int companyId,
+    CompanyRole role,
+  ) {
+    final entry = entryFromHit(hit);
+    if (entry == null || hit is! Map) return null;
+    var developed = false;
+    var published = false;
+    final involved = hit['involved_companies'];
+    if (involved is List) {
+      for (final e in involved) {
+        if (e is! Map) continue;
+        final company = e['company'];
+        final id = company is Map ? company['id'] : company;
+        if (id is! num || id.toInt() != companyId) continue;
+        if (e['developer'] == true) developed = true;
+        if (e['publisher'] == true) published = true;
+      }
+    }
+    final kept = switch (role) {
+      CompanyRole.any => true,
+      CompanyRole.publisher => published,
+      CompanyRole.developer => developed,
+    };
+    return kept
+        ? CompanyGame(entry, developed: developed, published: published)
+        : null;
   }
 
   /// What the `backfill` request of `igdb-handler` answered (`{ "games": [{
@@ -467,5 +507,66 @@ class GameApiService {
       debugPrint('igdb-handler backfill request failed: $e');
       return backfillFailure(e);
     }
+  }
+
+  // 9. One company's page: who it is, where and since when, its websites and
+  //    how many games it published and developed. Null when the request failed
+  //    or IGDB has no such company.
+  Future<Company?> fetchCompany(int companyId) async {
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'igdb-handler',
+        body: {'mode': 'company', 'company_id': companyId},
+      );
+      final raw = res.data;
+      return Company.fromResponse(raw is String ? json.decode(raw) : raw);
+    } catch (e) {
+      debugPrint('igdb-handler company request failed: $e');
+      return null;
+    }
+  }
+
+  // 10. One page of a company's games in [role], in [sort] order; null when the
+  //     request failed. [offset] counts IGDB hits, as in [searchGames]: a game
+  //     the company did not have [role] on is left out of the page.
+  Future<ResultsPage<CompanyGame>?> companyGames(
+    int companyId, {
+    CompanyRole role = CompanyRole.any,
+    DiscoverSort sort = DiscoverSort.popular,
+    int offset = 0,
+    int limit = browsePageSize,
+  }) async {
+    final data = await _invoke({
+      'mode': 'company_games',
+      'company_id': companyId,
+      'role': role.wireName,
+      'sort': sort.wireName,
+      'limit': limit,
+      'offset': offset,
+    });
+    if (data == null) return null;
+    return ResultsPage<CompanyGame>(
+      [for (final hit in data) ?companyGameFromHit(hit, companyId, role)],
+      hasMore: data.length >= limit, // IGDB filled the page: another may exist
+      fetched: data.length,
+    );
+  }
+
+  // 11. The studio search: the companies whose name has a word starting with
+  //     every word of [query], best match first. One page, no paging; null when
+  //     the request failed.
+  Future<List<CompanySummary>?> searchCompanies(
+    String query, {
+    int limit = searchPageSize,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    final data = await _invoke({
+      'mode': 'companies',
+      'query': q,
+      'limit': limit,
+    });
+    if (data == null) return null;
+    return [for (final row in data) ?CompanySummary.fromJson(row)];
   }
 }

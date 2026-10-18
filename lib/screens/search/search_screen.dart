@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -14,6 +15,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/company_logo.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/filter_sheet.dart';
@@ -28,7 +30,7 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-enum SearchKind { games, users }
+enum SearchKind { games, studios, users }
 
 class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
@@ -103,6 +105,14 @@ class _SearchScreenState extends State<SearchScreen> {
         if (term.isEmpty || term == store.searchTerm) return;
         unawaited(store.searchExternalGames(term, remember: false));
       });
+    } else if (_kind == SearchKind.studios) {
+      // Studios are matched by the start of their name's words, like titles.
+      // An emptied box drops the results.
+      _debounce = Timer(const Duration(milliseconds: 350), () {
+        final term = v.trim();
+        if (term == store.companyQuery) return;
+        unawaited(store.findCompanies(term));
+      });
     } else {
       // Members are searched on the server, so wait for a pause in typing. An
       // emptied box goes back to the "Suggested people" list.
@@ -114,13 +124,16 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// Keyboard "search" key: don't wait for the debounce.
   void _submitSearch(String v) {
-    if (_kind == SearchKind.games && v.trim().isEmpty) return;
+    if (_kind != SearchKind.users && v.trim().isEmpty) return;
     _debounce?.cancel();
     final store = context.read<SearchStore>();
-    if (_kind == SearchKind.games) {
-      store.searchExternalGames(v);
-    } else {
-      unawaited(store.findUsers(v));
+    switch (_kind) {
+      case SearchKind.games:
+        store.searchExternalGames(v);
+      case SearchKind.studios:
+        unawaited(store.findCompanies(v));
+      case SearchKind.users:
+        unawaited(store.findUsers(v));
     }
   }
 
@@ -132,6 +145,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final store = context.read<SearchStore>();
     _onQueryEmptied(store);
     if (_kind == SearchKind.users) unawaited(store.findUsers(''));
+    if (_kind == SearchKind.studios) unawaited(store.findCompanies(''));
     _searchFocus.requestFocus();
   }
 
@@ -176,9 +190,10 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final store = context.watch<SearchStore>();
     final isUsers = _kind == SearchKind.users;
+    final isGames = _kind == SearchKind.games;
     final hasQuery = _query.trim().isNotEmpty;
     final filters = store.activeFilters;
-    final filtering = !isUsers && !filters.isEmpty;
+    final filtering = isGames && !filters.isEmpty;
 
     final Widget body;
     if (isUsers) {
@@ -215,6 +230,8 @@ class _SearchScreenState extends State<SearchScreen> {
         loadMoreFailed: store.userLoadMoreFailed,
         onLoadMore: store.loadMoreUsers,
       );
+    } else if (_kind == SearchKind.studios) {
+      body = _buildStudios(store, hasQuery);
     } else if (hasQuery || (filtering && !_searchFocus.hasFocus)) {
       // State A: active search, or (box empty) the games matching the filters.
       // A result already in the library shows its library state (status pill).
@@ -242,7 +259,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ? EmptyState(
                 icon: Icons.search_off_rounded,
                 title: 'No games found',
-                message: 'Try a different title, studio or genre.',
+                message: 'Try a different title. Looking for a publisher or developer? Try Studios.',
               )
             : EmptyState(
                 icon: Icons.filter_list_off_rounded,
@@ -275,7 +292,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Text('Discover', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, isUsers ? 20 : 8, 0),
+          padding: EdgeInsets.fromLTRB(20, 0, isGames ? 8 : 20, 0),
           child: Row(children: [
             Expanded(
               child: TextField(
@@ -287,7 +304,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 onTapOutside: (_) => _searchFocus.unfocus(),
                 decoration: fieldDecoration(
                   'Search',
-                  hint: isUsers ? 'Names or @handles…' : 'Games, studios, platforms…',
+                  hint: switch (_kind) {
+                    SearchKind.games => 'Game titles…',
+                    SearchKind.studios => 'Publishers, developers…',
+                    SearchKind.users => 'Names or @handles…',
+                  },
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _query.isEmpty
                       ? null
@@ -299,8 +320,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 ).copyWith(labelText: null),
               ),
             ),
-            // Members have nothing to filter by.
-            if (!isUsers) ...[
+            // Studios and members have nothing to filter by.
+            if (isGames) ...[
               const SizedBox(width: 2),
               FilterButton(count: filters.count, onPressed: _openFilters),
             ],
@@ -315,6 +336,7 @@ class _SearchScreenState extends State<SearchScreen> {
               showSelectedIcon: false,
               segments: const [
                 ButtonSegment(value: SearchKind.games, icon: Icon(Icons.sports_esports_rounded), label: Text('Games')),
+                ButtonSegment(value: SearchKind.studios, icon: Icon(Icons.business_rounded), label: Text('Studios')),
                 ButtonSegment(value: SearchKind.users, icon: Icon(Icons.people_alt_rounded), label: Text('Users')),
               ],
               selected: {_kind},
@@ -324,10 +346,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 final search = context.read<SearchStore>();
                 final term = _query.trim();
                 // Members are fetched on demand, so (re)load them for whatever is
-                // typed in the box. The games were last searched for whatever was
-                // typed before switching to Users: catch up with the box.
+                // typed in the box. The games and studios were last searched for
+                // whatever was typed before switching away: catch up with the box.
                 if (_kind == SearchKind.users) {
                   unawaited(search.findUsers(_query));
+                } else if (_kind == SearchKind.studios) {
+                  if (term != search.companyQuery) unawaited(search.findCompanies(term));
                 } else if (term.isNotEmpty && term != search.searchTerm) {
                   unawaited(search.searchExternalGames(term, remember: false));
                 }
@@ -354,6 +378,51 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         Expanded(child: body),
       ]),
+    );
+  }
+
+  /// The Studios tab: what to type before anything is, then the studios found.
+  Widget _buildStudios(SearchStore store, bool hasQuery) {
+    final auth = context.watch<AuthStore>();
+    if (!auth.isLoggedIn) {
+      // The Edge Function answers signed-in users only.
+      return EmptyState(
+        icon: Icons.lock_outline_rounded,
+        title: 'Log in to search studios',
+        message: 'Studios come from IGDB, which Checkpoint only reaches for signed-in users.',
+        actionLabel: 'Log in',
+        onAction: auth.logIn,
+      );
+    }
+    if (!hasQuery) {
+      return const EmptyState(
+        icon: Icons.business_rounded,
+        title: 'Find a studio',
+        message: 'Search publishers and developers by name, like Valve or Nintendo.',
+      );
+    }
+    final studios = store.companyResults;
+    final loading = store.companyLoading;
+    return _ResultsPane(
+      label: loading && studios.isEmpty ? 'Searching…' : _countLabel(studios.length, false),
+      count: studios.length,
+      refreshing: loading && studios.isNotEmpty,
+      empty: loading
+          ? const Center(child: CircularProgressIndicator())
+          : store.companyFailed
+          ? EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: 'Couldn’t search studios',
+              message: 'Check your connection and try again.',
+              actionLabel: 'Try again',
+              onAction: () => unawaited(store.findCompanies(_query)),
+            )
+          : const EmptyState(
+              icon: Icons.search_off_rounded,
+              title: 'No studios found',
+              message: 'Try a different name, or the start of it.',
+            ),
+      itemBuilder: (_, i) => _StudioTile(company: studios[i]),
     );
   }
 
@@ -522,6 +591,41 @@ class _UserTile extends StatelessWidget {
       user: user,
       subtitle: '${fmtCount(games)} ${games == 1 ? 'game' : 'games'} · '
           '${fmtCount(followers)} ${followers == 1 ? 'follower' : 'followers'}',
+    );
+  }
+}
+
+class _StudioTile extends StatelessWidget {
+  const _StudioTile({required this.company});
+  final CompanySummary company;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = [
+      ?company.countryName,
+      if (company.publishedCount > 0) '${fmtCount(company.publishedCount)} published',
+      if (company.developedCount > 0) '${fmtCount(company.developedCount)} developed',
+    ];
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => openCompany(context, company.id, name: company.name),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(children: [
+          CompanyLogo(name: company.name, size: 52, logoUrl: company.logoUrl),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(company.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              if (details.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(details.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+              ],
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+        ]),
+      ),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
@@ -15,11 +16,26 @@ import 'package:checkpoint/state/search_store.dart';
 
 import 'support/fakes.dart';
 
-/// Serves two pages of results for any query, and notes what was asked. [gate]
-/// holds every answer until completed, to have a request in flight.
+/// Serves two pages of results for any query, and a studio named after any
+/// studio search ([companies] null: the studio search fails), and notes what was
+/// asked. [gate] holds every answer until completed, to have a request in flight.
 class FakeGameApi extends GameApiService {
   final List<({String query, FilterOptions filters, int offset})> calls = [];
+  final List<String> companyCalls = [];
+  List<CompanySummary>? Function(String query)? companies = (query) => [
+    CompanySummary(id: query.length, name: 'Studio $query'),
+  ];
   Completer<void>? gate;
+
+  @override
+  Future<List<CompanySummary>?> searchCompanies(
+    String query, {
+    int limit = GameApiService.searchPageSize,
+  }) async {
+    companyCalls.add(query);
+    await gate?.future;
+    return companies?.call(query);
+  }
 
   @override
   Future<ResultsPage<Game>?> searchGames(
@@ -87,6 +103,53 @@ void main() {
     expect(search.searchHasMore, isFalse);
     expect(search.searchTerm, '');
     expect(search.searchBoxResets, resetsBefore + 1);
+  });
+
+  group('studio search', () {
+    List<String> names() => [for (final c in search.companyResults) c.name];
+
+    test('finds studios, and an emptied box drops them without asking', () async {
+      await search.findCompanies(' valve ');
+      expect(names(), ['Studio valve']);
+      expect(search.companyQuery, 'valve');
+
+      await search.findCompanies('');
+      expect(search.companyResults, isEmpty);
+      expect(api.companyCalls, ['valve']);
+    });
+
+    test('an answer overtaken by a newer search is dropped', () async {
+      api.gate = Completer<void>();
+      final first = search.findCompanies('val');
+      expect(search.companyLoading, isTrue);
+      final second = search.findCompanies('valve');
+      api.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(names(), ['Studio valve']);
+      expect(search.companyLoading, isFalse);
+    });
+
+    test('a failed search says so, and the next one clears it', () async {
+      api.companies = (query) => null;
+      await search.findCompanies('valve');
+      expect(search.companyFailed, isTrue);
+      expect(search.companyResults, isEmpty);
+
+      api.companies = (query) => [CompanySummary(id: 56, name: 'Valve')];
+      await search.findCompanies('valve');
+      expect(search.companyFailed, isFalse);
+      expect(names(), ['Valve']);
+    });
+
+    test('leaving the Search tab drops the studios', () async {
+      await search.findCompanies('valve');
+
+      nav.select(NavTab.library);
+
+      expect(search.companyResults, isEmpty);
+      expect(search.companyQuery, '');
+    });
   });
 
   test('a search run while typing is not remembered', () async {

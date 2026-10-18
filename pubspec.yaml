@@ -43,6 +43,7 @@ dependencies:
   url_launcher: ^6.3.3
   font_awesome_flutter: ^11.0.0
   connectivity_plus: ^7.3.2
+  cached_network_image_platform_interface: ^4.1.1
 
 dev_dependencies:
   flutter_test:

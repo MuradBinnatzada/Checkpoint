@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
@@ -54,6 +55,9 @@ class CoverArt extends StatelessWidget {
             // covers aren't re-downloaded on every launch.
             if (game.coverUrl case final url? when url.isNotEmpty)
               CachedNetworkImage(
+                // Web: download + decode in Flutter. The default <img> path renders blank
+                // after scrolling on iOS Safari (GPU textures get dropped).
+                imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
                 imageUrl: url,
                 fit: BoxFit.cover,
                 memCacheWidth: memCacheWidth,

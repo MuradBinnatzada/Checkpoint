@@ -10,6 +10,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/expandable_text.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/panel.dart';
 
@@ -18,7 +19,8 @@ import 'package:checkpoint/widgets/panel.dart';
 /// game modes, player perspectives, engine). The description, genres and
 /// developer come with the library, so they show at once; the rest joins them
 /// when IGDB answers (see [GameInfoSections], which asks). A genre, theme or game
-/// mode the Discover tab can filter by is a button: it opens Discover on it.
+/// mode the Discover tab can filter by is a button: it opens Discover on it. So
+/// is a developer or publisher IGDB gave an id for: it opens its page.
 class AboutPanel extends StatelessWidget {
   const AboutPanel({super.key, required this.game});
 
@@ -31,29 +33,30 @@ class AboutPanel extends StatelessWidget {
         .viewOf(game.id)
         .details;
     final hasInfo = details?.hasInfo ?? false;
-    // (label, values, as chips, what a chip filters Discover by)
-    final rows = <(String, List<String>, bool, GameAttribute?)>[
-      ('Genres', game.genres, true, GameAttribute.genre),
+    final companyIds = details?.companyIds ?? const <String, int>{};
+    // (label, values, as chips, what a chip filters Discover by, chips are companies)
+    final rows = <(String, List<String>, bool, GameAttribute?, bool)>[
+      ('Genres', game.genres, true, GameAttribute.genre, false),
       if (hasInfo) ...[
-        ('Main developers', details!.developers, false, null),
-        ('Publishers', details.publishers, false, null),
-        ('Themes', details.themes, true, GameAttribute.theme),
-        ('Game modes', details.gameModes, true, GameAttribute.gameMode),
-        ('Player perspectives', details.perspectives, true, null),
-        ('Game engine', details.engines, true, null),
+        ('Main developers', details!.developers, true, null, true),
+        ('Publishers', details.publishers, true, null, true),
+        ('Themes', details.themes, true, GameAttribute.theme, false),
+        ('Game modes', details.gameModes, true, GameAttribute.gameMode, false),
+        ('Player perspectives', details.perspectives, true, null, false),
+        ('Game engine', details.engines, true, null, false),
       ] else
-        ('Developer', [game.developer], false, null),
+        ('Developer', [game.developer], false, null, false),
     ].where((row) => row.$2.any((v) => v.trim().isNotEmpty)).toList();
     final synopsis = game.synopsis.trim();
     final storyline = details?.storyline?.trim() ?? '';
 
     final text = <Widget>[
-      if (synopsis.isNotEmpty) _ExpandableText(synopsis, collapsedLines: 6),
+      if (synopsis.isNotEmpty) ExpandableText(synopsis, collapsedLines: 6),
       if (storyline.isNotEmpty) ...[
         if (synopsis.isNotEmpty) const SizedBox(height: 14),
         const _Label('Story'),
         const SizedBox(height: 6),
-        _ExpandableText(storyline, collapsedLines: 4),
+        ExpandableText(storyline, collapsedLines: 4),
       ],
     ];
 
@@ -75,7 +78,10 @@ class AboutPanel extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   for (final v in rows[i].$2)
-                    _TagChip(value: v, attribute: rows[i].$4),
+                    if (rows[i].$5)
+                      _CompanyChip(name: v, companyId: companyIds[v])
+                    else
+                      _TagChip(value: v, attribute: rows[i].$4),
                 ],
               )
             else
@@ -105,6 +111,27 @@ class _TagChip extends StatelessWidget {
       label: Text(value),
       tooltip: 'Browse ${tag.label} games',
       onPressed: () => openDiscover(context, FilterOptions.only(a, tag.name)),
+    );
+  }
+}
+
+/// A developer or publisher of a game. With an IGDB id, tapping it opens the
+/// company's page; without, it is only a label.
+class _CompanyChip extends StatelessWidget {
+  const _CompanyChip({required this.name, this.companyId});
+
+  final String name;
+  final int? companyId;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = companyId;
+    if (id == null) return Chip(label: Text(name));
+    return ActionChip(
+      avatar: const Icon(Icons.business_rounded, size: 16),
+      label: Text(name),
+      tooltip: 'See $name',
+      onPressed: () => openCompany(context, id, name: name),
     );
   }
 }
@@ -182,60 +209,6 @@ class _Label extends StatelessWidget {
         fontSize: 12.5,
         fontWeight: FontWeight.w600,
       ),
-    );
-  }
-}
-
-/// [text] cut to [collapsedLines], with "Read more" when it is longer than that.
-class _ExpandableText extends StatefulWidget {
-  const _ExpandableText(this.text, {required this.collapsedLines});
-
-  final String text;
-  final int collapsedLines;
-
-  @override
-  State<_ExpandableText> createState() => _ExpandableTextState();
-}
-
-class _ExpandableTextState extends State<_ExpandableText> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    const style = TextStyle(height: 1.45, color: Colors.white70);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Only a text that is longer than the collapsed height gets the toggle.
-        final painter = TextPainter(
-          text: TextSpan(text: widget.text, style: style),
-          maxLines: widget.collapsedLines,
-          textDirection: TextDirection.ltr,
-          textScaler: MediaQuery.textScalerOf(context),
-        )..layout(maxWidth: constraints.maxWidth);
-        final overflows = painter.didExceedMaxLines;
-        painter.dispose();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.text,
-              maxLines: _expanded ? null : widget.collapsedLines,
-              overflow: _expanded ? null : TextOverflow.ellipsis,
-              style: style,
-            ),
-            if (overflows)
-              TextButton(
-                onPressed: () => setState(() => _expanded = !_expanded),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 36),
-                  alignment: Alignment.centerLeft,
-                ),
-                child: Text(_expanded ? 'Show less' : 'Read more'),
-              ),
-          ],
-        );
-      },
     );
   }
 }

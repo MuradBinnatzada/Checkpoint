@@ -156,7 +156,7 @@ export function filteredSearchQuery(
 
 // What a filtered browse lists, like the "Browse by" lists: games with a cover,
 // without their editions (`version_parent`) or DLC and bundle parts (`parent_game`).
-const DISCOVER_GAMES = 'cover != null & parent_game = null & version_parent = null'
+export const DISCOVER_GAMES = 'cover != null & parent_game = null & version_parent = null'
 
 /**
  * Games matching [filters], with no search term, in [sort] order:
@@ -178,8 +178,8 @@ export function discoverQuery(
   return `fields ${fields}; where ${where}; sort ${order}; limit ${limit}; offset ${offset};`
 }
 
-// The sort of [sort], and what a game needs for that order to mean anything.
-function sortClause(sort: DiscoverSort, nowSeconds: number): [string, string] {
+/** The sort of [sort], and what a game needs for that order to mean anything. */
+export function sortClause(sort: DiscoverSort, nowSeconds: number): [string, string] {
   switch (sort) {
     case 'popular':
       return ['total_rating_count desc', 'total_rating_count != null']

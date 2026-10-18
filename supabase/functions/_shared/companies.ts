@@ -1,0 +1,184 @@
+// supabase/functions/_shared/companies.ts
+//
+// What igdb-handler's company modes ask IGDB for, and what they send back: one
+// company's page (`company`), its games (`company_games`) and the studio search
+// (`companies`). IGDB keeps publishers and developers as one thing, a company.
+// Pure functions with no I/O, so they can be tested.
+//
+// Every value spliced into a query is a number, a fixed string, or a word from
+// titleWords (letters, digits and apostrophes only), never raw text from the
+// caller, so none of these can run arbitrary queries against the IGDB quota.
+
+import { DISCOVER_GAMES, type DiscoverSort, sortClause } from './game_filters.ts'
+import { wordStartCondition } from './game_search.ts'
+
+/** Which of a company's games a list holds: all, or those it published / developed. */
+export const COMPANY_ROLES = ['any', 'publisher', 'developer'] as const
+export type CompanyRole = (typeof COMPANY_ROLES)[number]
+
+/** The role the caller sent: `any` when left out, null when it is none of them. */
+export function parseCompanyRole(value: unknown): CompanyRole | null {
+  if (value === undefined || value === null) return 'any'
+  return typeof value === 'string' && (COMPANY_ROLES as readonly string[]).includes(value)
+    ? (value as CompanyRole)
+    : null
+}
+
+/** What a company's page shows. `developed` / `published` are only counted. */
+const COMPANY_FIELDS = [
+  'name',
+  'description',
+  'country',
+  'start_date',
+  'logo.image_id',
+  'parent.name',
+  'websites.url',
+  'websites.type',
+  'developed',
+  'published',
+].join(', ')
+
+/** One company with everything its page shows. */
+export function companyQuery(companyId: number): string {
+  return `fields ${COMPANY_FIELDS}; where id = ${companyId}; limit 1;`
+}
+
+/** One company of the studio search, as the app gets it. */
+export type CompanySummary = {
+  id: number
+  name: string
+  logo_image_id: string | null
+  country: number | null
+  published_count: number
+  developed_count: number
+}
+
+/** A company's page, as the app gets it. */
+export type CompanyInfo = CompanySummary & {
+  description: string | null
+  /** When it was founded, in Unix seconds. */
+  start_date: number | null
+  parent: { id: number; name: string } | null
+  websites: { url: string; type: number | null }[]
+}
+
+type Row = Record<string, unknown>
+
+const text = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() ? value.trim() : null
+
+const wholeNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) ? value : null
+
+const positiveId = (value: unknown): number | null => {
+  const id = wholeNumber(value)
+  return id !== null && id > 0 ? id : null
+}
+
+const count = (value: unknown): number => (Array.isArray(value) ? value.length : 0)
+
+/**
+ * [row] as a [CompanySummary], or null when it has no id or name. The
+ * `developed` / `published` id lists become counts: a big publisher has
+ * thousands, and the app only shows how many.
+ */
+export function companySummary(row: unknown): CompanySummary | null {
+  const r = row as Row | null
+  const id = positiveId(r?.id)
+  const name = text(r?.name)
+  if (!r || id === null || name === null) return null
+  const logo = r.logo as Row | null | undefined
+  return {
+    id,
+    name,
+    logo_image_id: text(logo?.image_id),
+    country: positiveId(r.country),
+    published_count: count(r.published),
+    developed_count: count(r.developed),
+  }
+}
+
+/** [row] (an answer to [companyQuery]) as a [CompanyInfo], or null when it is no company. */
+export function companyInfo(row: unknown): CompanyInfo | null {
+  const summary = companySummary(row)
+  if (!summary) return null
+  const r = row as Row
+  const parent = r.parent as Row | null | undefined
+  const parentId = positiveId(parent?.id)
+  const parentName = text(parent?.name)
+  const websites: CompanyInfo['websites'] = []
+  if (Array.isArray(r.websites)) {
+    for (const site of r.websites) {
+      const url = text((site as Row | null)?.url)
+      if (url) websites.push({ url, type: positiveId((site as Row).type) })
+    }
+  }
+  return {
+    ...summary,
+    description: text(r.description),
+    start_date: wholeNumber(r.start_date),
+    parent: parentId !== null && parentName !== null ? { id: parentId, name: parentName } : null,
+    websites,
+  }
+}
+
+/** Most companies the studio search ranks before it keeps the best. */
+export const COMPANY_CANDIDATES = 50
+
+/**
+ * The companies with a word of their name starting with each of [words] (from
+ * titleWords) that have a game. IGDB's `search` does not cover companies, so
+ * the name is matched the way game titles are. Lower ids first: IGDB added the
+ * well-known studios early, so they make it into the candidates.
+ */
+export function companySearchQuery(words: string[]): string {
+  const where = [...words.map(wordStartCondition), '(developed != null | published != null)']
+    .join(' & ')
+  return `fields name, logo.image_id, country, developed, published; where ${where}; ` +
+    `sort id asc; limit ${COMPANY_CANDIDATES};`
+}
+
+const normalized = (name: string) => name.toLowerCase().replace(/\s+/g, ' ').trim()
+
+/**
+ * The best [limit] of [rows] (an answer to [companySearchQuery]) for [term]: the
+ * company named exactly that first, then those whose name starts with it, then
+ * the ones with the most games.
+ */
+export function rankCompanies(rows: unknown, term: string, limit: number): CompanySummary[] {
+  if (!Array.isArray(rows)) return []
+  const wanted = normalized(term)
+  const closeness = (name: string) => {
+    const n = normalized(name)
+    return n === wanted ? 0 : n.startsWith(wanted) ? 1 : 2
+  }
+  const games = (c: CompanySummary) => c.published_count + c.developed_count
+  return rows
+    .map(companySummary)
+    .filter((c): c is CompanySummary => c !== null)
+    .sort((a, b) => closeness(a.name) - closeness(b.name) || games(b) - games(a) || a.id - b.id)
+    .slice(0, limit)
+}
+
+/**
+ * The games [companyId] worked on in [role], in [sort] order, like a filtered
+ * browse: main games with a cover. IGDB may match the company and the role on
+ * two different involved companies of a game, so the app checks each game's
+ * own entry for the company (the involved companies come with [fields]).
+ */
+export function companyGamesQuery(
+  fields: string,
+  companyId: number,
+  role: CompanyRole,
+  sort: DiscoverSort,
+  limit: number,
+  offset: number,
+  nowSeconds: number,
+): string {
+  const [order, condition] = sortClause(sort, nowSeconds)
+  const conditions = [`involved_companies.company = ${companyId}`]
+  if (role !== 'any') conditions.push(`involved_companies.${role} = true`)
+  conditions.push(condition, DISCOVER_GAMES)
+  return `fields ${fields}; where ${conditions.join(' & ')}; sort ${order}; ` +
+    `limit ${limit}; offset ${offset};`
+}

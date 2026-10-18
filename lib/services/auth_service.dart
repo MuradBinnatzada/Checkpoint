@@ -86,7 +86,8 @@ class AuthService {
     }
     if (!_usesNativeGoogle) {
       // Web has no native account picker: use Supabase's browser flow.
-      await _auth.signInWithOAuth(OAuthProvider.google);
+      // Return to whichever host served the app (localhost, Netlify, ...).
+      await _auth.signInWithOAuth(OAuthProvider.google, redirectTo: Uri.base.origin);
       return;
     }
     if (_googleWebClientId.isEmpty) {

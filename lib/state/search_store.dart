@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -12,8 +13,8 @@ import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 
-/// The Search tab: games from IGDB, members from the database, and the recent
-/// searches. Results are paged, one request at a time, as the lists are scrolled.
+/// The Search tab: games and studios (publishers and developers) from IGDB,
+/// members from the database, and the recent searches. Results are paged, one request at a time, as the lists are scrolled.
 /// Nothing here is cached for offline use: a search is a live question.
 ///
 /// The game search can be narrowed by [activeFilters] (genres, game modes,
@@ -61,6 +62,7 @@ class SearchStore extends ChangeNotifier {
       return;
     }
     clearSearch();
+    _clearCompanySearch();
     _activeFilters = FilterOptions.none;
     _searchBoxResets++;
     notifyListeners();
@@ -277,6 +279,57 @@ class SearchStore extends ChangeNotifier {
     _searchLoadingMore = false;
     _searchLoadMoreFailed = false;
     if (changed) notifyListeners();
+  }
+
+  // ---- Studio search (Studios tab) ----
+  // IGDB's companies by name: one page, the best matches, no paging.
+  List<CompanySummary> _companyResults = const [];
+  String _companyQuery = '';
+  int _companySeq = 0; // bumped by every search and reset, like _searchSeq
+  bool _companyLoading = false;
+  bool _companyFailed = false;
+
+  List<CompanySummary> get companyResults => _companyResults;
+
+  /// What [companyResults] are for (trimmed); empty for none.
+  String get companyQuery => _companyQuery;
+
+  /// A studio search is on its way.
+  bool get companyLoading => _companyLoading;
+
+  /// The last studio search failed; [findCompanies] tries again.
+  bool get companyFailed => _companyFailed;
+
+  /// Searches the studios whose name has a word starting with every word of
+  /// [query], and replaces the results with them. An empty [query] drops them.
+  Future<void> findCompanies(String query) async {
+    final seq = ++_companySeq;
+    final term = query.trim();
+    _companyQuery = term;
+    _companyFailed = false;
+    if (term.isEmpty) {
+      _companyResults = const [];
+      _companyLoading = false;
+      notifyListeners();
+      return;
+    }
+    _companyLoading = true;
+    notifyListeners();
+    final results = await _apiService.searchCompanies(term);
+    if (seq != _companySeq) return;
+    _companyLoading = false;
+    _companyResults = List.unmodifiable(results ?? const <CompanySummary>[]);
+    _companyFailed = results == null;
+    notifyListeners();
+  }
+
+  /// Drops the studio results and any studio search still on its way.
+  void _clearCompanySearch() {
+    _companySeq++;
+    _companyResults = const [];
+    _companyQuery = '';
+    _companyLoading = false;
+    _companyFailed = false;
   }
 
   // ---- Member search paging (Users tab) ----

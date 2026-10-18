@@ -6,7 +6,9 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
@@ -22,6 +24,7 @@ import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
+import 'package:checkpoint/state/company_store.dart';
 
 User testUser(String id) => User(
   id: id,
@@ -799,6 +802,61 @@ class FakeDetailsApi extends GameApiService {
   }
 }
 
+/// A [GameApiService] whose companies and their games (and, as a
+/// [FakeDetailsApi], game details) the test controls. [company] gives a
+/// company's page (null = the request failed); [games] gives a page of a list
+/// for an offset (null = failed), by default one page of two games named after
+/// the list; [companies] what the studio search finds. [gate] holds every
+/// answer until completed.
+class FakeCompanyApi extends FakeDetailsApi {
+  Company? Function(int id) company = (id) => Company(id: id, name: 'Company $id', publishedCount: 3, developedCount: 2);
+  ResultsPage<CompanyGame>? Function(CompanyGamesKey key, int offset) games = (key, offset) => ResultsPage([
+    companyGame('${key.$1}-${key.$2.name}-1'),
+    companyGame('${key.$1}-${key.$2.name}-2'),
+  ], hasMore: false);
+
+  /// What the studio search finds for a query (null = the request failed).
+  List<CompanySummary>? Function(String query) companies = (query) => [
+    CompanySummary(id: 56, name: 'Studio $query'),
+  ];
+
+  final List<int> companyCalls = [];
+  final List<(CompanyGamesKey, int)> gameCalls = [];
+
+  @override
+  Future<List<CompanySummary>?> searchCompanies(
+    String query, {
+    int limit = GameApiService.searchPageSize,
+  }) async {
+    await gate?.future;
+    return companies(query);
+  }
+
+  @override
+  Future<Company?> fetchCompany(int companyId) async {
+    companyCalls.add(companyId);
+    await gate?.future;
+    return company(companyId);
+  }
+
+  @override
+  Future<ResultsPage<CompanyGame>?> companyGames(
+    int companyId, {
+    CompanyRole role = CompanyRole.any,
+    DiscoverSort sort = DiscoverSort.popular,
+    int offset = 0,
+    int limit = GameApiService.browsePageSize,
+  }) async {
+    final key = (companyId, role, sort);
+    gameCalls.add((key, offset));
+    await gate?.future;
+    return games(key, offset);
+  }
+}
+
+/// A game on a company's page, developed by it.
+CompanyGame companyGame(String id) => CompanyGame(testEntry(id), developed: true, published: false);
+
 /// A [GameApiService] whose catalog backfill the test controls. [answer] gives
 /// what a batch of IGDB ids comes back with; by default every game is filled in
 /// with [backfilledPlatforms] and [backfilledGenres]. [gate] holds every answer
@@ -831,6 +889,7 @@ GameDetails testDetails({
   int igdbId = 7,
   List<GamePlatform> platforms = const [GamePlatform.pc, GamePlatform.ps3, GamePlatform.xbox360],
   List<Game>? similarGames,
+  Map<String, int> companyIds = const {},
   TimeToBeat? timeToBeat = const TimeToBeat(
     hastily: Duration(hours: 25),
     normally: Duration(hours: 50),
@@ -847,6 +906,7 @@ GameDetails testDetails({
   engines: const ['Creation Engine'],
   developers: const ['Bethesda Game Studios'],
   publishers: const ['Bethesda Softworks'],
+  companyIds: companyIds,
   storyline: 'The Empire of Tamriel is on the edge.',
   similarGames: similarGames ?? [testGame('similar-1', title: 'Oblivion', status: null, cover: false, igdbId: 306)],
   timeToBeat: timeToBeat,

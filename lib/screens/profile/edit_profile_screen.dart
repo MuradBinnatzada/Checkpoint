@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -286,7 +287,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   backgroundColor: Palette.accent,
                   // Drawn over the initials; if it fails to load, the
                   // initials underneath stay visible.
-                  foregroundImage: url != null ? CachedNetworkImageProvider(url) : null,
+                  foregroundImage: url != null ? CachedNetworkImageProvider(url, imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet) : null,
                   onForegroundImageError: url != null
                       ? (error, stackTrace) {}
                       : null,

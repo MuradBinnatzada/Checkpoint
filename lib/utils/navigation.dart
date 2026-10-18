@@ -4,6 +4,7 @@ import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/screens/company/company_screen.dart';
 import 'package:checkpoint/screens/game_detail/game_detail_screen.dart';
 import 'package:checkpoint/screens/profile/follows_screen.dart';
 import 'package:checkpoint/screens/profile/public_library_screen.dart';
@@ -15,6 +16,13 @@ import 'package:checkpoint/state/store_scope.dart';
 
 void openGame(BuildContext context, String id) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => GameDetailScreen(gameId: id)));
+
+/// Opens a publisher's or developer's page, by IGDB company id. [name] (what
+/// was tapped) is its title while the page loads.
+void openCompany(BuildContext context, int companyId, {String? name}) =>
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => CompanyScreen(companyId: companyId, name: name)),
+    );
 
 /// Shows the Discover tab on the games matching [filters] (a tag tapped on a
 /// game's screen), closing every screen opened over the tabs first.

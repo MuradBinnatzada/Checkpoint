@@ -9,11 +9,13 @@ import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
 import 'package:checkpoint/sheets/game_backdrop_sheet.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/achievement_tile.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/cover_backdrop.dart';
@@ -283,7 +285,7 @@ class _DetailHeaderArt extends StatelessWidget {
                   child: Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
                 ),
                 const SizedBox(height: 6),
-                Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+                _PublisherLink(game: game),
                       if (game.hasReleaseYear) ...[
                         const SizedBox(height: 2),
                         Text(
@@ -302,6 +304,31 @@ class _DetailHeaderArt extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+/// The publisher under a game's title. Once IGDB gave its id (with the game's
+/// details), tapping it opens the company's page.
+class _PublisherLink extends StatelessWidget {
+  const _PublisherLink({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = context.watch<GameDetailsStore>().viewOf(game.id).details;
+    final id = details?.companyIds[game.publisher];
+    const style = TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600);
+    if (id == null) {
+      return Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+    }
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => openCompany(context, id, name: game.publisher),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(child: Text(game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
+        const Icon(Icons.chevron_right_rounded, size: 18, color: Colors.white70),
+      ]),
+    );
   }
 }
 

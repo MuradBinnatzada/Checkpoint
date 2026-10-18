@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/services/game_api_service.dart';
@@ -457,6 +458,20 @@ void main() {
       expect(details.publishers, ['Bethesda Softworks']);
     });
 
+    test('keeps the IGDB id of each company, by name', () {
+      final game = (skyrim()['game'] as Map<String, dynamic>)
+        ..['involved_companies'] = [
+          {'developer': true, 'company': {'id': 1, 'name': 'Bethesda Game Studios'}},
+          {'publisher': true, 'company': {'id': 2, 'name': 'Bethesda Softworks'}},
+          {'publisher': true, 'company': {'name': 'No Id'}},
+        ];
+
+      final details = GameApiService.detailsFromResponse({'game': game})!;
+
+      expect(details.companyIds, {'Bethesda Game Studios': 1, 'Bethesda Softworks': 2});
+      expect(details.publishers, ['Bethesda Softworks', 'No Id']);
+    });
+
     test('with no company flagged, the first stands in for both', () {
       final game = (skyrim()['game'] as Map<String, dynamic>)
         ..['involved_companies'] = [
@@ -515,6 +530,63 @@ void main() {
       ]) {
         expect(GameApiService.detailsFromResponse(bad), isNull, reason: '$bad');
       }
+    });
+  });
+
+  group('GameApiService.companyGameFromHit', () {
+    // A Valve game as the `company_games` request answers it (trimmed).
+    Map<String, dynamic> hit(List<Map<String, dynamic>> involved) => {
+      'id': 72,
+      'name': 'Portal',
+      'total_rating': 90.5,
+      'first_release_date': 1192665600,
+      'involved_companies': involved,
+    };
+    const valve = 56;
+
+    test('says what the company did on the game', () {
+      final game = GameApiService.companyGameFromHit(
+        hit([
+          {'developer': true, 'publisher': true, 'company': {'id': valve, 'name': 'Valve'}},
+          {'publisher': true, 'company': {'id': 1, 'name': 'EA'}},
+        ]),
+        valve,
+        CompanyRole.any,
+      )!;
+
+      expect(game.game.title, 'Portal');
+      expect(game.entry.score, 90.5);
+      expect(game.developed, isTrue);
+      expect(game.published, isTrue);
+    });
+
+    test("a role is checked on the company's own entry, not another company's", () {
+      // IGDB matched Valve and `publisher = true`, but EA published it.
+      final involved = [
+        {'developer': true, 'publisher': false, 'company': {'id': valve, 'name': 'Valve'}},
+        {'developer': false, 'publisher': true, 'company': {'id': 1, 'name': 'EA'}},
+      ];
+
+      expect(GameApiService.companyGameFromHit(hit(involved), valve, CompanyRole.publisher), isNull);
+      expect(GameApiService.companyGameFromHit(hit(involved), valve, CompanyRole.developer)?.developed, isTrue);
+      expect(GameApiService.companyGameFromHit(hit(involved), valve, CompanyRole.any)?.published, isFalse);
+    });
+
+    test('a company given as a bare id counts too', () {
+      final game = GameApiService.companyGameFromHit(
+        hit([
+          {'publisher': true, 'company': valve},
+        ]),
+        valve,
+        CompanyRole.publisher,
+      );
+
+      expect(game?.published, isTrue);
+    });
+
+    test('a hit that is not a game is left out', () {
+      expect(GameApiService.companyGameFromHit({'name': 'No id'}, valve, CompanyRole.any), isNull);
+      expect(GameApiService.companyGameFromHit(null, valve, CompanyRole.any), isNull);
     });
   });
 

@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -266,6 +267,7 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CachedNetworkImage(
+    imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
     imageUrl: url,
     fit: BoxFit.cover,
     memCacheWidth: 400,

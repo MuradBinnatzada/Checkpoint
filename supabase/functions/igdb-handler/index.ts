@@ -77,6 +77,31 @@
 //                          app asks again later. Errors as for any request: on
 //                          IGDB_RATE_LIMITED / IGDB_UNAVAILABLE the app waits
 //                          `retry_after` seconds and goes on where it stopped.
+//                        or, for a company's page (a publisher or developer
+//                        tapped on a game's screen, or found by the studio search):
+//                        { "mode": "company", "company_id": 56 }
+//                          answers { "company": { id, name, description, country
+//                          (ISO 3166-1 number), start_date (Unix seconds),
+//                          logo_image_id, parent: { id, name } | null, websites:
+//                          [{ url, type }], published_count, developed_count } }.
+//                        or, for the games of a company:
+//                        { "mode": "company_games", "company_id": 56,
+//                          "role": "any" | "publisher" | "developer",
+//                          "sort": "popular", "limit": 30, "offset": 0 }
+//                          role and sort optional (any, popular), sorts as for a
+//                          filtered browse. Only main games with a cover. Answers
+//                          the raw IGDB games, each with its involved companies'
+//                          `developer` / `publisher` flags: IGDB may match the
+//                          company and the role on two different involved
+//                          companies, so the app checks the company's own entry.
+//                        or, to search the companies (the Discover tab's Studios):
+//                        { "mode": "companies", "query": "valve", "limit": 20 }
+//                          answers up to `limit` companies with a game whose name
+//                          has a word starting with every typed word, the exact
+//                          name first, then names starting with it, then most
+//                          games: [{ id, name, logo_image_id, country,
+//                          published_count, developed_count }]. No paging.
+//                        (the queries live in _shared/companies.ts)
 // Response (JSON):       the raw IGDB /v4/games array, or
 //                        { "error": "...", "code": "...", "retry_after"?: seconds }
 //                        An offset at or past MAX_RESULTS answers `[]`.
@@ -90,7 +115,8 @@
 //                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
 //                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
 //                          UNAUTHENTICATED   (401)  no valid user session
-//                          NOT_FOUND         (404)  `details` / `media` for an IGDB id with no game
+//                          NOT_FOUND         (404)  `details` / `media` for an IGDB id with no game,
+//                                                   `company` for one with no company
 //                          BAD_REQUEST       (400 / 405)
 //                          NOT_CONFIGURED    (500)  missing secrets
 //                          INTERNAL          (500)  anything else
@@ -102,6 +128,15 @@
 // automatically by Supabase.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import {
+  companyGamesQuery,
+  companyInfo,
+  companyQuery,
+  companySearchQuery,
+  type CompanyRole,
+  parseCompanyRole,
+  rankCompanies,
+} from "../_shared/companies.ts";
 import {
   type BackoffOptions,
   fetchWithBackoff,
@@ -158,6 +193,7 @@ const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_URL = "https://api.igdb.com/v4/games";
 const IGDB_POPULARITY_URL = "https://api.igdb.com/v4/popularity_primitives";
 const IGDB_TIME_TO_BEAT_URL = "https://api.igdb.com/v4/game_time_to_beats";
+const IGDB_COMPANIES_URL = "https://api.igdb.com/v4/companies";
 
 // The Apicalypse query is built here, not by the client, so this function can't
 // be used as an open proxy to spend your IGDB quota on arbitrary queries.
@@ -172,6 +208,14 @@ const GAME_FIELDS = [
   "genres.name",
   "summary",
   "involved_companies.company.name",
+].join(", ");
+
+// A company's games also say what each involved company did, so the app can tell
+// what the company did on each game.
+const COMPANY_GAME_FIELDS = [
+  GAME_FIELDS,
+  "involved_companies.developer",
+  "involved_companies.publisher",
 ].join(", ");
 
 const DEFAULT_LIMIT = 20;
@@ -711,6 +755,46 @@ async function backfillGames(
 }
 
 // ---------------------------------------------------------------------------
+// Companies: a publisher's or developer's page, its games, the studio search
+// ---------------------------------------------------------------------------
+
+async function companyPage(companyId: number): Promise<unknown> {
+  const company = companyInfo(
+    firstRow(await queryIgdb(IGDB_COMPANIES_URL, companyQuery(companyId))),
+  );
+  if (!company) throw new HttpError(404, "NOT_FOUND", "No such company");
+  return { company };
+}
+
+function companyGames(
+  companyId: number,
+  role: CompanyRole,
+  sort: DiscoverSort,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
+  return queryIgdb(
+    IGDB_GAMES_URL,
+    companyGamesQuery(
+      COMPANY_GAME_FIELDS,
+      companyId,
+      role,
+      sort,
+      limit,
+      offset,
+      Math.floor(Date.now() / 1000),
+    ),
+  );
+}
+
+async function searchCompanies(term: string, limit: number): Promise<unknown> {
+  const words = titleWords(term);
+  if (words.length === 0) return [];
+  const rows = await queryIgdb(IGDB_COMPANIES_URL, companySearchQuery(words));
+  return rankCompanies(rows, term, limit);
+}
+
+// ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
 
@@ -807,13 +891,73 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(await backfillGames(igdbIds));
     }
 
+    // `company`: one company's page, by IGDB id.
+    if (payload?.mode === "company") {
+      const companyId = parseIgdbId(payload?.company_id);
+      if (companyId === null) {
+        return jsonResponse(
+          {
+            error: "`company_id` must be a positive whole number",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      return jsonResponse(await companyPage(companyId));
+    }
+
+    // `company_games`: one company's games, in a role and an order.
+    if (payload?.mode === "company_games") {
+      const companyId = parseIgdbId(payload?.company_id);
+      const role = parseCompanyRole(payload?.role);
+      const rawSort = payload?.sort ?? "popular";
+      if (companyId === null || role === null || !isDiscoverSort(rawSort)) {
+        return jsonResponse(
+          {
+            error:
+              "`company_id` must be a positive whole number, `role` one of: any, publisher, developer, " +
+              "and `sort` one of: popular, top_rated, newest, oldest",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      const offset = parseOffset(payload?.offset);
+      if (offset >= MAX_RESULTS) return jsonResponse([]);
+      return jsonResponse(
+        await companyGames(
+          companyId,
+          role,
+          rawSort,
+          parseLimit(payload?.limit),
+          offset,
+        ),
+      );
+    }
+
+    // `companies`: the studio search, by name.
+    if (payload?.mode === "companies") {
+      const raw = typeof payload?.query === "string" ? payload.query : "";
+      const term = sanitizeSearchTerm(raw.slice(0, MAX_QUERY_LENGTH));
+      if (!term) {
+        return jsonResponse(
+          { error: "A non-empty `query` string is required", code: "BAD_REQUEST" },
+          400,
+        );
+      }
+      return jsonResponse(
+        await searchCompanies(term, parseLimit(payload?.limit)),
+      );
+    }
+
     // A `mode` browses a list; without one the request is a text search.
     const mode = payload?.mode ?? null;
     if (mode !== null && !isBrowseMode(mode)) {
       return jsonResponse(
         {
           error:
-            "`mode` must be one of: popular, top_rated, new_releases, details, media, backfill",
+            "`mode` must be one of: popular, top_rated, new_releases, details, media, backfill, " +
+            "company, company_games, companies",
           code: "BAD_REQUEST",
         },
         400,

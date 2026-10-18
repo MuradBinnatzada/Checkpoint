@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/theme/palette.dart';
@@ -47,6 +48,7 @@ class ProfileAvatar extends StatelessWidget {
       child: url == null || url.isEmpty
           ? initialsText
           : CachedNetworkImage(
+              imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
               imageUrl: url,
               width: size,
               height: size,
@@ -56,8 +58,8 @@ class ProfileAvatar extends StatelessWidget {
               fadeInDuration: Duration.zero,
               fadeOutDuration: Duration.zero,
               // Keep the initials visible while loading and if the load fails.
-              placeholder: (_, _) => initialsText,
-              errorWidget: (_, _, _) => initialsText,
+              placeholder: (_, _) => Center(child: initialsText),
+              errorWidget: (_, _, _) => Center(child: initialsText),
             ),
     );
   }

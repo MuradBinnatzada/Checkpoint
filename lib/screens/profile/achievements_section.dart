@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/achievement_summary.dart';
@@ -443,6 +444,7 @@ class _Cover extends StatelessWidget {
         child: link == null || link.isEmpty
             ? fallback
             : CachedNetworkImage(
+                imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
                 imageUrl: link,
                 fit: BoxFit.cover,
                 memCacheWidth: 120,
