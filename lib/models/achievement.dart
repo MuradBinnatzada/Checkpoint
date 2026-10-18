@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart';
 /// One Steam achievement for a game, merged with the player's unlock state.
 ///
 /// Stored as a JSON object inside `user_games.achievements`:
-/// `{name, description, icon_url, unlocked, unlocked_at}`.
+/// `{name, description, icon_url, unlocked, unlocked_at, global_percent}`.
+/// Lists fetched before `global_percent` existed don't have it.
 @immutable
 class Achievement {
   const Achievement({
@@ -12,6 +13,7 @@ class Achievement {
     required this.iconUrl,
     required this.unlocked,
     this.unlockedAt,
+    this.globalPercent,
   });
 
   final String name;
@@ -20,8 +22,12 @@ class Achievement {
   final bool unlocked;
   final DateTime? unlockedAt;
 
+  /// The share of all Steam players who have it, 0 to 100; null when unknown.
+  final double? globalPercent;
+
   factory Achievement.fromJson(Map<String, dynamic> json) {
     final unlockedAtRaw = json['unlocked_at'];
+    final percent = json['global_percent'];
     return Achievement(
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
@@ -30,6 +36,9 @@ class Achievement {
       unlockedAt: unlockedAtRaw == null
           ? null
           : DateTime.tryParse('$unlockedAtRaw')?.toLocal(),
+      globalPercent: percent is num && percent.isFinite && percent >= 0
+          ? percent.toDouble().clamp(0, 100).toDouble()
+          : null,
     );
   }
 
@@ -39,6 +48,7 @@ class Achievement {
         'icon_url': iconUrl,
         'unlocked': unlocked,
         'unlocked_at': unlockedAt?.toUtc().toIso8601String(),
+        'global_percent': globalPercent,
       };
 
   /// Parses the raw JSONB value of `user_games.achievements`.

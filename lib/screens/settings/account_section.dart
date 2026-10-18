@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
+import 'package:checkpoint/screens/settings/clear_library_panel.dart';
 import 'package:checkpoint/screens/settings/connect_account.dart';
 import 'package:checkpoint/screens/settings/delete_account_panel.dart';
 import 'package:checkpoint/screens/settings/sync_library.dart';
@@ -15,7 +16,7 @@ import 'package:checkpoint/widgets/profile_link_rows.dart';
 
 /// Who is signed in, a way into Edit Profile, the accounts to connect (game
 /// profiles and social media, with the library sync under the game profiles),
-/// Sign out, and at the bottom the account deletion.
+/// Sign out, and at the bottom clearing the library and the account deletion.
 class AccountSection extends StatelessWidget {
   const AccountSection({super.key, required this.onDeletingChanged});
 
@@ -115,6 +116,8 @@ class AccountSection extends StatelessWidget {
           label: const Text('Sign out'),
         ),
         const SizedBox(height: 40),
+        const ClearLibraryPanel(),
+        const SizedBox(height: 14),
         DeleteAccountPanel(onDeletingChanged: onDeletingChanged),
       ],
     );

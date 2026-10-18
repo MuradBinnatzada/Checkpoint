@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
@@ -51,6 +52,28 @@ void main() {
     expect(store.summaryOf('m1').status, LoadStatus.idle);
     expect(store.gameOf('m1', 'g1').status, LoadStatus.idle);
     expect(repo.memberReads, isEmpty);
+  });
+
+  test('markCleared shows no achievements at once and forgets the games', () async {
+    await store.loadTotals('m1');
+    await store.loadSummary('m1');
+    await store.loadGame('m1', 'g1');
+    await store.loadSummary('m2');
+    expect(store.totalsOf('m1').totals.total, 40);
+    var notified = 0;
+    store.addListener(() => notified++);
+    final reads = repo.memberReads.length;
+
+    store.markCleared('m1');
+
+    expect(notified, 1);
+    expect(store.totalsOf('m1').status, LoadStatus.ready);
+    expect(store.totalsOf('m1').totals.isEmpty, isTrue);
+    expect(store.summaryOf('m1').status, LoadStatus.idle);
+    expect(store.gameOf('m1', 'g1').status, LoadStatus.idle);
+    // Someone else's are not touched, and nothing was asked of the server.
+    expect(store.summaryOf('m2').status, LoadStatus.ready);
+    expect(repo.memberReads.length, reads);
   });
 
   group('the totals', () {
@@ -196,12 +219,90 @@ void main() {
       expect(repo.memberReads, hasLength(2));
     });
 
-    test('nothing stored for the game reads as an empty list', () async {
+    test('a game with nothing stored is fetched from Steam, and stored', () async {
+      repo.steamAchievements[('m1', 'other')] = [first];
+
       await store.loadGame('m1', 'other');
 
       final view = store.gameOf('m1', 'other');
       expect(view.status, LoadStatus.ready);
-      expect(view.achievements, isEmpty);
+      expect(view.achievements, [first]);
+      expect(view.error, isNull);
+      expect(repo.memberReads, ['achievements:m1:other', 'steam:m1:other']);
+      expect(repo.memberAchievements[('m1', 'other')], [first]);
+    });
+
+    test('a stored list that matches the counts is used as is', () async {
+      repo.memberAchievements[('m1', 'g1')] = [
+        first,
+        const Achievement(name: 'B', description: '', iconUrl: '', unlocked: false),
+      ];
+
+      await store.loadGame(
+        'm1',
+        'g1',
+        expected: const GameAchievementSummary(gameId: 'g1', title: 'Hades', unlocked: 1, total: 2),
+      );
+
+      expect(store.gameOf('m1', 'g1').achievements, hasLength(2));
+      expect(repo.memberReads, ['achievements:m1:g1']);
+    });
+
+    test('a stored list older than the counts is fetched again, and the counts follow', () async {
+      final fresh = [
+        for (var i = 0; i < 40; i++)
+          Achievement(name: 'A$i', description: '', iconUrl: '', unlocked: i < 13),
+      ];
+      repo.steamAchievements[('m1', 'g1')] = fresh;
+      Object? handedOn;
+      store.dispose();
+      store = PublicAchievementsStore(
+        repository: repo,
+        auth: auth,
+        onGameFetched: (userId, gameId, list) => handedOn = (userId, gameId, list.length),
+      )..initialize();
+      await store.loadSummary('m1'); // Hades: 12 / 40, but one unlocked is stored
+
+      await store.loadGame('m1', 'g1', expected: store.summaryOf('m1').games.single);
+
+      expect(repo.memberReads, contains('steam:m1:g1'));
+      expect(store.gameOf('m1', 'g1').achievements, hasLength(40));
+      // The profile now agrees with the list.
+      expect(store.summaryOf('m1').games.single.unlocked, 13);
+      expect(handedOn, ('m1', 'g1', 40));
+    });
+
+    test('when Steam fails, a stored list is still shown, with the reason', () async {
+      repo.steamAchievementsError = const FunctionException(
+        status: 429,
+        details: {'code': 'STEAM_RATE_LIMITED', 'retry_after': 60},
+      );
+
+      await store.loadGame('m1', 'g1');
+      final kept = store.gameOf('m1', 'g1');
+      expect(kept.status, LoadStatus.ready);
+      expect(kept.achievements, [first]);
+      expect(kept.error, isNull);
+
+      await store.loadGame('m1', 'g1', force: true);
+      final view = store.gameOf('m1', 'g1');
+      expect(view.status, LoadStatus.ready);
+      expect(view.achievements, [first]);
+      expect(view.error, startsWith('Steam is limiting requests right now.'));
+    });
+
+    test('with nothing stored, a Steam failure is "failed", worded for whose it is', () async {
+      repo.steamAchievementsError = const FunctionException(
+        status: 403,
+        details: {'code': 'STEAM_PROFILE_PRIVATE'},
+      );
+
+      await store.loadGame('m1', 'none');
+      await store.loadGame('u1', 'none');
+
+      expect(store.gameOf('m1', 'none').status, LoadStatus.failed);
+      expect(store.gameOf('m1', 'none').error, startsWith('Their Steam game details are private'));
+      expect(store.gameOf('u1', 'none').error, startsWith('Your Steam game details are private'));
     });
 
     test('a failure is "failed" for that game only', () async {
@@ -214,7 +315,23 @@ void main() {
     });
   });
 
-  test('everything is dropped when the account changes', () async {
+  test('after a Steam sync, what is held of that member is read again', () async {
+    await store.loadTotals('m1');
+    await store.loadSummary('m1');
+    await store.loadGame('m1', 'g1');
+    await store.loadSummary('m2');
+    repo.memberReads.clear();
+
+    store.refreshAfterSync('m1');
+    await pumpEventQueue();
+
+    expect(repo.memberReads, unorderedEquals(['achievement-totals:m1', 'achievements:m1']));
+    // Still on screen meanwhile, and the game's list is asked for again when opened.
+    expect(store.summaryOf('m1').status, LoadStatus.ready);
+    expect(store.gameOf('m1', 'g1').status, LoadStatus.idle);
+  });
+
+    test('everything is dropped when the account changes', () async {
     await store.loadTotals('m1');
     await store.loadSummary('m1');
     await store.loadGame('m1', 'g1');

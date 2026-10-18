@@ -5,8 +5,8 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 
-/// One achievement: icon, name, description and, when unlocked, how long ago.
-/// Locked ones are dimmed and greyed out.
+/// One achievement: icon, name, description, how many Steam players have it
+/// and, when unlocked, how long ago. Locked ones are dimmed and greyed out.
 class AchievementTile extends StatelessWidget {
   const AchievementTile({super.key, required this.achievement});
   final Achievement achievement;
@@ -56,6 +56,23 @@ class AchievementTile extends StatelessWidget {
                       fontSize: 12,
                       height: 1.3,
                       color: Palette.muted,
+                    ),
+                  ),
+                ],
+                if (a.globalPercent != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '${fmtPercent(a.globalPercent!)} of players have this',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: a.globalPercent! < 10
+                          ? Palette.star.withValues(alpha: 0.85)
+                          : Colors.white38,
+                      fontWeight: a.globalPercent! < 10
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                   ),
                 ],

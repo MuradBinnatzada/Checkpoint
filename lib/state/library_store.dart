@@ -5,15 +5,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
+import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
 import 'package:checkpoint/services/sync_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/catalog_backfill.dart';
 import 'package:checkpoint/state/profile_store.dart';
 
 /// The signed-in user's games and play sessions, plus the catalog slice behind
@@ -53,8 +56,13 @@ class LibraryStore extends ChangeNotifier {
     PendingEditsStorage? pendingStorage,
     this._connectivity,
     this._externalGame,
+    this._onCleared,
+    this._onCatalogFilled,
+    this._onSteamSynced,
+    GameApiService? apiService,
   }) : _cache = cache ?? LocalCache(),
-       _pendingStorage = pendingStorage ?? PendingEditsStorage();
+       _pendingStorage = pendingStorage ?? PendingEditsStorage(),
+       _apiService = apiService ?? GameApiService();
 
   final CheckpointRepository _repository;
   final AuthStore _auth;
@@ -66,6 +74,33 @@ class LibraryStore extends ChangeNotifier {
   /// Finds a game that isn't in the library or the catalog slice, e.g. a search
   /// result being opened or added.
   final Game? Function(String id)? _externalGame;
+
+  /// Called with the user's id after [clearLibrary] emptied their library, so
+  /// what other stores hold about it (their achievements) can be dropped too.
+  final void Function(String userId)? _onCleared;
+
+  /// Called when the server filled in catalog rows from IGDB (a game's screen was
+  /// opened, a backfill batch landed): what it saved there (themes, modes,
+  /// developers...) is not part of the library, so whoever reads it separately
+  /// learns it may have changed.
+  final void Function()? _onCatalogFilled;
+
+  /// Called with the user's id after a Steam sync, which also counted their
+  /// achievements again, so whoever holds those counts reads them again.
+  final void Function(String userId)? _onSteamSynced;
+
+  final GameApiService _apiService;
+
+  /// Fills in, in the background, the catalog rows of library games that IGDB
+  /// never filled in (exact platforms, attributes), after each load.
+  late final CatalogBackfill _backfill = CatalogBackfill(
+    repository: _repository,
+    apiService: _apiService,
+    onUpdates: applyCatalogUpdates,
+  );
+
+  /// Start [_backfill] once the next library re-read has landed (after a sync).
+  bool _backfillAfterRefresh = false;
 
   User? _user;
   StreamSubscription<User?>? _authSubscription;
@@ -175,6 +210,7 @@ class LibraryStore extends ChangeNotifier {
     unawaited(_connectivitySubscription?.cancel());
     unawaited(_cancelDataSubscriptions());
     _refreshDebounce?.cancel();
+    _backfill.stop();
     super.dispose();
   }
 
@@ -212,6 +248,8 @@ class LibraryStore extends ChangeNotifier {
     _user = user;
     if (!sameUser) {
       _refreshDebounce?.cancel();
+      _backfill.stop();
+      _backfillAfterRefresh = false;
       _libraryGames = const [];
       _logs = const [];
       _games = List.unmodifiable(_mergeGames(_popularGames, const []));
@@ -276,8 +314,12 @@ class LibraryStore extends ChangeNotifier {
       if (seq == _loadSeq) {
         _loading = false;
         notifyListeners();
-        // Whatever was queued while the server was out of reach goes now.
-        if (!_offline && _loadError == null) unawaited(flushPending());
+        if (!_offline && _loadError == null) {
+          // Whatever was queued while the server was out of reach goes now.
+          unawaited(flushPending());
+          // Games whose catalog row IGDB never filled in get it, quietly.
+          if (user != null) _backfill.start(user.id);
+        }
       }
     }
   }
@@ -407,6 +449,100 @@ class LibraryStore extends ChangeNotifier {
     }
   }
 
+  /// Removes every game and play session from the signed-in user's library, on
+  /// the server first and then here (the screen, the saved copy and the edits
+  /// still waiting for the server). Connected accounts stay. Returns null on
+  /// success, or a message that is safe to show; the library is untouched then.
+  ///
+  /// Needs the server: unlike a single game's delete this is not queued for
+  /// later, because a queued "clear" would also wipe games added in between.
+  Future<String?> clearLibrary() async {
+    final current = _user;
+    if (current == null) return 'Sign in to clear your library.';
+    if (_isSyncing) return 'Wait for the library sync to finish first.';
+
+    try {
+      _auth.requireSession();
+      await _repository.clearLibrary(current.id);
+    } catch (e, st) {
+      debugPrint('Clearing the library failed: $e\n$st');
+      return isConnectionFailure(e)
+          ? 'Could not reach the server. Your library was not cleared. '
+                'Check your connection and try again.'
+          : 'Could not clear your library. Please try again.';
+    }
+    if (_user?.id != current.id) return null; // signed out or switched meanwhile
+
+    _editSeq++;
+    _refreshDebounce?.cancel();
+    _backfill.stop();
+    _backfillAfterRefresh = false;
+    _libraryGames = const [];
+    _logs = const [];
+    _games = List.unmodifiable(_mergeGames(_popularGames, const []));
+    _pending.games.clear();
+    _pending.removed.clear();
+    _pending.logs.clear();
+    _savePending();
+    _syncStatus = SyncStatus.idle;
+    _syncFailure = null;
+    notifyListeners();
+    // Deletes are not announced by Realtime, so the saved copy is told directly
+    // (an empty library, not a missing one: offline it must open empty).
+    unawaited(_cache.writeLibrary(current.id, const []));
+    unawaited(_cache.writeLogs(current.id, const []));
+    _onCleared?.call(current.id);
+    return null;
+  }
+
+  /// Puts the exact platforms and genres IGDB gave for [gameId] on the game, in the
+  /// library and in the combined list, so every screen and picker shows them, not
+  /// only the one that loaded them. The server saves them on the catalog row too,
+  /// so the next library fetch holds them. Nothing changes (and nothing is
+  /// notified) when IGDB had none, or when they are what the game already has.
+  void applyDetails(String gameId, GameDetails details) {
+    _applyCatalog({gameId: details});
+    _onCatalogFilled?.call();
+  }
+
+  /// [applyDetails] for what the catalog backfill filled in: each game's exact
+  /// platforms and genres, by IGDB id, with one notification for the batch.
+  void applyCatalogUpdates(List<GameDetails> updates) {
+    final byIgdbId = {for (final details in updates) details.igdbId: details};
+    _applyCatalog({for (final g in _games) g.id: ?byIgdbId[g.igdbId]});
+    if (updates.isNotEmpty) _onCatalogFilled?.call();
+  }
+
+  /// Puts the platforms and genres of [byGameId] on those games (see
+  /// [applyDetails]); notifies once, when anything changed.
+  void _applyCatalog(Map<String, GameDetails> byGameId) {
+    if (byGameId.isEmpty) return;
+    var changed = false;
+    Game patch(Game g) {
+      final details = byGameId[g.id];
+      if (details == null) return g;
+      final platforms =
+          details.platforms.isEmpty ||
+              listEquals(details.platforms, g.platforms)
+          ? null
+          : details.platforms;
+      final genres =
+          details.genres.isEmpty || listEquals(details.genres, g.genres)
+          ? null
+          : details.genres;
+      if (platforms == null && genres == null) return g;
+      changed = true;
+      return g.copyWith(platforms: platforms, genres: genres);
+    }
+
+    final library = [for (final g in _libraryGames) patch(g)];
+    final games = [for (final g in _games) patch(g)];
+    if (!changed) return;
+    _libraryGames = List.unmodifiable(library);
+    _games = List.unmodifiable(games);
+    notifyListeners();
+  }
+
   Future<void> toggleFavorite(String id) async {
     final game = gameById(id);
     final isCurrentlyFavorite = game.isFavorite;
@@ -508,6 +644,10 @@ class LibraryStore extends ChangeNotifier {
         _syncedAt = DateTime.now();
         notifyListeners();
         unawaited(_cache.writeLibrary(user.id, fetched));
+        if (_backfillAfterRefresh) {
+          _backfillAfterRefresh = false;
+          _backfill.start(user.id);
+        }
       } catch (e, st) {
         debugPrint('Library refresh failed: $e\n$st');
         if (_user?.id == user.id && _loaded && !_offline) {
@@ -595,6 +735,11 @@ class LibraryStore extends ChangeNotifier {
       // The function saves what it could and says what IGDB left for later.
       final delayed = SyncFailure.fromDelayed(data);
       _recordSync(current, delayed);
+      if (_user?.id == current.id) _onSteamSynced?.call(current.id);
+      // The games it imported have catalog rows IGDB has not filled in yet. They
+      // are filled in once the re-read above has put them on screen, so what
+      // comes back lands on them.
+      if (_user?.id == current.id) _backfillAfterRefresh = true;
       return delayed?.message;
     } catch (e) {
       debugPrint('Error syncing Steam library: $e');
@@ -652,6 +797,14 @@ class LibraryStore extends ChangeNotifier {
     } finally {
       _achievementsLoading.remove(gameId);
     }
+  }
+
+  /// Puts a list of [gameId]'s achievements fetched elsewhere (opening the game
+  /// on your profile) on the local game, so its screen shows the same.
+  void adoptAchievements(String gameId, List<Achievement> achievements) {
+    final game = maybeGame(gameId);
+    if (game == null || !game.inLibrary) return;
+    _replaceGame(game.copyWith(achievements: achievements));
   }
 
   /// Loads Steam achievements for a single game on demand (via the

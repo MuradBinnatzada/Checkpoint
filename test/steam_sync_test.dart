@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/sync_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -18,6 +19,7 @@ void main() {
   late AuthStore auth;
   late ProfileStore profile;
   late LibraryStore library;
+  late FakeBackfillApi api;
 
   setUp(() async {
     debugPrint = (String? message, {int? wrapWidth}) {};
@@ -27,7 +29,14 @@ void main() {
     cache = LocalCache();
     auth = AuthStore(authService)..initialize();
     profile = ProfileStore(repository: repo, auth: auth, cache: cache);
-    library = LibraryStore(repository: repo, auth: auth, profile: profile, cache: cache);
+    api = FakeBackfillApi();
+    library = LibraryStore(
+      repository: repo,
+      auth: auth,
+      profile: profile,
+      cache: cache,
+      apiService: api,
+    );
     await profile.initialize();
     await library.initialize();
   });
@@ -41,6 +50,21 @@ void main() {
 
   /// The library re-read that follows a sync is debounced (300 ms).
   Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 400));
+
+  test('the games a sync imported get their catalog rows filled in once they are on screen', () async {
+    expect(repo.unsyncedReads, 1); // the load's own pass found nothing to do
+    repo.library = [testGame('imported', platforms: [GamePlatform.pc], igdbId: 7)];
+    repo.unsyncedIgdbIds = [7];
+
+    await library.syncLibrary();
+    expect(api.calls, isEmpty); // not before the re-read has put them on screen
+    await settle();
+
+    expect(api.calls, [
+      [7],
+    ]);
+    expect(library.gameById('imported').platforms, FakeBackfillApi.backfilledPlatforms);
+  });
 
   test('a complete sync reports nothing and refreshes the library', () async {
     final fetchesBefore = repo.libraryFetches;

@@ -2,21 +2,34 @@ import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_attributes.dart';
+import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/nav_store.dart';
 
-/// How the Library tab is arranged: grid or list, sort, platform filter and the
+/// How the Library tab is arranged: grid or list, sort, the filters and the
 /// selected status tab. It is screen state only, with no data of its own, so
 /// re-sorting rebuilds the Library tab and nothing that merely reads the games.
 /// Hand [visible] / [count] the games from [LibraryStore].
 ///
-/// Another member's Library screen makes its own instance, without a [NavStore]:
-/// that one has no tab of the app to switch to, so [openTab] is the signed-in
-/// member's only.
+/// The filters narrow the games by platform (one), and by genre, theme, game mode,
+/// perspective, engine, developer and publisher (any number of values of each).
+/// A game must pass all of them; of one attribute's picked values it needs any one.
+/// Genres are on the games handed in; the other attributes are looked up in
+/// [LibraryAttributesStore], which only knows the games IGDB details were saved
+/// for, so a game without them passes no filter on those attributes.
+///
+/// Another member's Library screen makes its own instance, without a [NavStore]
+/// or attributes: that one has no tab of the app to switch to, so [openTab] is the
+/// signed-in member's only, and the filters it offers are the platform's only.
 class LibraryViewStore extends ChangeNotifier {
-  LibraryViewStore({this._nav});
+  LibraryViewStore({this._nav, this._attributes}) {
+    _attributes?.addListener(_onAttributesChanged);
+  }
 
   final NavStore? _nav;
+  final LibraryAttributesStore? _attributes;
 
   static final _epoch = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -24,6 +37,9 @@ class LibraryViewStore extends ChangeNotifier {
   SortField _sortField = SortField.dateAdded;
   bool _sortDescending = true;
   GamePlatform? _platformFilter;
+
+  /// The values picked per attribute; an attribute with none picked is not here.
+  final Map<GameAttribute, Set<String>> _attributeFilters = {};
 
   /// Selected status tab. `null` means "All" (the default).
   GameStatus? _selectedStatus;
@@ -49,10 +65,11 @@ class LibraryViewStore extends ChangeNotifier {
   }
 
   /// Jumps to the Library tab on [status] (`null` is "All"), clearing the
-  /// platform filter. With [sortBy], also sorts by that field, highest first.
+  /// filters. With [sortBy], also sorts by that field, highest first.
   void openTab(GameStatus? status, {SortField? sortBy}) {
     _selectedStatus = status;
     _platformFilter = null;
+    _attributeFilters.clear();
     if (sortBy != null) {
       _sortField = sortBy;
       _sortDescending = true;
@@ -81,11 +98,71 @@ class LibraryViewStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The values picked for [attribute], none when it is not filtered.
+  Set<String> filterValues(GameAttribute attribute) =>
+      Set.unmodifiable(_attributeFilters[attribute] ?? const <String>{});
+
+  /// Whether [value] is picked for [attribute].
+  bool isFilterOn(GameAttribute attribute, String value) =>
+      _attributeFilters[attribute]?.contains(value) ?? false;
+
+  /// Picks [value] of [attribute], or lets go of it when it is picked.
+  void toggleFilter(GameAttribute attribute, String value) {
+    final values = _attributeFilters.putIfAbsent(attribute, () => {});
+    if (!values.remove(value)) values.add(value);
+    if (values.isEmpty) _attributeFilters.remove(attribute);
+    notifyListeners();
+  }
+
+  /// Lets go of every value picked for [attribute].
+  void clearFilter(GameAttribute attribute) {
+    if (_attributeFilters.remove(attribute) == null) return;
+    notifyListeners();
+  }
+
+  /// Removes the platform filter and every attribute filter.
+  void clearFilters() {
+    if (!hasFilters) return;
+    _platformFilter = null;
+    _attributeFilters.clear();
+    notifyListeners();
+  }
+
+  /// Whether any filter narrows the Library.
+  bool get hasFilters => _platformFilter != null || _attributeFilters.isNotEmpty;
+
+  /// Whether a value of something IGDB's details say is picked (a theme, mode,
+  /// perspective, engine, developer or publisher), which a game without them can
+  /// never match. A platform or genre does not depend on them.
+  bool get hasDetailFilters => _attributeFilters.keys.any((a) => a.isFromIgdb);
+
+  /// How many things are picked: the platform and every attribute value.
+  int get filterCount => [
+    if (_platformFilter != null) 1,
+    for (final values in _attributeFilters.values) values.length,
+  ].fold(0, (sum, n) => sum + n);
+
+  bool _matches(Game g) => _matchesPlatform(g) && _matchesAttributes(g);
+
   bool _matchesPlatform(Game g) {
     final p = _platformFilter;
     if (p == null) return true;
     return _isOn(g, p);
   }
+
+  bool _matchesAttributes(Game g) {
+    for (final MapEntry(key: attribute, value: wanted)
+        in _attributeFilters.entries) {
+      if (!_valuesOf(g, attribute).any(wanted.contains)) return false;
+    }
+    return true;
+  }
+
+  /// [g]'s values of [attribute]: none when IGDB's details were not saved for it.
+  Iterable<String> _valuesOf(Game g, GameAttribute attribute) =>
+      attribute == GameAttribute.genre
+      ? g.genres
+      : _attributes?.of(g.id)?.valuesOf(attribute) ?? const [];
 
   /// A game counts for the platform it was played on, or, until that is chosen,
   /// for the platforms it was released on.
@@ -101,6 +178,43 @@ class LibraryViewStore extends ChangeNotifier {
       if (p == _platformFilter || library.any((g) => _isOn(g, p))) p,
   ];
 
+  /// The values the filter for [attribute] should offer: those at least one game
+  /// of [library] has, with how many do, most common first (then by name), so the
+  /// menu never lists a value that would only show an empty library. The values
+  /// picked stay listed (with 0 if need be) so they can still be seen and undone.
+  List<FilterOption> attributeOptions(
+    GameAttribute attribute,
+    Iterable<Game> library,
+  ) {
+    final counts = <String, int>{};
+    for (final g in library) {
+      for (final value in _valuesOf(g, attribute).toSet()) {
+        counts.update(value, (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+    for (final value in _attributeFilters[attribute] ?? const <String>{}) {
+      counts.putIfAbsent(value, () => 0);
+    }
+    return [
+      for (final entry in counts.entries) FilterOption(entry.key, entry.value),
+    ]..sort((a, b) {
+      final byCount = b.count.compareTo(a.count);
+      return byCount != 0
+          ? byCount
+          : a.value.toLowerCase().compareTo(b.value.toLowerCase());
+    });
+  }
+
+  /// How many games of [library] IGDB's details were not saved for yet, so no
+  /// filter on themes, modes, perspectives, engines, developers or publishers can
+  /// pick them. Null when that is not known: no details are loaded (yet, or they
+  /// failed to), or this view has none (another member's Library).
+  int? gamesWithoutDetails(Iterable<Game> library) {
+    final attributes = _attributes;
+    if (attributes == null || attributes.status != LoadStatus.ready) return null;
+    return library.where((g) => !attributes.knows(g.id)).length;
+  }
+
   int _compare(Game a, Game b) {
     final c = switch (_sortField) {
       SortField.dateAdded => (a.dateAdded ?? _epoch).compareTo(
@@ -114,15 +228,29 @@ class LibraryViewStore extends ChangeNotifier {
     return a.title.compareTo(b.title);
   }
 
-  /// The games of [library] with status [s], filtered by platform and sorted;
-  /// pass `null` for every status ("All"). The platform filter applies either way.
+  /// The games of [library] with status [s], filtered and sorted; pass `null` for
+  /// every status ("All"). The filters apply either way.
   List<Game> visible(Iterable<Game> library, GameStatus? s) => [
     for (final g in library)
-      if ((s == null || g.status == s) && _matchesPlatform(g)) g,
+      if ((s == null || g.status == s) && _matches(g)) g,
   ]..sort(_compare);
 
   /// How many games [visible] would return, without sorting them.
   int count(Iterable<Game> library, GameStatus? s) => library
-      .where((g) => (s == null || g.status == s) && _matchesPlatform(g))
+      .where((g) => (s == null || g.status == s) && _matches(g))
       .length;
+
+  /// The details arrived, or were dropped because another account signed in
+  /// (which leaves the store idle, and it never is once asked): what was picked
+  /// from the previous account's library means nothing for the next one's.
+  void _onAttributesChanged() {
+    if (_attributes?.status == LoadStatus.idle) _attributeFilters.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _attributes?.removeListener(_onAttributesChanged);
+    super.dispose();
+  }
 }

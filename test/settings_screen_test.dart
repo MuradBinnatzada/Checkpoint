@@ -4,10 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthException, User;
 
+import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
+import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
 
@@ -184,6 +186,96 @@ void main() {
       ]) {
         expect(top(tester, above), lessThan(top(tester, delete)));
       }
+    });
+
+    testWidgets('has Clear library just above the account deletion', (tester) async {
+      await open(tester, size: tall);
+
+      final clear = find.widgetWithText(OutlinedButton, 'Clear library');
+      final delete = find.widgetWithText(OutlinedButton, 'Delete account');
+      await tester.ensureVisible(delete);
+      expect(clear, findsOneWidget);
+      expect(top(tester, find.widgetWithText(OutlinedButton, 'Sign out')), lessThan(top(tester, clear)));
+      expect(top(tester, clear), lessThan(top(tester, delete)));
+    });
+
+    testWidgets('Clear library asks first, and empties the library when confirmed', (tester) async {
+      repo.library = [testGame('a'), testGame('b')];
+      await open(tester, size: tall);
+      expect(stores.library.libraryGames, hasLength(2));
+
+      final clear = find.widgetWithText(OutlinedButton, 'Clear library');
+      await tester.ensureVisible(clear);
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(find.text('Clear your library?'), findsOneWidget);
+
+      // Cancel: nothing happens.
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      expect(repo.writes, isNot(contains('clear-library')));
+      expect(stores.library.libraryGames, hasLength(2));
+
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(TextButton, 'Clear library'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+
+      expect(repo.writes, contains('clear-library'));
+      expect(stores.library.libraryGames, isEmpty);
+      expect(find.text('Your library was cleared'), findsOneWidget);
+    });
+
+    testWidgets('Clear library waits for a running sync without spinning itself', (tester) async {
+      repo.steamId = '76561198000000000';
+      await open(tester, size: tall);
+
+      final clear = find.widgetWithText(OutlinedButton, 'Clear library');
+      await tester.ensureVisible(clear);
+
+      final sync = stores.library.syncLibrary();
+      await tester.pump();
+
+      expect(stores.library.isSyncing, isTrue);
+      expect(tester.widget<OutlinedButton>(clear).onPressed, isNull);
+      expect(
+        find.descendant(of: clear, matching: find.byType(CircularProgressIndicator)),
+        findsNothing,
+      );
+
+      await tester.pump(const Duration(seconds: 1));
+      await sync;
+      await tester.pumpAndSettle();
+
+      expect(stores.library.isSyncing, isFalse);
+      expect(tester.widget<OutlinedButton>(clear).onPressed, isNotNull);
+    });
+
+    testWidgets('Clear library also clears the achievements on your profile', (tester) async {
+      repo.library = [testGame('a')];
+      repo.achievementSummaries['u1'] = [
+        const GameAchievementSummary(gameId: 'a', title: 'A', unlocked: 3, total: 10),
+      ];
+      await open(tester, size: tall);
+      await tester.runAsync(() => stores.publicAchievements.loadTotals('u1'));
+      expect(stores.publicAchievements.totalsOf('u1').totals.unlocked, 3);
+
+      final clear = find.widgetWithText(OutlinedButton, 'Clear library');
+      await tester.ensureVisible(clear);
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(TextButton, 'Clear library'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+
+      final totals = stores.publicAchievements.totalsOf('u1');
+      expect(totals.status, LoadStatus.ready);
+      expect(totals.totals.isEmpty, isTrue);
     });
 
     testWidgets(

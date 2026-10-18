@@ -9,6 +9,8 @@ import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/game_details_store.dart';
+import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
@@ -24,17 +26,28 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///  * [ProfileStore], [LibraryStore] and [SearchStore] follow [AuthStore] for who
 ///    is signed in, and load or drop their data when it changes;
 ///  * [LibraryStore] reads [ProfileStore] for the Steam connection, and
-///    [SearchStore] and [BrowseStore] for a search result or a browse-list game
-///    being opened or added; [BrowseStore] depends on nothing, its lists are the
-///    same for everyone;
+///    [SearchStore], [BrowseStore] and [GameDetailsStore] for a search result, a
+///    browse-list game or a similar game being opened or added;
+///    [GameDetailsStore] hands each game's exact platforms and genres back to
+///    [LibraryStore] when they load (a callback set here, not a dependency); [BrowseStore] depends on nothing, its lists are the
+///    same for everyone; [LibraryStore] also fills in, in the background, the
+///    catalog rows of its games that IGDB never filled in (CatalogBackfill);
 ///  * [SearchStore] and [LibraryViewStore] use [NavStore] (leaving the Search tab
 ///    clears its results; opening a Library tab switches to it);
+///  * [LibraryAttributesStore] follows [AuthStore] and holds what the Library's
+///    filters need that the library itself does not (themes, game modes,
+///    developers...), which [LibraryViewStore] reads. [LibraryStore] tells it
+///    (a callback set here) when the server filled in catalog rows, so it reads
+///    again;
 ///  * [PublicProfileStore], [PublicLibraryStore], [SocialGraphStore] and
 ///    [PublicAchievementsStore] hold what is fetched about OTHER members. They
 ///    follow [AuthStore] only, so that a sign-out drops it, and never touch
 ///    [ProfileStore] (the signed-in member's own profile). [LibraryStore] reads
 ///    [PublicProfileStore] and [PublicLibraryStore] to open a game tapped on
-///    someone's profile or library.
+///    someone's profile or library, and tells [PublicAchievementsStore] when the
+///    library was cleared (your own achievements go with it) or synced with
+///    Steam (which counts them again). [PublicAchievementsStore] hands the lists
+///    of your own games it fetches from Steam back to [LibraryStore].
 class AppStores {
   AppStores({
     required CheckpointRepository repository,
@@ -60,12 +73,21 @@ class AppStores {
       apiService: apiService,
     );
     browse = BrowseStore(apiService: apiService);
+    // Hands what it loads to the library (exact platforms and genres), which is
+    // built below: the callback only runs later, by when `library` exists.
+    gameDetails = GameDetailsStore(
+      apiService: apiService,
+      onLoaded: (gameId, details) => library.applyDetails(gameId, details),
+    );
     publicProfiles = PublicProfileStore(repository: repository, auth: auth);
     publicLibraries = PublicLibraryStore(repository: repository, auth: auth);
     socialGraph = SocialGraphStore(repository: repository, auth: auth);
     publicAchievements = PublicAchievementsStore(
       repository: repository,
       auth: auth,
+      onGameFetched: (userId, gameId, list) {
+        if (auth.user?.id == userId) library.adoptAchievements(gameId, list);
+      },
     );
     library = LibraryStore(
       repository: repository,
@@ -76,10 +98,19 @@ class AppStores {
       externalGame: (id) =>
           search.resultById(id) ??
           browse.gameById(id) ??
+          gameDetails.similarGameById(id) ??
           publicProfiles.gameById(id) ??
           publicLibraries.gameById(id),
+      onCleared: publicAchievements.markCleared,
+      onCatalogFilled: () => libraryAttributes.markStale(),
+      onSteamSynced: publicAchievements.refreshAfterSync,
+      apiService: apiService,
     );
-    libraryView = LibraryViewStore(nav: nav);
+    libraryAttributes = LibraryAttributesStore(
+      repository: repository,
+      auth: auth,
+    );
+    libraryView = LibraryViewStore(nav: nav, attributes: libraryAttributes);
   }
 
   factory AppStores.supabase(SupabaseClient client) => AppStores(
@@ -92,11 +123,13 @@ class AppStores {
   late final ProfileStore profile;
   late final SearchStore search;
   late final BrowseStore browse;
+  late final GameDetailsStore gameDetails;
   late final PublicProfileStore publicProfiles;
   late final PublicLibraryStore publicLibraries;
   late final SocialGraphStore socialGraph;
   late final PublicAchievementsStore publicAchievements;
   late final LibraryStore library;
+  late final LibraryAttributesStore libraryAttributes;
   late final LibraryViewStore libraryView;
 
   /// Starts following the session and loads each store. [AuthStore] goes first:
@@ -107,6 +140,7 @@ class AppStores {
     publicLibraries.initialize();
     socialGraph.initialize();
     publicAchievements.initialize();
+    libraryAttributes.initialize();
     await Future.wait([
       profile.initialize(),
       library.initialize(),
@@ -119,10 +153,12 @@ class AppStores {
     socialGraph.dispose();
     publicLibraries.dispose();
     publicProfiles.dispose();
+    gameDetails.dispose();
     browse.dispose();
     search.dispose();
     library.dispose();
     libraryView.dispose();
+    libraryAttributes.dispose();
     profile.dispose();
     nav.dispose();
     auth.dispose();

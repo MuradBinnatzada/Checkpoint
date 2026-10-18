@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/screens/settings/danger_panel.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
-import 'package:checkpoint/theme/palette.dart';
 
 /// "Delete account": what it removes, and the button that asks before doing it.
 /// Lives at the bottom of Settings > Account.
@@ -18,8 +18,6 @@ class DeleteAccountPanel extends StatefulWidget {
 }
 
 class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
-  static const _errorColor = Colors.redAccent;
-
   bool _deleting = false;
 
   Future<void> _confirmDelete() async {
@@ -39,7 +37,7 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: _errorColor),
+            style: TextButton.styleFrom(foregroundColor: DangerPanel.color),
             child: const Text('Delete account'),
           ),
         ],
@@ -76,45 +74,15 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _errorColor.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _errorColor.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Delete account',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Permanently deletes your profile, library, play logs, follows and '
-            'photo, and removes your sign-in. This can\'t be undone.',
-            style: TextStyle(color: Palette.muted, height: 1.4),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _deleting ? null : _confirmDelete,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _errorColor,
-              side: const BorderSide(color: _errorColor),
-            ),
-            icon: _deleting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.delete_forever_rounded),
-            label: const Text('Delete account'),
-          ),
-        ],
-      ),
+    return DangerPanel(
+      title: 'Delete account',
+      description:
+          'Permanently deletes your profile, library, play logs, follows and '
+          'photo, and removes your sign-in. This can\'t be undone.',
+      buttonLabel: 'Delete account',
+      icon: Icons.delete_forever_rounded,
+      busy: _deleting,
+      onPressed: _confirmDelete,
     );
   }
 }

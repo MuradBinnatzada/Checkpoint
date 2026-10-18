@@ -265,8 +265,9 @@ void main() {
 
       final game = (await repo.fetchUserGames('u1')).single;
 
-      expect(game.platforms, [GamePlatform.mobile]);
-      expect(game.playedOnOptions, [GamePlatform.ps5, GamePlatform.mobile]); // + the saved "ps5"
+      expect(game.platforms, [GamePlatform.mobile, GamePlatform.android]);
+      // + the saved "ps5"
+      expect(game.playedOnOptions, [GamePlatform.ps5, GamePlatform.android, GamePlatform.mobile]);
     });
 
     test('returns the newest additions first, undated rows last', () async {
@@ -304,6 +305,147 @@ void main() {
 
       expect(games, hasLength(500));
       expect(api.requests, hasLength(2));
+    });
+  });
+
+  group('fetchUnsyncedIgdbIds', () {
+    test('asks only for the user\'s games whose catalog row IGDB never filled in', () async {
+      api.reply([
+        {'game_id': 'g1', 'games': {'igdb_id': 472}},
+        {'game_id': 'g2', 'games': {'igdb_id': '1942'}},
+        {'game_id': 'g3', 'games': {'igdb_id': null}},
+        {'game_id': 'g4', 'games': null},
+      ]);
+
+      final ids = await repo.fetchUnsyncedIgdbIds('u1');
+
+      expect(ids, [472, 1942]);
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, endsWith('/user_games'));
+      expect(query['user_id'], 'eq.u1');
+      expect(query['games.igdb_synced_at'], 'is.null');
+      expect(query['games.igdb_id'], 'not.is.null');
+      // Only the ids, through an inner join, so the rows of filled-in games are
+      // not sent at all.
+      final select = query['select']!.replaceAll(RegExp(r'\s'), '');
+      expect(select, 'game_id,games!inner(igdb_id)');
+    });
+
+    test('reads every page of a long list, each game once', () async {
+      api.serveTable([
+        for (var i = 0; i < 700; i++)
+          {
+            'game_id': 'g${i.toString().padLeft(4, '0')}',
+            'games': {'igdb_id': i + 1},
+          },
+      ], 'game_id');
+
+      final ids = await repo.fetchUnsyncedIgdbIds('u1');
+
+      expect(ids, hasLength(700));
+      expect(ids.toSet(), hasLength(700));
+      expect(api.requests, hasLength(2));
+      expect(api.requests[1].url.queryParameters['game_id'], 'gt.g0499');
+    });
+  });
+
+  group('fetchLibraryAttributes', () {
+    test('reads only the IGDB lists of the user\'s games IGDB has filled in', () async {
+      api.reply([
+        {
+          'game_id': 'g1',
+          'games': {
+            'themes': ['Horror', 'Fantasy'],
+            'game_modes': ['Single player'],
+            'player_perspectives': ['First person'],
+            'game_engines': ['Unreal Engine 4'],
+            'developers': ['Studio One'],
+            'publishers': ['Pub', 'Pub Two'],
+          },
+        },
+        // IGDB had nothing for this one: still listed, so it counts as looked up.
+        {
+          'game_id': 'g2',
+          'games': {
+            'themes': [],
+            'game_modes': null,
+            'player_perspectives': [''],
+            'game_engines': [],
+            'developers': [],
+            'publishers': [],
+          },
+        },
+      ]);
+
+      final byGame = await repo.fetchLibraryAttributes('u1');
+
+      expect(byGame.keys, ['g1', 'g2']);
+      final first = byGame['g1']!;
+      expect(first.themes, ['Horror', 'Fantasy']);
+      expect(first.gameModes, ['Single player']);
+      expect(first.perspectives, ['First person']);
+      expect(first.engines, ['Unreal Engine 4']);
+      expect(first.developers, ['Studio One']);
+      expect(first.publishers, ['Pub', 'Pub Two']);
+      final second = byGame['g2']!;
+      expect(second.themes, isEmpty);
+      expect(second.gameModes, isEmpty);
+      expect(second.perspectives, isEmpty);
+
+      final query = api.last.url.queryParameters;
+      expect(api.last.url.path, endsWith('/user_games'));
+      expect(query['user_id'], 'eq.u1');
+      expect(query['games.igdb_synced_at'], 'not.is.null');
+      // The lists and nothing else, through an inner join: not the title, the
+      // synopsis or the cover of every game.
+      final select = query['select']!.replaceAll(RegExp(r'\s'), '');
+      expect(
+        select,
+        'game_id,games!inner(themes,game_modes,player_perspectives,game_engines,developers,publishers)',
+      );
+    });
+
+    test('is not part of the library read, which stays as small as it was', () async {
+      api.reply([userGameRow('g1')]);
+      await repo.fetchUserGames('u1');
+
+      final select = api.last.url.queryParameters['select']!;
+      for (final column in [
+        'themes',
+        'game_modes',
+        'player_perspectives',
+        'game_engines',
+        'developers',
+        'publishers',
+        'igdb_synced_at',
+      ]) {
+        expect(select, isNot(contains(column)));
+      }
+    });
+
+    test('reads every page of a long library, each game once', () async {
+      api.serveTable([
+        for (var i = 0; i < 700; i++)
+          {
+            'game_id': 'g${i.toString().padLeft(4, '0')}',
+            'games': {
+              'themes': ['Theme $i'],
+            },
+          },
+      ], 'game_id');
+
+      final byGame = await repo.fetchLibraryAttributes('u1');
+
+      expect(byGame, hasLength(700));
+      expect(byGame['g0699']!.themes, ['Theme 699']);
+      expect(api.requests, hasLength(2));
+      expect(api.requests[1].url.queryParameters['game_id'], 'gt.g0499');
+    });
+
+    test('a library with nothing filled in yet is an empty answer, not an error', () async {
+      api.reply(<Object?>[]);
+
+      expect(await repo.fetchLibraryAttributes('u1'), isEmpty);
     });
   });
 

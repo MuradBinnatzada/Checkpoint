@@ -4,7 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/results_page.dart';
+import 'package:checkpoint/services/sync_failure.dart';
 
 class GameApiService {
   // IGDB is reached through the `igdb-handler` Supabase Edge Function. The Twitch
@@ -17,68 +19,84 @@ class GameApiService {
   /// 3-column grids, and more than a screenful.
   static const int browsePageSize = 30;
 
-  // 1. Map IGDB platform IDs to brand families.
-  //    Every historical console rolls up into its parent brand.
-  //    PlayStation: PS5 / PS VR2 -> ps5, PS4 / PS VR -> ps4, older consoles -> generic playstation.
+  /// Most games one `backfill` request may name (`MAX_BACKFILL_IDS` in
+  /// supabase/functions/_shared/game_details.ts).
+  static const int maxBackfillIds = 50;
+
+  // 1. Map IGDB platform IDs to the app's platforms, down to the console: PS3 and
+  //    PS4 are two platforms. Windows, Mac, Linux and DOS are all "PC"; a few
+  //    near-identical IGDB entries share one (the Famicom is the NES, Super Famicom
+  //    the SNES, DSi the DS, New 3DS the 3DS, Xbox Live Arcade the Xbox 360, PS VR
+  //    the PS4, PS VR2 the PS5, Sega CD and 32X the Genesis).
   //    GamePlatform.steamDeck and GamePlatform.emulator are intentionally absent:
   //    they are manual "played on" choices (the emulator is stored as 'retro' in
   //    the DB), never a release platform; see Game.playedOnOptions.
-  //    Platforms not listed here (web, arcade, Dreamcast, etc.) are skipped.
-  //    Keep in step with `igdbPlatformToDb` in supabase/functions/_shared/platforms.ts.
+  //    Platforms not listed here (web, arcade, Atari, etc.) are skipped.
+  //    Keep in step with `IGDB_PLATFORM_TO_DB` in supabase/functions/_shared/platforms.ts.
   static const Map<int, GamePlatform> _platformMap = {
     // --- PC ---
     6: GamePlatform.pc, // PC (Microsoft Windows)
     14: GamePlatform.pc, // Mac
     3: GamePlatform.pc, // Linux
+    13: GamePlatform.pc, // DOS
 
-    // --- PlayStation family ---
-    7: GamePlatform.playstation, // PlayStation (PS1)
-    8: GamePlatform.playstation, // PlayStation 2
-    9: GamePlatform.playstation, // PlayStation 3
-    38: GamePlatform.playstation, // PlayStation Portable (PSP)
-    46: GamePlatform.playstation, // PlayStation Vita
+    // --- PlayStation ---
+    7: GamePlatform.ps1, // PlayStation
+    8: GamePlatform.ps2, // PlayStation 2
+    9: GamePlatform.ps3, // PlayStation 3
     48: GamePlatform.ps4, // PlayStation 4
     165: GamePlatform.ps4, // PlayStation VR
     167: GamePlatform.ps5, // PlayStation 5
     390: GamePlatform.ps5, // PlayStation VR2
+    38: GamePlatform.psp, // PlayStation Portable
+    46: GamePlatform.vita, // PlayStation Vita
 
-    // --- Xbox family ---
-    11: GamePlatform.xbox, // Xbox (original)
-    12: GamePlatform.xbox, // Xbox 360
-    36: GamePlatform.xbox, // Xbox Live Arcade
-    49: GamePlatform.xbox, // Xbox One
-    169: GamePlatform.xbox, // Xbox Series X|S
+    // --- Xbox ---
+    11: GamePlatform.xboxOriginal, // Xbox
+    12: GamePlatform.xbox360, // Xbox 360
+    36: GamePlatform.xbox360, // Xbox Live Arcade
+    49: GamePlatform.xboxOne, // Xbox One
+    169: GamePlatform.xboxSeries, // Xbox Series X|S
 
-    // --- Nintendo family ---
-    18: GamePlatform.nintendo, // Nintendo Entertainment System (NES)
-    99: GamePlatform.nintendo, // Family Computer (Famicom)
-    51: GamePlatform.nintendo, // Famicom Disk System
-    19: GamePlatform.nintendo, // Super Nintendo (SNES)
-    58: GamePlatform.nintendo, // Super Famicom
-    4: GamePlatform.nintendo, // Nintendo 64
-    21: GamePlatform.nintendo, // Nintendo GameCube
-    5: GamePlatform.nintendo, // Wii
-    41: GamePlatform.nintendo, // Wii U
-    33: GamePlatform.nintendo, // Game Boy
-    22: GamePlatform.nintendo, // Game Boy Color
-    24: GamePlatform.nintendo, // Game Boy Advance
-    87: GamePlatform.nintendo, // Virtual Boy
-    20: GamePlatform.nintendo, // Nintendo DS
-    159: GamePlatform.nintendo, // Nintendo DSi
-    37: GamePlatform.nintendo, // Nintendo 3DS
-    137: GamePlatform.nintendo, // New Nintendo 3DS
+    // --- Nintendo ---
+    18: GamePlatform.nes, // Nintendo Entertainment System
+    99: GamePlatform.nes, // Family Computer
+    51: GamePlatform.nes, // Famicom Disk System
+    19: GamePlatform.snes, // Super Nintendo
+    58: GamePlatform.snes, // Super Famicom
+    4: GamePlatform.n64, // Nintendo 64
+    21: GamePlatform.gamecube, // Nintendo GameCube
+    5: GamePlatform.wii, // Wii
+    41: GamePlatform.wiiU, // Wii U
     130: GamePlatform.nswitch, // Nintendo Switch
-    508: GamePlatform.nswitch, // Nintendo Switch 2
+    508: GamePlatform.nswitch2, // Nintendo Switch 2
+    33: GamePlatform.gameBoy, // Game Boy
+    22: GamePlatform.gbc, // Game Boy Color
+    24: GamePlatform.gba, // Game Boy Advance
+    87: GamePlatform.virtualBoy, // Virtual Boy
+    20: GamePlatform.nds, // Nintendo DS
+    159: GamePlatform.nds, // Nintendo DSi
+    37: GamePlatform.n3ds, // Nintendo 3DS
+    137: GamePlatform.n3ds, // New Nintendo 3DS
 
-    // --- Mobile family ---
-    34: GamePlatform.mobile, // Android
-    39: GamePlatform.mobile, // iOS
-    55: GamePlatform.mobile, // Legacy Mobile
+    // --- Sega ---
+    64: GamePlatform.masterSystem, // Sega Master System
+    29: GamePlatform.genesis, // Sega Mega Drive / Genesis
+    78: GamePlatform.genesis, // Sega CD
+    30: GamePlatform.genesis, // Sega 32X
+    32: GamePlatform.saturn, // Sega Saturn
+    23: GamePlatform.dreamcast, // Dreamcast
+    35: GamePlatform.gameGear, // Sega Game Gear
+
+    // --- Mobile ---
+    34: GamePlatform.android, // Android
+    39: GamePlatform.ios, // iOS
+    55: GamePlatform.mobile, // Legacy Mobile Device
   };
 
-  // Converts IGDB's `platforms` array into a de-duplicated list of brand families,
-  // preserving first-seen order (e.g. PS1 + PS2 + PS3 -> [playStation]).
-  static List<GamePlatform> _parsePlatforms(dynamic raw) {
+  // Converts IGDB's `platforms` array into a de-duplicated list of the app's
+  // platforms, preserving first-seen order (Windows + Mac -> [pc]).
+  static List<GamePlatform> parsePlatforms(dynamic raw) {
     if (raw is! List) return const [];
     final result = <GamePlatform>{};
     for (final p in raw) {
@@ -134,7 +152,7 @@ class GameApiService {
       // 4-digit UTC year, or null if missing / outside 1950-2100. The model has
       // no nullable year, so 0 means "unknown" here; it is stored as NULL in the DB.
       releaseYear: releaseYearFromUnixSeconds(hit['first_release_date']) ?? 0,
-      platforms: _parsePlatforms(hit['platforms']),
+      platforms: parsePlatforms(hit['platforms']),
       genres: genres,
       synopsis: _text(hit['summary']) ?? '',
       coverColors: const [Color(0xFF2C2C2C), Color(0xFF1A1A1A)],
@@ -161,6 +179,112 @@ class GameApiService {
               isUtc: true,
             )
           : null,
+    );
+  }
+
+  /// What the `details` request of `igdb-handler` answered, as [GameDetails], or
+  /// null when it is not an answer with a game in it (an `{ "error": ... }`, say).
+  /// Every field is optional, like in [gameFromHit]: a sparse game gives a sparse
+  /// result, not a failure.
+  static GameDetails? detailsFromResponse(Object? response) {
+    if (response is! Map) return null;
+    final game = response['game'];
+    if (game is! Map) return null;
+    final rawId = game['id'];
+    final igdbId = rawId is num ? rawId.toInt() : null;
+    if (igdbId == null || igdbId <= 0) return null;
+
+    List<String> names(Object? list) {
+      if (list is! List) return const [];
+      final seen = <String>{};
+      for (final entry in list) {
+        final name = entry is Map ? _text(entry['name']) : null;
+        if (name != null) seen.add(name);
+      }
+      return seen.toList(growable: false);
+    }
+
+    // Main developers and publishers: the flagged companies that are not only
+    // supporting. With no flags at all, the first company stands in for both.
+    final developers = <String>{};
+    final publishers = <String>{};
+    String? firstCompany;
+    final involved = game['involved_companies'];
+    if (involved is List) {
+      for (final entry in involved) {
+        if (entry is! Map) continue;
+        final company = entry['company'];
+        final name = company is Map ? _text(company['name']) : null;
+        if (name == null) continue;
+        firstCompany ??= name;
+        if (entry['supporting'] == true) continue;
+        if (entry['developer'] == true) developers.add(name);
+        if (entry['publisher'] == true) publishers.add(name);
+      }
+    }
+    if (developers.isEmpty && publishers.isEmpty && firstCompany != null) {
+      developers.add(firstCompany);
+      publishers.add(firstCompany);
+    }
+
+    final similar = game['similar_games'];
+    return GameDetails(
+      igdbId: igdbId,
+      platforms: parsePlatforms(game['platforms']),
+      genres: names(game['genres']),
+      themes: names(game['themes']),
+      gameModes: names(game['game_modes']),
+      perspectives: names(game['player_perspectives']),
+      engines: names(game['game_engines']),
+      developers: developers.toList(growable: false),
+      publishers: publishers.toList(growable: false),
+      storyline: _text(game['storyline']),
+      similarGames: [
+        if (similar is List)
+          for (final hit in similar)
+            // A bare id (IGDB did not expand it) has no name to show.
+            if (hit is Map && hit['name'] != null) ?gameFromHit(hit),
+      ],
+      timeToBeat: TimeToBeat.fromJson(response['time_to_beat']),
+    );
+  }
+
+  /// What the `backfill` request of `igdb-handler` answered (`{ "games": [{
+  /// "igdb_id", "platforms", "genres" }], "unknown": [...] }`), as each game's
+  /// exact platforms and genres, or null when it is not such an answer. The
+  /// platforms are the catalog's own names, read like a library row's.
+  static List<GameDetails>? backfillFromResponse(Object? response) {
+    if (response is! Map) return null;
+    final games = response['games'];
+    if (games is! List) return null;
+    List<String> strings(Object? list) => [
+      if (list is List)
+        for (final value in list) ?_text(value),
+    ];
+    return [
+      for (final game in games)
+        if (game is Map)
+          if (game['igdb_id'] case final num rawId when rawId.toInt() > 0)
+            GameDetails(
+              igdbId: rawId.toInt(),
+              platforms: releasePlatformsFromDb(strings(game['platforms'])),
+              genres: strings(game['genres']),
+            ),
+    ];
+  }
+
+  /// A failed `backfill` request, from what was thrown while calling it: one that
+  /// waiting fixes (IGDB is limiting requests or down, the server is busy) says
+  /// how long to wait, the server's `retry_after` or a minute; any other (no
+  /// connection, a function deployed before the mode existed) says nothing, so
+  /// the backfill stops until the library is loaded again.
+  static CatalogBackfillResult backfillFailure(Object error) {
+    final failure = SyncFailure.from(error);
+    if (!failure.isDelayed || failure.code == SyncFailureCode.offline) {
+      return const CatalogBackfillResult.failed();
+    }
+    return CatalogBackfillResult.failed(
+      retryAfter: failure.retryAfter ?? const Duration(minutes: 1),
     );
   }
 
@@ -229,5 +353,46 @@ class GameApiService {
       hasMore: data.length >= limit, // IGDB filled the page: another may exist
       fetched: data.length,
     );
+  }
+
+  // 6. One game's whole page: exact platforms, genres, themes, game modes,
+  //    perspectives, engines, developers, publishers, storyline, similar games
+  //    and time to beat. Null when the request failed or IGDB has no such game.
+  //    The function also saves the stable part on the game's catalog row.
+  Future<GameDetails?> fetchDetails(int igdbId) async {
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'igdb-handler',
+        body: {'mode': 'details', 'igdb_id': igdbId},
+      );
+      final raw = res.data;
+      return detailsFromResponse(raw is String ? json.decode(raw) : raw);
+    } catch (e) {
+      debugPrint('igdb-handler details request failed: $e');
+      return null;
+    }
+  }
+
+  // 7. Fills in the catalog rows of up to [maxBackfillIds] games from IGDB (exact
+  //    platforms, genres, themes, modes, perspectives, engines, developers and
+  //    publishers) and answers what each row holds now. For the library's games
+  //    that were never filled in; see `CatalogBackfill`.
+  Future<CatalogBackfillResult> backfillCatalog(List<int> igdbIds) async {
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'igdb-handler',
+        body: {'mode': 'backfill', 'igdb_ids': igdbIds},
+      );
+      final raw = res.data;
+      final games = backfillFromResponse(
+        raw is String ? json.decode(raw) : raw,
+      );
+      return games == null
+          ? const CatalogBackfillResult.failed()
+          : CatalogBackfillResult(games);
+    } catch (e) {
+      debugPrint('igdb-handler backfill request failed: $e');
+      return backfillFailure(e);
+    }
   }
 }

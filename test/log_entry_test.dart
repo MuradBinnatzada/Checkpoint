@@ -36,7 +36,7 @@ void main() {
 
     test('a platform it does not know is PC', () {
       expect(
-        LogEntry.fromJson(logJson({'platform': 'dreamcast'})).platform,
+        LogEntry.fromJson(logJson({'platform': 'atari2600'})).platform,
         GamePlatform.pc,
       );
       expect(

@@ -33,6 +33,13 @@
  *                  user at once. This is what merges the old duplicates.
  *   6. Library     bulk upsert `user_games`, one row per game (new rows get
  *                  defaults; existing rows only ever get a higher `hours_played`)
+ *   7. Achievements count the achievements of every game played since it was
+ *                  last counted (ISteamUserStats/GetPlayerAchievements, one small
+ *                  request per game, a few at a time, most recently played first)
+ *                  into `achievements_unlocked` / `achievements_total`, so profiles
+ *                  can list every game's progress (`set_achievement_counts`). Has a
+ *                  budget of games and time; what is left is counted on the next
+ *                  sync. Never fails the sync.
  *
  * Response: `{ success: true, delayed, summary, … }` on success. `delayed` is null
  * for a complete sync, or `{ code, message, retry_after, deferred }` when IGDB
@@ -63,7 +70,8 @@
  * Requires the 20261016120000_unify_game_ids_on_igdb_id.sql migration
  * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`) and, for the
  * sync state and the background run, 20261017130000_background_steam_sync.sql
- * (a sync still works without it; it just is not recorded).
+ * (a sync still works without it; it just is not recorded), and for step 7
+ * 20261021120000_steam_achievement_counts.sql (without it the counts are skipped).
  *
  * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
  * Column names follow checkpoint_repository.dart (`upsertBaseGame`,
@@ -76,6 +84,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shared/backoff.ts'
 import { steamGamePlatformsToDb } from '../_shared/platforms.ts'
+import {
+  achievementCountTargets,
+  type CountableApp,
+  countFromPlayerAchievements,
+  type CountResult,
+  type CountTarget,
+} from '../_shared/achievement_counts.ts'
 import { failureDelayMs, shouldStopBatch, successDelayMs } from '../_shared/sync_schedule.ts'
 
 const corsHeaders = {
@@ -107,6 +122,15 @@ const LOOSE_MAX_EXTRA_WORDS = 3  // see `matchScore`
 // reported. The waits are short on purpose: a sync has a wall-clock limit, and the
 // consecutive-failure counters above already end a run once a limit sticks.
 const STEAM_BACKOFF: BackoffOptions = { retries: 2, baseDelayMs: 1_500, maxDelayMs: 5_000, budgetMs: 8_000 }
+// One achievement count is worth little on its own: a 429 gets one short retry, then
+// the counting stops and the rest waits for the next sync.
+const STEAM_COUNT_BACKOFF: BackoffOptions = { retries: 1, baseDelayMs: 1_000, maxDelayMs: 3_000, budgetMs: 3_000 }
+
+// ---- Achievement counts (step 7) ---------------------------------------------
+const ACHIEVEMENT_COUNT_CONCURRENCY = 6   // GetPlayerAchievements requests in flight at once
+const ACHIEVEMENT_COUNT_TIMEOUT_MS = 8_000 // per request; a hung one must not hold the sync
+const ACHIEVEMENT_COUNT_MAX_FAILURES = 5  // errors in a row (not rate limits) before giving up
+const ACHIEVEMENT_COUNT_WRITE_CHUNK = 500 // games per `set_achievement_counts` call
 const IGDB_BACKOFF: BackoffOptions = { retries: 3, baseDelayMs: 1_000, maxDelayMs: 6_000, budgetMs: 10_000 }
 
 // ---- Background sync (cron) ------------------------------------------------
@@ -125,20 +149,38 @@ const BACKGROUND_TIME_BUDGET_MS = 90_000 // stop *starting* users after this lon
 interface SyncLimits {
   igdbSearchBudget: number
   igdbTimeBudgetMs: number
+  /** Most games whose achievements one sync counts (step 7). */
+  achievementCountBudget: number
+  /** Stop *starting* achievement counts this long after the sync began. */
+  achievementDeadlineMs: number
 }
 const INTERACTIVE_LIMITS: SyncLimits = {
   igdbSearchBudget: IGDB_SEARCH_BUDGET,
   igdbTimeBudgetMs: IGDB_TIME_BUDGET_MS,
+  achievementCountBudget: 400,
+  achievementDeadlineMs: 125_000, // the IGDB passes end by ~100 s; 150 s is the limit
 }
-const BACKGROUND_LIMITS: SyncLimits = { igdbSearchBudget: 30, igdbTimeBudgetMs: 20_000 }
+const BACKGROUND_LIMITS: SyncLimits = {
+  igdbSearchBudget: 30,
+  igdbTimeBudgetMs: 20_000,
+  achievementCountBudget: 60,
+  achievementDeadlineMs: 40_000,
+}
 
 /**
  * Columns of an existing user_games row that are never re-sent when we rewrite
  * it, because another feature owns them. `achievements` is a (potentially large)
  * JSONB blob written by sync-achievements: re-sending a stale copy could wipe a
- * concurrent load, and would ship the blob for nothing.
+ * concurrent load, and would ship the blob for nothing. The counts are written by
+ * step 7 and by the trigger that keeps them in step with that blob.
  */
-const NOT_RESENT_COLUMNS = ['achievements']
+const NOT_RESENT_COLUMNS = [
+  'achievements',
+  'achievements_unlocked',
+  'achievements_total',
+  'achievements_playtime',
+  'achievements_synced_at',
+]
 
 /**
  * Machine-readable failure codes. The app keys its messages and its "Sync Delayed"
@@ -184,6 +226,8 @@ interface SteamGame {
   appid?: number
   name?: string
   playtime_forever?: number
+  rtime_last_played?: number
+  has_community_visible_stats?: boolean
 }
 
 interface SteamEntry {
@@ -191,6 +235,9 @@ interface SteamEntry {
   appid: number
   title: string
   hours: number
+  minutes: number // playtime_forever, for the achievement counts
+  lastPlayed: number // rtime_last_played (UNIX seconds), 0 when unknown
+  hasStats: boolean // has_community_visible_stats
 }
 
 interface IgdbGame {
@@ -561,6 +608,9 @@ function toSteamEntries(raw: SteamGame[]): {
       appid: g.appid,
       title,
       hours: Math.round(((g.playtime_forever ?? 0) / 60) * 100) / 100,
+      minutes: Math.max(0, Math.round(g.playtime_forever ?? 0)),
+      lastPlayed: typeof g.rtime_last_played === 'number' ? g.rtime_last_played : 0,
+      hasStats: g.has_community_visible_stats === true,
     })
   }
   return { entries: [...byId.values()], junk, nonGames }
@@ -1138,13 +1188,17 @@ async function fetchExistingGameIds(admin: SupabaseClient, ids: string[]): Promi
   return found
 }
 
-/** The user's existing `user_games` rows, keyed by game_id (minus NOT_RESENT_COLUMNS). */
+/**
+ * The user's existing `user_games` rows, keyed by game_id (minus NOT_RESENT_COLUMNS),
+ * and the playtime each game's achievements were last counted at (step 7).
+ */
 async function fetchExistingUserGames(
   admin: SupabaseClient,
   userId: string,
   ids: string[],
-): Promise<Map<string, Record<string, unknown>>> {
+): Promise<{ rows: Map<string, Record<string, unknown>>; countedPlaytime: Map<string, number | null> }> {
   const byGame = new Map<string, Record<string, unknown>>()
+  const countedPlaytime = new Map<string, number | null>()
   const results = await Promise.all(
     chunk(ids, DB_IN_CHUNK).map((part) =>
       admin.from('user_games').select('*').eq('user_id', userId).in('game_id', part),
@@ -1156,9 +1210,11 @@ async function fetchExistingUserGames(
       const copy = { ...(row as Record<string, unknown>) }
       for (const col of NOT_RESENT_COLUMNS) delete copy[col]
       byGame.set(row.game_id as string, copy)
+      const counted = Number(row.achievements_playtime)
+      countedPlaytime.set(row.game_id as string, row.achievements_playtime == null || !Number.isFinite(counted) ? null : counted)
     }
   }
-  return byGame
+  return { rows: byGame, countedPlaytime }
 }
 
 async function upsertChunked(
@@ -1186,6 +1242,7 @@ async function syncLibrary(
   steamId: string,
   limits: SyncLimits = INTERACTIVE_LIMITS,
 ) {
+  const startedAt = Date.now()
   const issues: SyncIssues = { warnings: [], igdb: null }
 
   // 1. Steam
@@ -1264,9 +1321,9 @@ async function syncLibrary(
     hoursByGame.set(gameId, Math.round(((hoursByGame.get(gameId) ?? 0) + e.hours) * 100) / 100)
   }
   // Read AFTER step 5: folding a legacy row moves the user's library row to the new id.
-  const existingByGame = hoursByGame.size
+  const { rows: existingByGame, countedPlaytime } = hoursByGame.size
     ? await fetchExistingUserGames(admin, userId, [...hoursByGame.keys()])
-    : new Map<string, Record<string, unknown>>()
+    : { rows: new Map<string, Record<string, unknown>>(), countedPlaytime: new Map<string, number | null>() }
 
   const nowIso = new Date().toISOString()
   const libraryRows: Record<string, unknown>[] = []
@@ -1295,6 +1352,24 @@ async function syncLibrary(
 
   if (libraryRows.length > 0) {
     await upsertChunked(admin, 'user_games', libraryRows, 'user_id,game_id')
+  }
+
+  // 7. Achievement counts for the games played since they were last counted. Only
+  //    games in the library (written just above) can take a count.
+  const countable: CountableApp[] = []
+  for (const e of entries) {
+    const gameId = gameIdByEntry.get(e.id)
+    if (!gameId) continue
+    countable.push({ appid: e.appid, gameId, minutes: e.minutes, lastPlayed: e.lastPlayed, hasStats: e.hasStats })
+  }
+  const targets = achievementCountTargets(countable, countedPlaytime)
+  let achievements: AchievementCountSummary = { due: targets.length, counted: 0, stopped: null }
+  try {
+    achievements = await countAchievements(admin, userId, steamId, targets, limits, startedAt)
+  } catch (e) {
+    // The library is saved; the counts are retried on the next sync.
+    console.error('sync-steam: counting achievements failed:', e)
+    achievements = { due: targets.length, counted: 0, stopped: 'INTERNAL' }
   }
 
   // The sync still did what it could, but IGDB could not match every game (rate
@@ -1332,11 +1407,99 @@ async function syncLibrary(
       unchanged,
       unmatched: unmatched.length,
       deferred,
+      achievements_due: achievements.due,
+      achievements_counted: achievements.counted,
+      achievements_stopped: achievements.stopped,
     },
     unmatched_titles: unmatched.slice(0, 50),
     non_game_titles: nonGames.slice(0, 50), // test / beta / server / demo builds that were skipped
     warnings: issues.warnings,
   }
+}
+
+// ---- Achievement counts (step 7) --------------------------------------------
+
+interface AchievementCountSummary {
+  /** Games played since they were last counted. */
+  due: number
+  /** Of those, the ones counted (and saved) this time. */
+  counted: number
+  /** Why counting stopped before the end of the budget, if it did. */
+  stopped: string | null
+}
+
+/** One game's achievement count, from GetPlayerAchievements (no names: just the flags). */
+async function fetchAchievementCount(apiKey: string, steamId: string, appid: number): Promise<CountResult> {
+  const url = new URL('https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/')
+  url.search = new URLSearchParams({ key: apiKey, steamid: steamId, appid: String(appid) }).toString()
+  try {
+    const res = await fetchWithBackoff(
+      () => fetch(url, { signal: AbortSignal.timeout(ACHIEVEMENT_COUNT_TIMEOUT_MS) }),
+      STEAM_COUNT_BACKOFF,
+    )
+    // Steam sends useful JSON bodies on 4xx too (private profile, no stats).
+    const body = await res.json().catch(() => null)
+    return countFromPlayerAchievements(res.status, body)
+  } catch {
+    // Unreachable or timed out. Not the raw error: it embeds the URL (and API key).
+    return { kind: 'error', status: 0 }
+  }
+}
+
+/**
+ * Counts the achievements of `targets` (most interesting first), a few requests at a
+ * time, until the budget, the deadline, a rate limit or a private profile stops it,
+ * and saves what it counted. A game that was not reached keeps its old count (or
+ * none) and stays due, so the next sync carries on where this one stopped.
+ */
+async function countAchievements(
+  admin: SupabaseClient,
+  userId: string,
+  steamId: string,
+  targets: CountTarget[],
+  limits: SyncLimits,
+  startedAt: number,
+): Promise<AchievementCountSummary> {
+  const apiKey = Deno.env.get('STEAM_API_KEY')
+  if (!apiKey || targets.length === 0) return { due: targets.length, counted: 0, stopped: null }
+
+  const todo = targets.slice(0, limits.achievementCountBudget)
+  const deadline = startedAt + limits.achievementDeadlineMs
+  const counts: { game_id: string; unlocked: number; total: number; playtime: number }[] = []
+  let next = 0
+  let failuresInARow = 0
+  let stopped: string | null = null
+
+  const worker = async () => {
+    while (stopped === null && next < todo.length) {
+      if (Date.now() > deadline) {
+        stopped = 'TIME_BUDGET'
+        return
+      }
+      const target = todo[next++]
+      const result = await fetchAchievementCount(apiKey, steamId, target.appid)
+      if (result.kind === 'counted') {
+        failuresInARow = 0
+        counts.push({ game_id: target.gameId, unlocked: result.unlocked, total: result.total, playtime: target.minutes })
+      } else if (result.kind === 'private') {
+        stopped ??= 'STEAM_PROFILE_PRIVATE'
+      } else if (result.status === 429) {
+        stopped ??= 'STEAM_RATE_LIMITED'
+      } else if (++failuresInARow >= ACHIEVEMENT_COUNT_MAX_FAILURES) {
+        stopped ??= 'STEAM_ERROR'
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(ACHIEVEMENT_COUNT_CONCURRENCY, todo.length) }, worker))
+  if (stopped === null && todo.length < targets.length) stopped = 'BUDGET'
+
+  let saved = 0
+  for (const part of chunk(counts, ACHIEVEMENT_COUNT_WRITE_CHUNK)) {
+    const { data, error } = await admin.rpc('set_achievement_counts', { target_user: userId, counts: part })
+    if (error) throw new Error(`set_achievement_counts failed: ${error.message}`)
+    saved += Number(data) || 0
+  }
+  return { due: targets.length, counted: saved, stopped }
 }
 
 // ---- Sync state and the background run -------------------------------------

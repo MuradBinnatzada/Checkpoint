@@ -27,6 +27,8 @@ IconData coverIconFor(List<String> genres, List<GamePlatform> platforms) {
   if (hay.contains('platform')) return Icons.bolt_rounded;
   if (hay.contains('racing')) return Icons.sports_motorsports_rounded;
   if (hay.contains('horror')) return Icons.nights_stay_rounded;
-  if (platforms.contains(GamePlatform.mobile)) return Icons.smartphone_rounded;
+  if (platforms.any((p) => p.family == PlatformFamily.mobile)) {
+    return Icons.smartphone_rounded;
+  }
   return Icons.sports_esports_rounded;
 }

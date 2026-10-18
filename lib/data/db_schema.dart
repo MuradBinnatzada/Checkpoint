@@ -77,6 +77,18 @@ abstract final class Db {
   static const coverUrl = 'cover_url';
   static const createdBy = 'created_by';
 
+  /// When `igdb-handler` last filled the row in from IGDB; NULL: never.
+  static const igdbSyncedAt = 'igdb_synced_at';
+
+  /// What `igdb-handler` keeps of a game besides `platforms` and `genres`: text
+  /// arrays on `games`, empty until the row was filled in.
+  static const developers = 'developers';
+  static const publishers = 'publishers';
+  static const themes = 'themes';
+  static const gameModes = 'game_modes';
+  static const playerPerspectives = 'player_perspectives';
+  static const gameEngines = 'game_engines';
+
   static const userId = 'user_id';
   static const gameId = 'game_id';
   static const status = 'status';

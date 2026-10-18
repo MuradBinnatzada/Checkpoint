@@ -8,6 +8,8 @@ import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_attributes.dart';
+import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -38,9 +40,11 @@ Game testGame(
   int year = 2020,
   List<GamePlatform> platforms = const [GamePlatform.pc, GamePlatform.ps5],
   GamePlatform? playedOn,
+  int? steamAppId = 440,
+  int? igdbId = 7,
+  List<String> genres = const ['RPG'],
 }) {
   final name = title ?? 'Game $id';
-  const genres = ['RPG'];
   return Game(
     id: id,
     title: name,
@@ -53,8 +57,8 @@ Game testGame(
     coverColors: coverColorsFor(id, name),
     coverIcon: coverIconFor(genres, platforms),
     coverUrl: cover ? 'https://example.com/$id.jpg' : null,
-    igdbId: 7,
-    steamAppId: 440,
+    igdbId: igdbId,
+    steamAppId: steamAppId,
     status: status,
     rating: 4.5,
     hoursPlayed: hours,
@@ -147,6 +151,21 @@ class FakeRepository implements CheckpointRepository {
   Completer<void>? gate;
   int libraryFetches = 0;
 
+  /// The IGDB ids of the library's games whose catalog row IGDB never filled in
+  /// ([fetchUnsyncedIgdbIds]). Empty by default, so no catalog backfill runs.
+  List<int> unsyncedIgdbIds = [];
+  int unsyncedReads = 0;
+
+  /// What the server holds of the library games' IGDB details, by game id
+  /// ([fetchLibraryAttributes]): the games filled in from IGDB. Holds [gate]-like
+  /// [attributesGate] until completed.
+  Map<String, GameAttributes> libraryAttributes = {};
+  int attributeReads = 0;
+  Completer<void>? attributesGate;
+
+  /// Only the attribute read fails, while the rest of the library still loads.
+  bool attributesDown = false;
+
   /// What reached the server, in order.
   final List<String> writes = [];
 
@@ -166,6 +185,24 @@ class FakeRepository implements CheckpointRepository {
     await gate?.future;
     _checkOnline();
     return library;
+  }
+
+  @override
+  Future<Map<String, GameAttributes>> fetchLibraryAttributes(
+    String userId,
+  ) async {
+    attributeReads++;
+    await attributesGate?.future;
+    _checkOnline();
+    if (attributesDown) throw Exception('details unavailable');
+    return Map.of(libraryAttributes);
+  }
+
+  @override
+  Future<List<int>> fetchUnsyncedIgdbIds(String userId) async {
+    unsyncedReads++;
+    _checkOnline();
+    return List.of(unsyncedIgdbIds);
   }
 
   @override
@@ -278,6 +315,17 @@ class FakeRepository implements CheckpointRepository {
   }
 
   @override
+  Future<void> clearLibrary(String userId) async {
+    _checkWrite();
+    writes.add('clear-library');
+    library = [];
+    logs = [];
+    // Achievements are stored with the games.
+    achievementSummaries.remove(userId);
+    memberAchievements.removeWhere((key, _) => key.$1 == userId);
+  }
+
+  @override
   Future<void> upsertBaseGame(Game game) async {
     _checkWrite();
     writes.add('base:${game.id}');
@@ -351,6 +399,14 @@ class FakeRepository implements CheckpointRepository {
   /// Per member: the progress per game, and the achievements of each game.
   final Map<String, List<GameAchievementSummary>> achievementSummaries = {};
   final Map<(String, String), List<Achievement>?> memberAchievements = {};
+
+  /// What Steam has for a member's game, handed out by the `sync-achievements`
+  /// fake. A game missing here fails, as one Steam can't answer for does.
+  final Map<(String, String), List<Achievement>> steamAchievements = {};
+
+  /// Thrown by the Steam fetch instead of answering (a FunctionException with a
+  /// code, say). Null: answer from [steamAchievements].
+  Object? steamAchievementsError;
 
   /// Holds profile reads / follower and following lists until completed, to
   /// have a request in flight.
@@ -502,6 +558,22 @@ class FakeRepository implements CheckpointRepository {
     return memberAchievements[(userId, gameId)];
   }
 
+  /// Like the function, stores what Steam answered where the database keeps it.
+  @override
+  Future<List<Achievement>?> fetchSteamGameAchievements(
+    String userId,
+    String gameId,
+  ) async {
+    memberReads.add('steam:$userId:$gameId');
+    _checkOnline();
+    final error = steamAchievementsError;
+    if (error != null) throw error;
+    final list = steamAchievements[(userId, gameId)];
+    if (list == null) throw Exception('steam failed');
+    memberAchievements[(userId, gameId)] = list;
+    return list;
+  }
+
   @override
   Stream<void> watchUserGames(String userId) => const Stream.empty();
 
@@ -638,3 +710,74 @@ class FakeBrowseApi extends GameApiService {
     return answer(mode, offset);
   }
 }
+
+/// A [GameApiService] whose game details the test controls. [answer] gives the
+/// details for an IGDB id (null = the request failed). [gate] holds every answer
+/// until completed, to have a request in flight.
+class FakeDetailsApi extends GameApiService {
+  GameDetails? Function(int igdbId) answer = (id) => null;
+  Completer<void>? gate;
+
+  /// The IGDB ids asked for, in order.
+  final List<int> calls = [];
+
+  @override
+  Future<GameDetails?> fetchDetails(int igdbId) async {
+    calls.add(igdbId);
+    await gate?.future;
+    return answer(igdbId);
+  }
+}
+
+/// A [GameApiService] whose catalog backfill the test controls. [answer] gives
+/// what a batch of IGDB ids comes back with; by default every game is filled in
+/// with [backfilledPlatforms] and [backfilledGenres]. [gate] holds every answer
+/// until completed, to have a request in flight.
+class FakeBackfillApi extends GameApiService {
+  static const backfilledPlatforms = [GamePlatform.pc, GamePlatform.ps3, GamePlatform.xbox360];
+  static const backfilledGenres = ['Role-playing (RPG)', 'Adventure'];
+
+  CatalogBackfillResult Function(List<int> igdbIds) answer = (ids) => CatalogBackfillResult([
+    for (final id in ids)
+      GameDetails(igdbId: id, platforms: backfilledPlatforms, genres: backfilledGenres),
+  ]);
+  Completer<void>? gate;
+
+  /// Each batch of IGDB ids asked for, in order.
+  final List<List<int>> calls = [];
+
+  @override
+  Future<CatalogBackfillResult> backfillCatalog(List<int> igdbIds) async {
+    calls.add(List.of(igdbIds));
+    await gate?.future;
+    return answer(igdbIds);
+  }
+}
+
+/// IGDB's details for a game, as [FakeDetailsApi] answers by default: Skyrim's
+/// exact platforms, some attributes, a storyline, one similar game and a time to
+/// beat.
+GameDetails testDetails({
+  int igdbId = 7,
+  List<GamePlatform> platforms = const [GamePlatform.pc, GamePlatform.ps3, GamePlatform.xbox360],
+  List<Game>? similarGames,
+  TimeToBeat? timeToBeat = const TimeToBeat(
+    hastily: Duration(hours: 25),
+    normally: Duration(hours: 50),
+    completely: Duration(hours: 150),
+    count: 4358,
+  ),
+}) => GameDetails(
+  igdbId: igdbId,
+  platforms: platforms,
+  genres: const ['Role-playing (RPG)', 'Adventure'],
+  themes: const ['Fantasy', 'Open world'],
+  gameModes: const ['Single player'],
+  perspectives: const ['First person'],
+  engines: const ['Creation Engine'],
+  developers: const ['Bethesda Game Studios'],
+  publishers: const ['Bethesda Softworks'],
+  storyline: 'The Empire of Tamriel is on the edge.',
+  similarGames: similarGames ?? [testGame('similar-1', title: 'Oblivion', status: null, cover: false, igdbId: 306)],
+  timeToBeat: timeToBeat,
+);

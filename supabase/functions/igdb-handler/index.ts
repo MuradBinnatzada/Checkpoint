@@ -14,6 +14,40 @@
 //                          new_releases  released in the last 90 days, newest first
 //                        (the queries live in _shared/browse_queries.ts)
 //          Header:       Authorization: Bearer <user access token>
+//                        or, for one game's whole page (the details screen):
+//                        { "mode": "details", "igdb_id": 472 }
+//                          answers { "game": <the IGDB game, with platforms, genres,
+//                          themes, game modes, perspectives, engines, companies,
+//                          storyline and similar games>, "time_to_beat": { hastily,
+//                          normally, completely (seconds, or null), count } | null }.
+//                          The stable part (exact platforms, genres, themes, modes,
+//                          perspectives, engines, developers, publishers) is also
+//                          written to the game's shared `games` row, at most once a
+//                          week (_shared/game_details.ts), so a library shows the
+//                          game's real platforms and filters can use the rest. That
+//                          write needs the service role (RLS lets a member edit only
+//                          the catalog rows they created) and only ever touches those
+//                          columns, from IGDB's own answer, never from the caller.
+//                        or, to fill in many games' catalog rows at once (the app
+//                        sends its library's never-filled-in games in the
+//                        background, so every game shows its exact platforms
+//                        without its screen being opened first):
+//                        { "mode": "backfill", "igdb_ids": [472, 1942, ...] }
+//                          1 to 50 ids, each a positive whole number (one bad id
+//                          refuses the request). Makes ONE IGDB /games request for
+//                          the ids whose rows are due (the same weekly rule as
+//                          `details`; none due, no IGDB request), asking only for
+//                          what the catalog keeps (no storyline, similar games or
+//                          time to beat), and writes each due row the way
+//                          `details` does. Answers what each row holds afterwards:
+//                          { "games": [{ "igdb_id": 472, "platforms": ["pc",
+//                          "ps3", "xbox360"], "genres": [...] }, ...],
+//                          "unknown": [ids with no catalog row] }. A row IGDB has
+//                          no game for is stamped anyway (asked again when due);
+//                          a row whose write failed is in neither list, so the
+//                          app asks again later. Errors as for any request: on
+//                          IGDB_RATE_LIMITED / IGDB_UNAVAILABLE the app waits
+//                          `retry_after` seconds and goes on where it stopped.
 // Response (JSON):       the raw IGDB /v4/games array, or
 //                        { "error": "...", "code": "...", "retry_after"?: seconds }
 //                        An offset at or past MAX_RESULTS answers `[]`.
@@ -27,6 +61,7 @@
 //                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
 //                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
 //                          UNAUTHENTICATED   (401)  no valid user session
+//                          NOT_FOUND         (404)  `details` for an IGDB id with no game
 //                          BAD_REQUEST       (400 / 405)
 //                          NOT_CONFIGURED    (500)  missing secrets
 //                          INTERNAL          (500)  anything else
@@ -34,7 +69,8 @@
 // Secrets (set with `supabase secrets set`):
 //   TWITCH_CLIENT_ID
 //   TWITCH_CLIENT_SECRET
-// SUPABASE_URL and SUPABASE_ANON_KEY are injected automatically by Supabase.
+// SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are injected
+// automatically by Supabase.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
@@ -42,6 +78,24 @@ import {
   fetchWithBackoff,
   parseRetryAfter,
 } from "../_shared/backoff.ts";
+import {
+  type BackfillGame,
+  backfillGame,
+  backfillQuery,
+  CATALOG_ROW_COLUMNS,
+  type CatalogRow,
+  catalogPatch,
+  detailsQuery,
+  firstRow,
+  gamesById,
+  isDue,
+  MAX_BACKFILL_IDS,
+  parseIgdbId,
+  parseIgdbIds,
+  planBackfill,
+  timeToBeat,
+  timeToBeatQuery,
+} from "../_shared/game_details.ts";
 import {
   type BrowseMode,
   gamesByIdQuery,
@@ -56,6 +110,7 @@ import {
 const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_URL = "https://api.igdb.com/v4/games";
 const IGDB_POPULARITY_URL = "https://api.igdb.com/v4/popularity_primitives";
+const IGDB_TIME_TO_BEAT_URL = "https://api.igdb.com/v4/game_time_to_beats";
 
 // The Apicalypse query is built here, not by the client, so this function can't
 // be used as an open proxy to spend your IGDB quota on arbitrary queries.
@@ -91,6 +146,7 @@ type ErrorCode =
   | "IGDB_UNAVAILABLE"
   | "IGDB_ERROR"
   | "UNAUTHENTICATED"
+  | "NOT_FOUND"
   | "BAD_REQUEST"
   | "NOT_CONFIGURED"
   | "INTERNAL";
@@ -372,6 +428,150 @@ async function browseGames(
 }
 
 // ---------------------------------------------------------------------------
+// Details: one game's whole page
+// ---------------------------------------------------------------------------
+
+// One game with everything the details screen shows, and its time to beat. The
+// time to beat is a nicety: when only that request fails, the rest is still sent.
+async function gameDetails(igdbId: number): Promise<unknown> {
+  const [games, timeToBeatRows] = await Promise.all([
+    queryIgdb(IGDB_GAMES_URL, detailsQuery(igdbId)),
+    queryIgdb(IGDB_TIME_TO_BEAT_URL, timeToBeatQuery(igdbId)).catch((err) => {
+      console.error("time to beat unavailable:", err);
+      return null;
+    }),
+  ]);
+  const game = firstRow(games);
+  if (!game) throw new HttpError(404, "NOT_FOUND", "No such game");
+
+  await saveCatalogRow(igdbId, game);
+  return { game, time_to_beat: timeToBeat(firstRow(timeToBeatRows)) };
+}
+
+// A client with the service role, or null when its secrets are missing. It
+// bypasses RLS: every statement made with it must be scoped to the rows meant.
+function serviceClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) return null;
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+// Fills in the shared `games` row of [igdbId] from IGDB's answer, unless it was
+// filled in within the last week or the game is not in the catalog (the app adds
+// it when someone adds the game). Best effort: the screen needs the answer, not
+// this, so a failure is logged and swallowed.
+async function saveCatalogRow(
+  igdbId: number,
+  game: Record<string, unknown>,
+): Promise<void> {
+  try {
+    // Every statement below is scoped to this one IGDB id.
+    const admin = serviceClient();
+    if (!admin) return;
+
+    const { data: row, error } = await admin
+      .from("games")
+      .select("id, steam_app_id, igdb_synced_at")
+      .eq("igdb_id", igdbId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row || !isDue(row.igdb_synced_at, Date.now())) return;
+
+    const patch = catalogPatch(
+      game,
+      row.steam_app_id !== null && row.steam_app_id !== undefined,
+      new Date().toISOString(),
+    );
+    const { error: updateError } = await admin
+      .from("games")
+      .update(patch)
+      .eq("id", row.id);
+    if (updateError) throw updateError;
+  } catch (err) {
+    console.error("could not save the game's details:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backfill: the catalog rows of many games at once
+// ---------------------------------------------------------------------------
+
+// Catalog rows written at the same time by one backfill request.
+const BACKFILL_WRITE_CONCURRENCY = 10;
+
+// Fills in, from ONE IGDB request, the `games` rows of [igdbIds] that are due (see
+// isDue), and says what each row holds afterwards, so the app can show it without
+// reading its library again. Rows filled in within the last week are answered as
+// they are, without asking IGDB (nothing is asked when none is due); ids with no
+// catalog row are listed as `unknown`. A row IGDB has no game for is still stamped
+// `igdb_synced_at`, so it is not asked about again until it is due. A row whose
+// write fails is left out of the answer, so the app asks again later.
+async function backfillGames(
+  igdbIds: number[],
+): Promise<{ games: BackfillGame[]; unknown: number[] }> {
+  // Every statement below is scoped to the requested IGDB ids, and writes only
+  // the columns catalogPatch fills, from IGDB's own answer.
+  const admin = serviceClient();
+  if (!admin) {
+    console.error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set");
+    throw new HttpError(500, "NOT_CONFIGURED", "Server is not configured");
+  }
+
+  const { data: rows, error } = await admin
+    .from("games")
+    .select(CATALOG_ROW_COLUMNS)
+    .in("igdb_id", igdbIds);
+  if (error) {
+    console.error("could not read the catalog rows:", error);
+    throw new HttpError(500, "INTERNAL", "Internal error");
+  }
+
+  const now = Date.now();
+  const { due, fresh, unknown } = planBackfill(
+    igdbIds,
+    (rows ?? []) as CatalogRow[],
+    now,
+  );
+  const games = fresh.map((row) => backfillGame(row));
+  if (due.length === 0) return { games, unknown };
+
+  // A malformed answer must not stamp every row as filled in with nothing.
+  const answer = gamesById(
+    await queryIgdb(IGDB_GAMES_URL, backfillQuery(due.map((row) => row.igdb_id))),
+  );
+  if (!answer) {
+    throw new HttpError(502, "IGDB_ERROR", "Unexpected response from IGDB");
+  }
+
+  const nowIso = new Date(now).toISOString();
+  for (let i = 0; i < due.length; i += BACKFILL_WRITE_CONCURRENCY) {
+    const saved = await Promise.all(
+      due.slice(i, i + BACKFILL_WRITE_CONCURRENCY).map(async (row) => {
+        const patch = catalogPatch(
+          answer.get(row.igdb_id) ?? {},
+          row.steam_app_id !== null && row.steam_app_id !== undefined,
+          nowIso,
+        );
+        const { error: updateError } = await admin
+          .from("games")
+          .update(patch)
+          .eq("id", row.id);
+        if (updateError) {
+          console.error(`could not fill in game ${row.igdb_id}:`, updateError);
+          return null;
+        }
+        return backfillGame(row, patch);
+      }),
+    );
+    for (const game of saved) if (game) games.push(game);
+  }
+  return { games, unknown };
+}
+
+// ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
 
@@ -422,12 +622,44 @@ Deno.serve(async (req: Request) => {
 
     const payload = await req.json().catch(() => null);
 
+    // `details`: one game's whole page, by IGDB id.
+    if (payload?.mode === "details") {
+      const igdbId = parseIgdbId(payload?.igdb_id);
+      if (igdbId === null) {
+        return jsonResponse(
+          {
+            error: "`igdb_id` must be a positive whole number",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      return jsonResponse(await gameDetails(igdbId));
+    }
+
+    // `backfill`: the catalog rows of up to MAX_BACKFILL_IDS games, by IGDB id.
+    if (payload?.mode === "backfill") {
+      const igdbIds = parseIgdbIds(payload?.igdb_ids);
+      if (igdbIds === null) {
+        return jsonResponse(
+          {
+            error:
+              `\`igdb_ids\` must be a list of 1 to ${MAX_BACKFILL_IDS} positive whole numbers`,
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      return jsonResponse(await backfillGames(igdbIds));
+    }
+
     // A `mode` browses a list; without one the request is a text search.
     const mode = payload?.mode ?? null;
     if (mode !== null && !isBrowseMode(mode)) {
       return jsonResponse(
         {
-          error: "`mode` must be one of: popular, top_rated, new_releases",
+          error:
+            "`mode` must be one of: popular, top_rated, new_releases, details, backfill",
           code: "BAD_REQUEST",
         },
         400,

@@ -1,76 +1,93 @@
 // supabase/functions/_shared/platforms.ts
 //
 // Which of the app's platforms a game was released on, from IGDB's `platforms`
-// array. This is the server-side twin of `_platformMap` in
+// array, down to the console: a PS3 and a PS4 release are two platforms, as on
+// IGDB. This is the server-side twin of `_platformMap` in
 // lib/services/game_api_service.dart: keep the two in step. The values are the
 // strings the app stores in `games.platforms` (`gamePlatformToDb` in
-// lib/models/game.dart).
+// lib/models/game.dart, i.e. the `GamePlatform` enum names).
+//
+// Windows, Mac, Linux and DOS are all 'pc'. A few near-identical IGDB entries
+// share one platform (Famicom = NES, Super Famicom = SNES, DSi = DS, New 3DS =
+// 3DS, Xbox Live Arcade = Xbox 360, PS VR = PS4, PS VR2 = PS5, Sega CD and 32X =
+// Genesis).
 //
 // Release platforms only. "steamDeck" and "emulator" are ways of playing a game
 // the user picks themselves, never something a game is released on, so they are
-// never produced here. An IGDB platform with no entry (web, arcade, Dreamcast...)
-// is left out rather than guessed at.
+// never produced here. The generic 'playstation' / 'xbox' / 'nintendo' / 'mobile'
+// the app used to store are not produced either (only 'mobile' for IGDB's "Legacy
+// Mobile Device"). An IGDB platform with no entry (web, arcade, Atari...) is left
+// out rather than guessed at.
 //
 // Pure functions, so the mapping can be tested without IGDB.
 
 export type PlatformDb =
   | 'pc'
-  | 'playstation'
-  | 'ps4'
-  | 'ps5'
-  | 'xbox'
-  | 'nintendo'
-  | 'nswitch'
-  | 'mobile'
+  | 'ps5' | 'ps4' | 'ps3' | 'ps2' | 'ps1' | 'vita' | 'psp'
+  | 'xboxSeries' | 'xboxOne' | 'xbox360' | 'xboxOriginal'
+  | 'nswitch2' | 'nswitch' | 'wiiU' | 'wii' | 'gamecube' | 'n64' | 'snes' | 'nes'
+  | 'n3ds' | 'nds' | 'gba' | 'gbc' | 'gameBoy' | 'virtualBoy'
+  | 'dreamcast' | 'saturn' | 'genesis' | 'masterSystem' | 'gameGear'
+  | 'ios' | 'android' | 'mobile'
 
-const IGDB_PLATFORM_TO_DB: Record<number, PlatformDb> = {
+export const IGDB_PLATFORM_TO_DB: Record<number, PlatformDb> = {
   // PC
   6: 'pc', // PC (Microsoft Windows)
   14: 'pc', // Mac
   3: 'pc', // Linux
+  13: 'pc', // DOS
 
-  // PlayStation family
-  7: 'playstation', // PlayStation
-  8: 'playstation', // PlayStation 2
-  9: 'playstation', // PlayStation 3
-  38: 'playstation', // PlayStation Portable
-  46: 'playstation', // PlayStation Vita
+  // PlayStation
+  7: 'ps1', // PlayStation
+  8: 'ps2', // PlayStation 2
+  9: 'ps3', // PlayStation 3
   48: 'ps4', // PlayStation 4
   165: 'ps4', // PlayStation VR
   167: 'ps5', // PlayStation 5
   390: 'ps5', // PlayStation VR2
+  38: 'psp', // PlayStation Portable
+  46: 'vita', // PlayStation Vita
 
-  // Xbox family
-  11: 'xbox', // Xbox
-  12: 'xbox', // Xbox 360
-  36: 'xbox', // Xbox Live Arcade
-  49: 'xbox', // Xbox One
-  169: 'xbox', // Xbox Series X|S
+  // Xbox
+  11: 'xboxOriginal', // Xbox
+  12: 'xbox360', // Xbox 360
+  36: 'xbox360', // Xbox Live Arcade
+  49: 'xboxOne', // Xbox One
+  169: 'xboxSeries', // Xbox Series X|S
 
-  // Nintendo family
-  18: 'nintendo', // Nintendo Entertainment System
-  99: 'nintendo', // Family Computer
-  51: 'nintendo', // Famicom Disk System
-  19: 'nintendo', // Super Nintendo
-  58: 'nintendo', // Super Famicom
-  4: 'nintendo', // Nintendo 64
-  21: 'nintendo', // Nintendo GameCube
-  5: 'nintendo', // Wii
-  41: 'nintendo', // Wii U
-  33: 'nintendo', // Game Boy
-  22: 'nintendo', // Game Boy Color
-  24: 'nintendo', // Game Boy Advance
-  87: 'nintendo', // Virtual Boy
-  20: 'nintendo', // Nintendo DS
-  159: 'nintendo', // Nintendo DSi
-  37: 'nintendo', // Nintendo 3DS
-  137: 'nintendo', // New Nintendo 3DS
+  // Nintendo
+  18: 'nes', // Nintendo Entertainment System
+  99: 'nes', // Family Computer
+  51: 'nes', // Famicom Disk System
+  19: 'snes', // Super Nintendo
+  58: 'snes', // Super Famicom
+  4: 'n64', // Nintendo 64
+  21: 'gamecube', // Nintendo GameCube
+  5: 'wii', // Wii
+  41: 'wiiU', // Wii U
   130: 'nswitch', // Nintendo Switch
-  508: 'nswitch', // Nintendo Switch 2
+  508: 'nswitch2', // Nintendo Switch 2
+  33: 'gameBoy', // Game Boy
+  22: 'gbc', // Game Boy Color
+  24: 'gba', // Game Boy Advance
+  87: 'virtualBoy', // Virtual Boy
+  20: 'nds', // Nintendo DS
+  159: 'nds', // Nintendo DSi
+  37: 'n3ds', // Nintendo 3DS
+  137: 'n3ds', // New Nintendo 3DS
+
+  // Sega
+  64: 'masterSystem', // Sega Master System
+  29: 'genesis', // Sega Mega Drive / Genesis
+  78: 'genesis', // Sega CD
+  30: 'genesis', // Sega 32X
+  32: 'saturn', // Sega Saturn
+  23: 'dreamcast', // Dreamcast
+  35: 'gameGear', // Sega Game Gear
 
   // Mobile
-  34: 'mobile', // Android
-  39: 'mobile', // iOS
+  34: 'android', // Android
+  39: 'ios', // iOS
   55: 'mobile', // Legacy Mobile Device
 }
 

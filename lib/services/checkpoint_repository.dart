@@ -10,6 +10,7 @@ import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -291,6 +292,79 @@ class CheckpointRepository {
     });
     // Newest first, the order the old single ordered query returned.
     return rows.map<Game>(_gameFromUserGameRow).toList()..sort(_newestFirst);
+  }
+
+  /// The IGDB ids of the games in [userId]'s library whose catalog row was never
+  /// filled in from IGDB (`games.igdb_synced_at` is NULL), for the background
+  /// backfill (`CatalogBackfill`). A separate read rather than a column of
+  /// [fetchUserGames], so the library payload and the copy saved on the device
+  /// don't grow by a timestamp per game: this one answers only the games still
+  /// to do, which is nothing once a library is filled in. It also reads the
+  /// server's state as it is now, so rows filled in meanwhile (by another member,
+  /// or by opening a game's screen) drop out without the library being read again.
+  /// Paged like [fetchUserGames]: a library just imported from Steam can be long.
+  Future<List<int>> fetchUnsyncedIgdbIds(String userId) async {
+    final rows = await _readAllPages(Db.gameId, (after) {
+      final query = _client
+          .from(Db.userGames)
+          .select('${Db.gameId}, ${Db.games}!inner(${Db.igdbId})')
+          .eq(Db.userId, userId)
+          .isFilter('${Db.games}.${Db.igdbSyncedAt}', null)
+          .not('${Db.games}.${Db.igdbId}', 'is', null);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId, ascending: true)
+          .limit(_pageSize);
+    });
+    return [
+      for (final row in rows)
+        if (row[Db.games] case final Map<dynamic, dynamic> game)
+          if (_intOrNull(game[Db.igdbId]) case final int igdbId
+              when igdbId > 0)
+            igdbId,
+    ];
+  }
+
+  /// What IGDB says about the user's library games that the library filters work
+  /// on (themes, game modes, perspectives, engines, developers, publishers), by
+  /// game id. Only the games whose catalog row was filled in from IGDB are here
+  /// (`games.igdb_synced_at` is set); a game missing from the answer has no
+  /// details yet, which is not the same as a game IGDB has no values for (that one
+  /// is here, with empty lists).
+  ///
+  /// A read of its own, made when the filter sheet opens, and not part of
+  /// [fetchUserGames]: the lists would add a few hundred bytes to every game of
+  /// every library load and of the copy saved on the device, for something most
+  /// visits to the Library never use. Paged like [fetchUserGames].
+  Future<Map<String, GameAttributes>> fetchLibraryAttributes(
+    String userId,
+  ) async {
+    final rows = await _readAllPages(Db.gameId, (after) {
+      final query = _client
+          .from(Db.userGames)
+          .select('''
+            ${Db.gameId},
+            ${Db.games}!inner (
+              ${Db.themes},
+              ${Db.gameModes},
+              ${Db.playerPerspectives},
+              ${Db.gameEngines},
+              ${Db.developers},
+              ${Db.publishers}
+            )
+          ''')
+          .eq(Db.userId, userId)
+          .not('${Db.games}.${Db.igdbSyncedAt}', 'is', null);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId, ascending: true)
+          .limit(_pageSize);
+    });
+    return {
+      for (final row in rows)
+        if (row[Db.games] case final Map<dynamic, dynamic> game)
+          '${row[Db.gameId]}': _attributesFromRow(
+            Map<String, dynamic>.from(game),
+          ),
+    };
   }
 
   static int _newestFirst(Game a, Game b) {
@@ -718,6 +792,24 @@ class CheckpointRepository {
     return Achievement.listFromJson(data);
   }
 
+  /// [userId]'s achievements for [gameId] as Steam has them now, through the
+  /// `sync-achievements` Edge Function: another member's (from the Steam account
+  /// on their profile) or the signed-in member's. The function saves the list on
+  /// their library row, and answers another member's from that row when it was
+  /// fetched a few minutes ago. Throws [FunctionException] when it answers with an
+  /// error; null when the answer has no list.
+  Future<List<Achievement>?> fetchSteamGameAchievements(
+    String userId,
+    String gameId,
+  ) async {
+    final response = await _client.functions.invoke(
+      'sync-achievements',
+      body: {'game_id': gameId, 'user_id': userId},
+    );
+    final data = response.data;
+    return data is Map ? Achievement.listFromJson(data['achievements']) : null;
+  }
+
   Future<void> upsertUserGame({
     required String userId,
     required String gameId,
@@ -797,6 +889,14 @@ class CheckpointRepository {
     await _client.from(Db.logEntries).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
     // Delete the game from the user's library
     await _client.from(Db.userGames).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
+  }
+
+  /// Removes the user's whole library: every play session, then every game
+  /// (with its stored achievements). Sessions go first, as in [deleteUserGame].
+  /// Safe to run again if it stopped part way. The shared catalog is untouched.
+  Future<void> clearLibrary(String userId) async {
+    await _client.from(Db.logEntries).delete().eq(Db.userId, userId);
+    await _client.from(Db.userGames).delete().eq(Db.userId, userId);
   }
 
   /// Emits an event whenever one of [userId]'s `user_games` rows changes.
@@ -944,6 +1044,15 @@ Game _gameFromPublicRow(Map<String, dynamic> row) {
     isFavorite: row[Db.isFavorite] == true,
   );
 }
+
+GameAttributes _attributesFromRow(Map<String, dynamic> row) => GameAttributes(
+  themes: _strings(row[Db.themes]),
+  gameModes: _strings(row[Db.gameModes]),
+  perspectives: _strings(row[Db.playerPerspectives]),
+  engines: _strings(row[Db.gameEngines]),
+  developers: _strings(row[Db.developers]),
+  publishers: _strings(row[Db.publishers]),
+);
 
 GameAchievementSummary _achievementSummaryFromRow(Map<String, dynamic> row) =>
     GameAchievementSummary(

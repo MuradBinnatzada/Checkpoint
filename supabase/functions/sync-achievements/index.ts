@@ -1,24 +1,41 @@
 /**
  * sync-achievements — on-demand Steam achievements for ONE game.
  *
- * POST { game_id }   (the caller is identified by their Supabase JWT)
- *   The caller's Steam ID64 is read from `profiles.steam_id` for the verified
- *   user. A `steam_id` sent in the request body is ignored.
+ * POST { game_id, user_id? }   (the caller is identified by their Supabase JWT)
+ *   Without `user_id` (or with the caller's own id) it loads the caller's
+ *   achievements. With another member's `user_id` it loads THEIRS, for their
+ *   profile: the game must be in their library and they must have a Steam ID on
+ *   their profile. A `steam_id` sent in the request body is always ignored: the
+ *   Steam ID is read from `profiles.steam_id` of the member whose achievements
+ *   these are, so nobody can attach someone else's Steam account to a profile.
  *
- *   0. Profile: look up the caller's `profiles.steam_id`
+ *   Another member's list is what Steam shows anyone on their public Steam
+ *   profile, and members can already read each other's stored lists
+ *   (`public_game_achievements`), so this hands out nothing new; it only fetches
+ *   a game they never opened themselves. Their row is updated with what Steam
+ *   says (nothing the caller sends is written), and a list fetched in the last
+ *   OTHERS_REFRESH_MS is answered from the database instead of asking Steam again,
+ *   so viewers can't make the function hammer Steam.
+ *
+ *   0. Profile: look up the member's `profiles.steam_id`
  *   1. game_id → Steam app id: `games.steam_app_id`, or (a legacy Steam-keyed
  *      row that sync-steam hasn't adopted yet) decoded from its `57e40000-…` id
  *   2. ISteamUserStats/GetSchemaForGame/v2     → the game's global achievement
  *      dictionary (names, descriptions, icons)
  *   3. ISteamUserStats/GetPlayerAchievements/v0001 → this player's unlock flags
  *      and timestamps
- *   4. Merge both into one array, save it to user_games.achievements (JSONB)
- *      for this user + game, and return it.
+ *   4. ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002 → how many
+ *      players have each one (optional: left out when Steam doesn't answer)
+ *   5. Merge them into one array, save it to user_games.achievements (JSONB)
+ *      for this user + game, and return it. The database trigger keeps
+ *      `achievements_unlocked` / `achievements_total` / `achievements_synced_at`
+ *      in step (20261021120000_steam_achievement_counts.sql).
  *
  * Response: { success: true, achievements: [
- *   { name, description, icon_url, unlocked, unlocked_at } ] }
+ *   { name, description, icon_url, unlocked, unlocked_at, global_percent } ] }
  *   - `[]` means the game has no Steam achievements (stored as `[]`, not NULL,
  *     so the app doesn't offer to load them again).
+ *   - `global_percent` is null when Steam's global stats were unavailable.
  *
  * A failed request is `{ error, code, retry_after? }` with a matching HTTP status
  * and, when a retry makes sense, a `Retry-After` header; see `ErrorCode`.
@@ -41,6 +58,9 @@ const corsHeaders = {
 }
 
 const STEAM_API = 'https://api.steampowered.com'
+
+/** How long another member's stored list is answered as is, without asking Steam. */
+const OTHERS_REFRESH_MS = 10 * 60 * 1000
 
 /**
  * Machine-readable failure codes; the app keys off `code`, not the `error` text.
@@ -123,6 +143,7 @@ interface MergedAchievement {
   icon_url: string
   unlocked: boolean
   unlocked_at: string | null
+  global_percent: number | null // share of all players who have it, 0-100
 }
 
 type PlayerResult =
@@ -148,6 +169,7 @@ function steamAppIdFromGameId(gameId: string): number | null {
 function mergeAchievements(
   schema: SchemaAchievement[],
   player: PlayerAchievement[],
+  globalPercents: Map<string, number> = new Map(),
 ): MergedAchievement[] {
   const byApiName = new Map(player.map((p) => [p.apiname, p]))
   return schema.map((s) => {
@@ -164,8 +186,27 @@ function mergeAchievements(
       icon_url: s.icon ?? '',
       unlocked,
       unlocked_at: unlocked && unlockTime > 0 ? new Date(unlockTime * 1000).toISOString() : null,
+      global_percent: globalPercents.get(s.name) ?? null,
     }
   })
+}
+
+/**
+ * Steam's global unlock rates, by API name, rounded to one decimal. Steam has sent
+ * `percent` both as a number and as a string, so both are read.
+ */
+function interpretGlobalPercents(body: unknown): Map<string, number> {
+  const list = (body as { achievementpercentages?: { achievements?: unknown } } | null)
+    ?.achievementpercentages?.achievements
+  const byName = new Map<string, number>()
+  if (!Array.isArray(list)) return byName
+  for (const item of list) {
+    const name = (item as { name?: unknown })?.name
+    const percent = Number((item as { percent?: unknown })?.percent)
+    if (typeof name !== 'string' || !Number.isFinite(percent)) continue
+    byName.set(name, Math.round(Math.min(Math.max(percent, 0), 100) * 10) / 10)
+  }
+  return byName
 }
 
 /** Classify Steam's GetPlayerAchievements reply (HTTP status + parsed body, if any). */
@@ -210,6 +251,19 @@ async function fetchSchema(apiKey: string, appId: number): Promise<SchemaAchieve
   return Array.isArray(list) ? list : []
 }
 
+/** Never throws: the list is complete without the rates, which are only shown when here. */
+async function fetchGlobalPercents(appId: number): Promise<Map<string, number>> {
+  try {
+    const res = await steamFetch('ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/', {
+      gameid: String(appId),
+    })
+    if (!res.ok) return new Map()
+    return interpretGlobalPercents(await res.json().catch(() => null))
+  } catch {
+    return new Map()
+  }
+}
+
 async function fetchPlayer(apiKey: string, steamId: string, appId: number): Promise<PlayerResult> {
   try {
     const res = await steamFetch('ISteamUserStats/GetPlayerAchievements/v0001/', {
@@ -237,12 +291,12 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
 }
 
 /**
- * The caller's Steam ID64, read from their own `profiles` row. `userId` comes
- * from the verified JWT (`authenticate`), never from the request, so a client
- * can only ever load achievements for the Steam account saved on its own
- * profile. (Same lookup as `sync-steam`.)
+ * A member's Steam ID64, read from their own `profiles` row: the caller's (`userId`
+ * from the verified JWT) or, for another member's profile, theirs. Never one sent in
+ * the request, so achievements are only ever loaded for the Steam account a member
+ * saved on their own profile. (Same lookup as `sync-steam`.)
  */
-async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<string> {
+async function fetchSteamId(admin: SupabaseClient, userId: string, own = true): Promise<string> {
   const { data, error } = await admin
     .from('profiles')
     .select('steam_id')
@@ -255,7 +309,9 @@ async function fetchSteamId(admin: SupabaseClient, userId: string): Promise<stri
     throw new HttpError(
       400,
       'NO_STEAM_ID',
-      'No Steam ID saved on your profile. Connect your Steam account first.',
+      own
+        ? 'No Steam ID saved on your profile. Connect your Steam account first.'
+        : 'This member has not connected a Steam account.',
     )
   }
   return String(steamId).trim()
@@ -282,12 +338,40 @@ async function steamAppIdForGame(admin: SupabaseClient, gameId: string): Promise
   return steamAppIdFromGameId(gameId)
 }
 
+/**
+ * Another member's stored list when it was fetched from Steam a moment ago, so it
+ * can be answered as is; null when Steam has to be asked. Throws NOT_IN_LIBRARY
+ * when the game is not in their library.
+ */
+async function recentStoredAchievements(
+  admin: SupabaseClient,
+  userId: string,
+  gameId: string,
+): Promise<MergedAchievement[] | null> {
+  const { data, error } = await admin
+    .from('user_games')
+    .select('achievements, achievements_synced_at')
+    .eq('user_id', userId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (error) {
+    // Before the counts migration there is no achievements_synced_at: just ask Steam.
+    console.error('sync-achievements: stored list lookup failed:', error.message)
+    return null
+  }
+  if (!data) throw new HttpError(404, 'NOT_IN_LIBRARY', 'That game is not in their library')
+  const syncedAt = Date.parse(String(data.achievements_synced_at ?? ''))
+  const fresh = Number.isFinite(syncedAt) && Date.now() - syncedAt < OTHERS_REFRESH_MS
+  return fresh && Array.isArray(data.achievements) ? (data.achievements as MergedAchievement[]) : null
+}
+
 async function syncAchievements(
   admin: SupabaseClient,
   userId: string,
   steamId: string,
   gameId: string,
   appId: number,
+  own = true,
 ): Promise<MergedAchievement[]> {
   const apiKey = Deno.env.get('STEAM_API_KEY')
   if (!apiKey) {
@@ -295,29 +379,32 @@ async function syncAchievements(
     throw new HttpError(500, 'NOT_CONFIGURED', 'Server is not configured')
   }
 
-  // Both Steam calls are independent, so run them together.
-  const [schema, player] = await Promise.all([
+  // The Steam calls are independent, so run them together.
+  const [schema, player, globalPercents] = await Promise.all([
     fetchSchema(apiKey, appId),
     fetchPlayer(apiKey, steamId, appId),
+    fetchGlobalPercents(appId),
   ])
 
   let merged: MergedAchievement[]
   if (schema.length === 0) {
     merged = [] // no achievements in this game; whatever the player call said is moot
   } else if (player.kind === 'ok') {
-    merged = mergeAchievements(schema, player.achievements)
+    merged = mergeAchievements(schema, player.achievements, globalPercents)
   } else if (player.kind === 'no_stats') {
-    merged = mergeAchievements(schema, []) // owned but nothing unlocked yet
+    merged = mergeAchievements(schema, [], globalPercents) // owned but nothing unlocked yet
   } else if (player.kind === 'private') {
     throw new HttpError(
       403,
       'STEAM_PROFILE_PRIVATE',
-      'Your Steam game details are private. Set "Game details" to Public in your Steam privacy settings, then try again.',
+      own
+        ? 'Your Steam game details are private. Set "Game details" to Public in your Steam privacy settings, then try again.'
+        : 'Their Steam game details are private.',
     )
   } else {
     console.error('GetPlayerAchievements failed:', player.message)
     // No status = Steam was unreachable, which is the same "try again" as a 5xx.
-    throw steamStatusError(player.status ?? 503, player.retryAfter ?? null, 'Steam could not return your achievements')
+    throw steamStatusError(player.status ?? 503, player.retryAfter ?? null, 'Steam could not return the achievements')
   }
 
   // Updating (not upserting) means a game that isn't in this user's library
@@ -329,7 +416,9 @@ async function syncAchievements(
     .eq('game_id', gameId)
     .select('game_id')
   if (error) throw new Error(`user_games update failed: ${error.message}`)
-  if (!data || data.length === 0) throw new HttpError(404, 'NOT_IN_LIBRARY', 'That game is not in your library')
+  if (!data || data.length === 0) {
+    throw new HttpError(404, 'NOT_IN_LIBRARY', own ? 'That game is not in your library' : 'That game is not in their library')
+  }
 
   return merged
 }
@@ -376,16 +465,27 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const userId = await authenticate(req, admin)
+    const callerId = await authenticate(req, admin)
 
-    // Only `game_id` is read from the body. Any `steam_id` in it is ignored on
-    // purpose: the Steam ID comes from the caller's own profile, so it can't be
-    // swapped for someone else's.
+    // Only `game_id` and `user_id` are read from the body. Any `steam_id` in it is
+    // ignored on purpose: the Steam ID comes from the member's own profile, so it
+    // can't be swapped for someone else's.
     const body = await req.json().catch(() => ({}))
     const gameId = body?.game_id
     if (!gameId || typeof gameId !== 'string') throw new HttpError(400, 'BAD_REQUEST', 'Missing game_id')
-
     if (!UUID_RE.test(gameId)) throw new HttpError(400, 'BAD_REQUEST', 'Invalid game_id')
+
+    const requested = body?.user_id
+    if (requested !== undefined && requested !== null && (typeof requested !== 'string' || !UUID_RE.test(requested))) {
+      throw new HttpError(400, 'BAD_REQUEST', 'Invalid user_id')
+    }
+    const userId = typeof requested === 'string' ? requested.toLowerCase() : callerId
+    const own = userId === callerId.toLowerCase()
+
+    if (!own) {
+      const recent = await recentStoredAchievements(admin, userId, gameId)
+      if (recent) return json({ success: true, achievements: recent })
+    }
 
     const appId = await steamAppIdForGame(admin, gameId)
     if (appId === null) {
@@ -396,9 +496,9 @@ serve(async (req) => {
       )
     }
 
-    const steamId = await fetchSteamId(admin, userId)
+    const steamId = await fetchSteamId(admin, userId, own)
 
-    const achievements = await syncAchievements(admin, userId, steamId, gameId, appId)
+    const achievements = await syncAchievements(admin, userId, steamId, gameId, appId, own)
     return json({ success: true, achievements })
   } catch (error) {
     console.error('sync-achievements failed:', error)

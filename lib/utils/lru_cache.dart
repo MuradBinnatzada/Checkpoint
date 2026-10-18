@@ -32,5 +32,9 @@ class LruCache<K, V extends Object> {
 
   V? remove(K key) => _entries.remove(key);
 
+  /// Drops every entry whose key satisfies [test].
+  void removeWhere(bool Function(K key) test) =>
+      _entries.removeWhere((key, _) => test(key));
+
   void clear() => _entries.clear();
 }

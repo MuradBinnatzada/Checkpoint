@@ -12,6 +12,7 @@ import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/library_controls.dart';
+import 'package:checkpoint/widgets/library_filters.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -93,10 +94,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                   ),
                 ),
-                LibraryPlatformFilterButton(
-                  selected: view.platformFilter,
-                  options: view.filterOptions(library.libraryGames),
-                ),
+                LibraryFilterButton(count: view.filterCount),
                 LibrarySortButton(
                   field: view.sortField,
                   descending: view.sortDescending,
@@ -110,11 +108,11 @@ class _LibraryScreenState extends State<LibraryScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
             child: Text(
-              'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}'
-              '${view.platformFilter != null ? ' · ${view.platformFilter!.label}' : ''}',
+              'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}',
               style: const TextStyle(color: Palette.muted, fontSize: 12.5),
             ),
           ),
+          LibraryActiveFilters(library: library.libraryGames),
           const _SyncBanner(),
           LibraryStatusTabBar(
             controller: _tabs,
@@ -282,32 +280,48 @@ class LibraryCollection extends StatelessWidget {
         .toList();
     if (games.isEmpty) {
       final p = view.platformFilter;
+      final filtered = view.hasFilters;
       if (query.isNotEmpty) {
         return EmptyState(
           icon: Icons.search_off_rounded,
           title: 'No matches for "${searchQuery.trim()}"',
-          message: p != null
-              ? 'Try another title, or clear the platform filter.'
+          message: filtered
+              ? 'Try another title, or clear the filters.'
               : 'Try a different title.',
           actionLabel: 'Clear search',
           onAction: () => onClearSearch?.call(),
         );
       }
+      // Only the platform picked: say which one. Anything else: the filters.
+      final onlyPlatform = p != null && view.filterCount == 1;
+      final missing = view.hasDetailFilters
+          ? view.gamesWithoutDetails(library.libraryGames) ?? 0
+          : 0;
       return EmptyState(
         icon: s?.icon ?? Icons.apps_rounded,
-        title: p != null
+        title: onlyPlatform
             ? (s == null
                   ? 'No games on ${p.label}'
                   : 'No ${s.label.toLowerCase()} games on ${p.label}')
+            : filtered
+            ? (s == null
+                  ? 'No games match these filters'
+                  : 'No ${s.label.toLowerCase()} games match these filters')
             : (s == null
                   ? 'Your library is empty'
                   : 'Nothing in ${s.label} yet'),
-        message: p != null
-            ? 'Clear the platform filter to see everything.'
+        message: filtered
+            ? (missing > 0
+                  ? 'Clear the filters to see everything. $missing '
+                        '${missing == 1 ? 'game has' : 'games have'} no IGDB '
+                        'details yet, so a filter on them can\'t match.'
+                  : 'Clear the filters to see everything.')
             : 'Find something new in Discover and add it here.',
-        actionLabel: p != null ? 'Clear filter' : 'Discover games',
-        onAction: () => p != null
-            ? context.read<LibraryViewStore>().setPlatformFilter(null)
+        actionLabel: filtered
+            ? (view.filterCount > 1 ? 'Clear filters' : 'Clear filter')
+            : 'Discover games',
+        onAction: () => filtered
+            ? context.read<LibraryViewStore>().clearFilters()
             : context.read<NavStore>().select(NavTab.search),
       );
     }

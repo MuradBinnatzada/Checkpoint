@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
@@ -247,7 +248,7 @@ void main() {
           top(tester, find.text('Hours by platform')),
           top(tester, find.text('Ratings')),
           top(tester, find.text('Achievements')),
-          top(tester, find.text('View Achievements')),
+          top(tester, find.text('1 / 2 · 50%')),
           top(tester, find.text('Wishlist')),
         ];
         expect(order, orderedEquals([...order]..sort()));
@@ -733,61 +734,161 @@ void main() {
   group('achievements', () {
     Future<void> scrollToAchievements(WidgetTester tester) async {
       await tester.scrollUntilVisible(
-        find.text('View Achievements'),
+        find.text('Achievements'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+      await tester.pumpAndSettle();
     }
 
     Iterable<String> reads(String prefix) =>
         repo.memberReads.where((r) => r.startsWith(prefix));
 
+    Future<void> openGame(WidgetTester tester, String progress) async {
+      await tester.tap(find.text(progress));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pumpAndSettle();
+    }
+
     testWidgets(
-      'the count is there at once; the games and their achievements wait for a tap',
+      'the count and every game load with the profile; a game\'s achievements wait for a tap',
       (tester) async {
         await openProfile(tester);
         await scrollToAchievements(tester);
 
-        expect(find.text('1'), findsWidgets);
         expect(find.text('/ 2 unlocked'), findsOneWidget);
-        expect(find.text('View Achievements'), findsOneWidget);
-        expect(reads('achievement-totals'), ['achievement-totals:m1']);
-        // Neither the per-game progress nor a single achievement was fetched.
-        expect(reads('achievements'), isEmpty);
-        expect(find.text('1 / 2 · 50%'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'the button fetches the progress, and opening a game fetches its achievements',
-      (tester) async {
-        await openProfile(tester);
-        await scrollToAchievements(tester);
-
-        await tester.tap(find.text('View Achievements'));
-        await tester.pumpAndSettle();
-
-        expect(reads('achievements'), ['achievements:m1']);
         expect(find.text('1 / 2 · 50%'), findsOneWidget);
-        expect(find.text('Hidden Gem'), findsNothing); // not fetched yet
-
-        await tester.tap(find.text('1 / 2 · 50%'));
-        await tester.pumpAndSettle();
-
-        expect(repo.memberReads, contains('achievements:m1:fav'));
-        expect(find.text('Hidden Gem'), findsOneWidget);
-        expect(find.text('Locked One'), findsOneWidget);
+        expect(find.text('View Achievements'), findsNothing);
+        expect(reads('achievement-totals'), ['achievement-totals:m1']);
+        expect(reads('achievements'), ['achievements:m1']);
+        // No game's achievements were fetched.
+        expect(find.text('Hidden Gem'), findsNothing);
+        expect(reads('steam'), isEmpty);
       },
     );
+
+    testWidgets('tapping a game opens its achievements in a dialog', (
+      tester,
+    ) async {
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+
+      await openGame(tester, '1 / 2 · 50%');
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(repo.memberReads, contains('achievements:m1:fav'));
+      // The stored list matches the counts, so Steam was not asked.
+      expect(reads('steam'), isEmpty);
+      expect(find.text('Hidden Gem'), findsOneWidget);
+      expect(find.text('Locked One'), findsOneWidget);
+      expect(find.text('1 / 2 unlocked'), findsOneWidget);
+
+      // Only the locked ones.
+      await tester.tap(find.text('Locked 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hidden Gem'), findsNothing);
+      expect(find.text('Locked One'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+    });
+
+    testWidgets('a game never opened before is fetched from Steam', (
+      tester,
+    ) async {
+      repo.memberAchievements.remove(('m1', 'fav'));
+      repo.steamAchievements[('m1', 'fav')] = const [
+        Achievement(
+          name: 'Fresh From Steam',
+          description: '',
+          iconUrl: '',
+          unlocked: true,
+          globalPercent: 40.9,
+        ),
+        Achievement(name: 'Still Locked', description: '', iconUrl: '', unlocked: false),
+      ];
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+
+      await openGame(tester, '1 / 2 · 50%');
+
+      expect(reads('steam'), ['steam:m1:fav']);
+      expect(find.text('Fresh From Steam'), findsOneWidget);
+      expect(find.text('40.9% of players have this'), findsOneWidget);
+    });
+
+    testWidgets('a stored list older than the counts is fetched again', (
+      tester,
+    ) async {
+      repo.achievementSummaries['m1'] = [
+        const GameAchievementSummary(
+          gameId: 'fav',
+          title: 'Favourite Quest',
+          unlocked: 2,
+          total: 2,
+        ),
+      ];
+      repo.steamAchievements[('m1', 'fav')] = const [
+        Achievement(name: 'Hidden Gem', description: '', iconUrl: '', unlocked: true),
+        Achievement(name: 'Locked One', description: '', iconUrl: '', unlocked: true),
+      ];
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+
+      await openGame(tester, '2 / 2 · 100%');
+
+      expect(reads('steam'), ['steam:m1:fav']);
+      expect(find.textContaining('All achievements unlocked'), findsOneWidget);
+    });
+
+    testWidgets('when Steam won\'t share them, the dialog says why', (
+      tester,
+    ) async {
+      repo.memberAchievements.remove(('m1', 'fav'));
+      repo.steamAchievementsError = const FunctionException(
+        status: 403,
+        details: {'code': 'STEAM_PROFILE_PRIVATE'},
+      );
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+
+      await openGame(tester, '1 / 2 · 50%');
+
+      expect(find.textContaining('Their Steam game details are private'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+
+    testWidgets('a long list shows a few games and more on request', (
+      tester,
+    ) async {
+      repo.achievementSummaries['m1'] = [
+        for (var i = 0; i < 7; i++)
+          GameAchievementSummary(
+            gameId: 'g$i',
+            title: 'Game $i',
+            unlocked: 1,
+            total: 10 + i,
+          ),
+      ];
+      await openProfile(tester);
+      await scrollToAchievements(tester);
+
+      expect(find.text('Game 4'), findsOneWidget);
+      expect(find.text('Game 5'), findsNothing);
+      await tester.tap(find.text('Show 2 more (2 left)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Game 6'), findsOneWidget);
+      expect(find.text('Show less'), findsOneWidget);
+    });
 
     testWidgets('a failure offers to try again', (tester) async {
       repo.failAchievementReads = true;
       await openProfile(tester);
       await scrollToAchievements(tester);
       expect(find.text('/ 2 unlocked'), findsOneWidget); // the count is fine
-
-      await tester.tap(find.text('View Achievements'));
-      await tester.pumpAndSettle();
       expect(
         find.textContaining('Could not load achievements'),
         findsOneWidget,
@@ -800,31 +901,27 @@ void main() {
     });
 
     testWidgets(
-      'without the count (offline, or the function is missing) the button still works',
+      'without the count (offline, or the function is missing) the games still show',
       (tester) async {
         repo.failAchievementTotals = true;
         await openProfile(tester);
         await scrollToAchievements(tester);
+
         expect(find.textContaining('unlocked'), findsNothing);
-
-        await tester.tap(find.text('View Achievements'));
-        await tester.pumpAndSettle();
-
         expect(find.text('1 / 2 · 50%'), findsOneWidget);
       },
     );
 
-    testWidgets('a member without any says so, with no button', (tester) async {
+    testWidgets('a member without any says so', (tester) async {
       repo.achievementSummaries['m1'] = [];
       await openProfile(tester);
       await tester.scrollUntilVisible(
-        find.text('No achievements to show yet.'),
+        find.text('No Steam achievements to show yet.'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
 
-      expect(find.text('No achievements to show yet.'), findsOneWidget);
-      expect(find.text('View Achievements'), findsNothing);
+      expect(find.text('No Steam achievements to show yet.'), findsOneWidget);
     });
 
     // The glow is a box with a shadow; nothing else on the page has one.
@@ -840,9 +937,8 @@ void main() {
     ) async {
       await openProfile(tester);
       await scrollToAchievements(tester);
-      await tester.tap(find.text('View Achievements'));
-      await tester.pumpAndSettle();
 
+      expect(find.text('1 / 2 · 50%'), findsOneWidget);
       expect(find.textContaining('Every achievement unlocked'), findsNothing);
       expect(glow(), findsNothing);
     });
@@ -860,17 +956,13 @@ void main() {
       ];
       await openProfile(tester);
       await scrollToAchievements(tester);
+
       expect(find.textContaining('Every achievement unlocked'), findsOneWidget);
-      expect(glow(), findsOneWidget); // the count
-
-      await tester.tap(find.text('View Achievements'));
-      await tester.pumpAndSettle();
-
       expect(find.text('2 / 2 · 100%'), findsOneWidget);
       expect(glow(), findsNWidgets(2)); // the count and the finished game
     });
 
-    testWidgets('your own profile has the same count and button', (
+    testWidgets('your own profile lists your games the same way', (
       tester,
     ) async {
       repo.achievementSummaries['u1'] = [
@@ -883,14 +975,21 @@ void main() {
       ];
       await open(tester, const Scaffold(body: ProfileScreen()));
       await scrollToAchievements(tester);
+
       expect(find.text('/ 4 unlocked'), findsOneWidget);
-      expect(reads('achievements'), isEmpty);
-
-      await tester.tap(find.text('View Achievements'));
-      await tester.pumpAndSettle();
-
-      expect(repo.memberReads, contains('achievements:u1'));
       expect(find.text('2 / 4 · 50%'), findsOneWidget);
+      expect(repo.memberReads, contains('achievements:u1'));
+    });
+
+    testWidgets('your own empty profile says how to fill it', (tester) async {
+      await open(tester, const Scaffold(body: ProfileScreen()));
+      await tester.scrollUntilVisible(
+        find.textContaining('Sync your Steam library'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.textContaining('Sync your Steam library'), findsOneWidget);
     });
   });
 }

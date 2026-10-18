@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -132,7 +133,8 @@ class GameDetailScreen extends StatelessWidget {
                   const SizedBox(height: 14),
                   _SessionsPanel(gameId: game.id),
                   _AchievementsPanel(game: game),
-                  _AboutPanel(game: game),
+                  AboutPanel(game: game),
+                  GameInfoSections(game: game),
                 ]),
               ),
             ),
@@ -196,6 +198,10 @@ class _WishlistButton extends StatelessWidget {
   }
 }
 
+/// How long a snack bar with an Undo stays. Flutter keeps a snack bar that has an
+/// action on screen until it is dismissed, unless it says `persist: false`.
+const undoSnackBarDuration = Duration(seconds: 5);
+
 /// Puts [game] on the wishlist, or takes it off. A wishlisted game is a library
 /// entry with the Wishlist status, so unlike favorites (four at most) there is no
 /// limit. The snack bar can undo it. A game already in the library with another
@@ -220,6 +226,8 @@ void toggleWishlist(BuildContext context, Game game) {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
       content: Text(wishlisted ? 'Removed ${game.title} from your wishlist' : 'Added ${game.title} to your wishlist'),
+      duration: undoSnackBarDuration,
+      persist: false,
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () => wishlisted ? store.addToLibrary(game.id, GameStatus.wishlist) : store.removeFromLibrary(game.id),
@@ -354,6 +362,8 @@ class _StatusActions extends StatelessWidget {
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
           content: Text(message),
+          duration: undoSnackBarDuration,
+          persist: false,
           action: prev == null ? null : SnackBarAction(label: 'Undo', onPressed: () => store.setStatus(game.id, prev)),
         ));
     }
@@ -623,25 +633,6 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
                   )
                 : _list(achievements),
       ),
-    );
-  }
-}
-
-class _AboutPanel extends StatelessWidget {
-  const _AboutPanel({required this.game});
-  final Game game;
-
-  @override
-  Widget build(BuildContext context) {
-    return Panel(
-      title: 'About',
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(game.synopsis, style: const TextStyle(height: 1.45, color: Colors.white70)),
-        const SizedBox(height: 14),
-        Wrap(spacing: 8, runSpacing: 8, children: [for (final g in game.genres) Chip(label: Text(g))]),
-        const SizedBox(height: 12),
-        Text('Developer: ${game.developer}', style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
-      ]),
     );
   }
 }

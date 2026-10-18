@@ -12,6 +12,14 @@ String fmtThousands(int n) => n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3}
 
 String fmtHours(double h) => (h - h.roundToDouble()).abs() < 0.05 ? h.round().toString() : h.toStringAsFixed(1);
 String fmtMoney(double v) => '\$${v.toStringAsFixed(2)}';
+
+/// 40.9 -> "40.9%", 100 -> "100%", 0.04 -> "<0.1%": a share out of 100, one decimal.
+String fmtPercent(double p) {
+  if (p > 0 && p < 0.05) return '<0.1%';
+  final rounded = (p * 10).round() / 10;
+  return rounded == rounded.roundToDouble() ? '${rounded.round()}%' : '${rounded.toStringAsFixed(1)}%';
+}
+
 double? parseNum(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
 String timeAgo(DateTime t) {

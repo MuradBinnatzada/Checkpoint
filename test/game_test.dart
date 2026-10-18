@@ -70,9 +70,9 @@ void main() {
       final game = Game.fromJson(
         gameJson({
           'status': 'archived',
-          'playedOn': 'dreamcast',
+          'playedOn': 'atari2600',
           'dateAdded': 'last tuesday',
-          'platforms': ['pc', 'dreamcast', null, 7],
+          'platforms': ['pc', 'atari2600', null, 7],
         }),
       );
 
@@ -130,18 +130,36 @@ void main() {
       expect(gamePlatformToDb(GamePlatform.emulator), 'retro');
     });
 
-    test('platform names are matched loosely, and old consoles roll up', () {
+    test('platform names are matched loosely, and each console is its own platform', () {
       expect(gamePlatformFromDb('PS5'), GamePlatform.ps5);
       expect(gamePlatformFromDb('Steam Deck'), GamePlatform.steamDeck);
-      expect(gamePlatformFromDb('PlayStation 2'), GamePlatform.playstation);
+      expect(gamePlatformFromDb('PlayStation 2'), GamePlatform.ps2);
+      expect(gamePlatformFromDb('PlayStation 3'), GamePlatform.ps3);
+      expect(gamePlatformFromDb('Xbox 360'), GamePlatform.xbox360);
+      expect(gamePlatformFromDb('Xbox Series X|S'), GamePlatform.xboxSeries);
       expect(gamePlatformFromDb('Nintendo Switch'), GamePlatform.nswitch);
-      expect(gamePlatformFromDb('iOS'), GamePlatform.mobile);
+      expect(gamePlatformFromDb('Wii U'), GamePlatform.wiiU);
+      expect(gamePlatformFromDb('Dreamcast'), GamePlatform.dreamcast);
+      expect(gamePlatformFromDb('iOS'), GamePlatform.ios);
+    });
+
+    test('what older versions stored still reads as the whole family', () {
+      expect(gamePlatformFromDb('playstation'), GamePlatform.playstation);
+      expect(gamePlatformFromDb('xbox'), GamePlatform.xbox);
+      expect(gamePlatformFromDb('nintendo'), GamePlatform.nintendo);
+      expect(gamePlatformFromDb('mobile'), GamePlatform.mobile);
+    });
+
+    test('every platform survives being stored and read back', () {
+      for (final p in GamePlatform.values) {
+        expect(gamePlatformFromDb(gamePlatformToDb(p)), p, reason: p.name);
+      }
     });
 
     test('nothing, blanks and strangers are no platform', () {
       expect(gamePlatformFromDb(null), isNull);
       expect(gamePlatformFromDb('  '), isNull);
-      expect(gamePlatformFromDb('dreamcast'), isNull);
+      expect(gamePlatformFromDb('atari2600'), isNull);
       expect(gamePlatformFromDb(42), isNull);
     });
   });
@@ -166,7 +184,7 @@ void main() {
           'retro',
           'emulator',
           'PC',
-          'dreamcast',
+          'atari2600',
           null,
           3,
         ]),
@@ -186,16 +204,57 @@ void main() {
     });
   });
 
+  group('GamePlatform', () {
+    test('every platform has a family, and so an icon and a colour', () {
+      for (final p in GamePlatform.values) {
+        expect(p.icon, isNotNull, reason: p.name);
+        expect(p.color, isNotNull, reason: p.name);
+      }
+      expect(GamePlatform.ps3.family, PlatformFamily.playstation);
+      expect(GamePlatform.xbox360.family, PlatformFamily.xbox);
+      expect(GamePlatform.wiiU.family, PlatformFamily.nintendo);
+      expect(GamePlatform.dreamcast.family, PlatformFamily.sega);
+    });
+
+    test('only consoles and handhelds can be emulated', () {
+      expect(GamePlatform.ps3.isConsole, isTrue);
+      expect(GamePlatform.gba.isConsole, isTrue);
+      expect(GamePlatform.dreamcast.isConsole, isTrue);
+      for (final p in [GamePlatform.pc, GamePlatform.steamDeck, GamePlatform.ios, GamePlatform.android, GamePlatform.vr, GamePlatform.emulator]) {
+        expect(p.isConsole, isFalse, reason: p.name);
+      }
+    });
+
+    test('Emulator and Steam Deck are never a stored release platform name', () {
+      expect(gamePlatformToDb(GamePlatform.emulator), 'retro');
+      expect(gamePlatformToDb(GamePlatform.xbox360), 'xbox360');
+      expect(gamePlatformToDb(GamePlatform.wiiU), 'wiiU');
+    });
+
+    test('the pickers list the platforms of each family newest first', () {
+      final order = GamePlatform.values;
+      expect(order.indexOf(GamePlatform.ps5), lessThan(order.indexOf(GamePlatform.ps4)));
+      expect(order.indexOf(GamePlatform.ps4), lessThan(order.indexOf(GamePlatform.ps3)));
+      expect(order.indexOf(GamePlatform.xboxSeries), lessThan(order.indexOf(GamePlatform.xbox360)));
+      expect(order.indexOf(GamePlatform.nswitch), lessThan(order.indexOf(GamePlatform.wii)));
+    });
+  });
+
   group('Game.playedOnOptions', () {
-    // In the library only when it was played somewhere.
-    Game released(List<GamePlatform> platforms, {GamePlatform? playedOn}) =>
-        testGame(
-          'g',
-          title: 'Dream League Soccer',
-          status: playedOn == null ? null : GameStatus.playing,
-          platforms: platforms,
-          playedOn: playedOn,
-        );
+    // In the library only when it was played somewhere. Not a Steam game, unless
+    // [steamAppId] says so.
+    Game released(
+      List<GamePlatform> platforms, {
+      GamePlatform? playedOn,
+      int? steamAppId,
+    }) => testGame(
+      'g',
+      title: 'Dream League Soccer',
+      status: playedOn == null ? null : GameStatus.playing,
+      platforms: platforms,
+      playedOn: playedOn,
+      steamAppId: steamAppId,
+    );
 
     test('a mobile-only game offers Mobile and nothing else', () {
       expect(released([GamePlatform.mobile]).playedOnOptions, [
@@ -261,6 +320,42 @@ void main() {
 
     test('a game with no known release platform offers every choice', () {
       expect(released(const []).playedOnOptions, GamePlatform.selectable);
+    });
+
+    test('Skyrim offers PC, PS3 and Xbox 360 and what derives from them, nothing else', () {
+      expect(
+        released([GamePlatform.pc, GamePlatform.ps3, GamePlatform.xbox360], steamAppId: 489830, playedOn: GamePlatform.pc).playedOnOptions,
+        [GamePlatform.pc, GamePlatform.steamDeck, GamePlatform.ps3, GamePlatform.xbox360, GamePlatform.emulator],
+      );
+    });
+
+    test('a Steam game known only as PC offers just PC and Steam Deck, not every platform', () {
+      final options = released([GamePlatform.pc], steamAppId: 292030, playedOn: GamePlatform.pc).playedOnOptions;
+
+      expect(options, [GamePlatform.pc, GamePlatform.steamDeck]);
+      expect(options, isNot(contains(GamePlatform.mobile)));
+      expect(options, isNot(contains(GamePlatform.ios)));
+    });
+
+    test('a mobile-only game offers its own platforms and no PC', () {
+      expect(released([GamePlatform.ios, GamePlatform.android]).playedOnOptions, [GamePlatform.ios, GamePlatform.android]);
+    });
+
+    test('a game on retro consoles offers those consoles and Emulator', () {
+      expect(
+        released([GamePlatform.snes, GamePlatform.gba]).playedOnOptions,
+        [GamePlatform.snes, GamePlatform.gba, GamePlatform.emulator],
+      );
+    });
+
+    test('the older whole-family values still offer an emulator', () {
+      expect(released([GamePlatform.playstation]).playedOnOptions, [GamePlatform.playstation, GamePlatform.emulator]);
+    });
+
+    test('keeps a saved Nintendo choice, which is not on the list of unknown-game choices', () {
+      final options = released([GamePlatform.pc], playedOn: GamePlatform.nintendo).playedOnOptions;
+
+      expect(options, contains(GamePlatform.nintendo));
     });
   });
 

@@ -36,50 +36,127 @@ GameStatus? gameStatusFromDb(Object? value) {
   };
 }
 
-enum GamePlatform {
-  pc('PC', Icons.desktop_windows_rounded, Color(0xFF8AB4F8)),
-  steamDeck('Steam Deck', Icons.videogame_asset_rounded, Color(0xFF66C0F4)),
-  ps5('PS5', Icons.sports_esports_rounded, Color(0xFF5B8CFF)),
-  ps4('PS4', Icons.sports_esports_outlined, Color(0xFF7BA4FF)),
-  playstation('PlayStation', Icons.sports_esports_rounded, Color(0xFF6E96FF)),
-  xbox('Xbox', Icons.videogame_asset_rounded, Color(0xFF6CC24A)),
-  nswitch('Switch', Icons.videogame_asset_outlined, Color(0xFFFF6B6B)),
-  nintendo('Nintendo', Icons.videogame_asset_rounded, Color(0xFFE60012)),
-  mobile('Mobile', Icons.smartphone_rounded, Color(0xFFFFB74D)),
-  vr('VR', Icons.headset_rounded, Color(0xFFB388FF)),
-  emulator('Emulator', Icons.memory_rounded, Color(0xFF4DB6AC));
+/// Who makes a platform, or what kind of device it is. It gives each platform its
+/// icon and colour, and says which ones an emulator can stand in for.
+enum PlatformFamily {
+  pc(Icons.desktop_windows_rounded, Color(0xFF8AB4F8)),
+  playstation(Icons.sports_esports_rounded, Color(0xFF6E96FF)),
+  xbox(Icons.videogame_asset_rounded, Color(0xFF6CC24A)),
+  nintendo(Icons.videogame_asset_outlined, Color(0xFFFF6B6B)),
+  sega(Icons.album_rounded, Color(0xFF4FC3F7)),
+  mobile(Icons.smartphone_rounded, Color(0xFFFFB74D)),
+  vr(Icons.headset_rounded, Color(0xFFB388FF)),
 
-  const GamePlatform(this.label, this.icon, this.color);
-  final String label;
+  /// What no maker owns: the emulator.
+  other(Icons.memory_rounded, Color(0xFF4DB6AC));
+
+  const PlatformFamily(this.icon, this.color);
   final IconData icon;
   final Color color;
+
+  /// Game consoles and handhelds: the families an emulator can stand in for.
+  bool get isConsole =>
+      this == playstation || this == xbox || this == nintendo || this == sega;
+}
+
+/// A platform a game was released on or is played on, down to the console
+/// (PS3 and PS4 are two platforms, as on IGDB). Declared newest first within
+/// each family, which is the order the pickers list them in.
+///
+/// The enum name is what is stored (`games.platforms`, `user_games.played_on`,
+/// `log_entries.platform`), except for [emulator] (see [gamePlatformToDb]).
+/// [playstation], [xbox], [nintendo] and [mobile] are not a console but the whole
+/// family: older versions of the app stored those, so saved data keeps them.
+/// Nothing writes them any more, and a game's real platforms replace them as soon
+/// as its details load.
+enum GamePlatform {
+  pc('PC', PlatformFamily.pc),
+  steamDeck(
+    'Steam Deck',
+    PlatformFamily.pc,
+    icon: Icons.videogame_asset_rounded,
+    color: Color(0xFF66C0F4),
+  ),
+
+  ps5('PS5', PlatformFamily.playstation),
+  ps4('PS4', PlatformFamily.playstation),
+  ps3('PS3', PlatformFamily.playstation),
+  ps2('PS2', PlatformFamily.playstation),
+  ps1('PS1', PlatformFamily.playstation),
+  vita('PS Vita', PlatformFamily.playstation),
+  psp('PSP', PlatformFamily.playstation),
+  playstation('PlayStation', PlatformFamily.playstation),
+
+  xboxSeries('Xbox Series X|S', PlatformFamily.xbox),
+  xboxOne('Xbox One', PlatformFamily.xbox),
+  xbox360('Xbox 360', PlatformFamily.xbox),
+  xboxOriginal('Xbox (Original)', PlatformFamily.xbox),
+  xbox('Xbox', PlatformFamily.xbox),
+
+  nswitch2('Switch 2', PlatformFamily.nintendo),
+  nswitch('Switch', PlatformFamily.nintendo),
+  wiiU('Wii U', PlatformFamily.nintendo),
+  wii('Wii', PlatformFamily.nintendo),
+  gamecube('GameCube', PlatformFamily.nintendo),
+  n64('Nintendo 64', PlatformFamily.nintendo),
+  snes('SNES', PlatformFamily.nintendo),
+  nes('NES', PlatformFamily.nintendo),
+  n3ds('3DS', PlatformFamily.nintendo),
+  nds('DS', PlatformFamily.nintendo),
+  gba('Game Boy Advance', PlatformFamily.nintendo),
+  gbc('Game Boy Color', PlatformFamily.nintendo),
+  gameBoy('Game Boy', PlatformFamily.nintendo),
+  virtualBoy('Virtual Boy', PlatformFamily.nintendo),
+  nintendo('Nintendo', PlatformFamily.nintendo),
+
+  dreamcast('Dreamcast', PlatformFamily.sega),
+  saturn('Saturn', PlatformFamily.sega),
+  genesis('Genesis', PlatformFamily.sega),
+  masterSystem('Master System', PlatformFamily.sega),
+  gameGear('Game Gear', PlatformFamily.sega),
+
+  ios('iOS', PlatformFamily.mobile),
+  android('Android', PlatformFamily.mobile),
+  mobile('Mobile', PlatformFamily.mobile),
+
+  vr('VR', PlatformFamily.vr),
+  emulator('Emulator', PlatformFamily.other);
+
+  const GamePlatform(this.label, this.family, {this._icon, this._color});
+
+  final String label;
+  final PlatformFamily family;
+  final IconData? _icon;
+  final Color? _color;
+
+  IconData get icon => _icon ?? family.icon;
+  Color get color => _color ?? family.color;
 
   /// True for the ways of playing a game that are never a release platform: no
   /// game is "released on" Steam Deck or an emulator. They can be chosen as
   /// "played on" (see [Game.playedOnOptions]) but are not part of
   /// [Game.platforms], which holds release platforms only.
-  bool get isManualOnly =>
-      this == GamePlatform.steamDeck || this == GamePlatform.emulator;
+  bool get isManualOnly => this == steamDeck || this == emulator;
 
-  /// Platforms offered in the "Played on" pickers. The generic Nintendo entry
-  /// is left out because Switch covers it; it stays in the enum so existing
-  /// data and the game's own platform badges still work.
-  static final List<GamePlatform> selectable = [
-    for (final p in values)
-      if (p != GamePlatform.nintendo) p,
+  /// A console or handheld, which an emulator can stand in for.
+  bool get isConsole => family.isConsole;
+
+  /// What the pickers offer for a game whose release platforms are not known (see
+  /// [Game.playedOnOptions]): the platforms people play on today. A game whose
+  /// platforms are known is offered exactly those.
+  static const List<GamePlatform> selectable = [
+    pc,
+    steamDeck,
+    ps5,
+    ps4,
+    xboxSeries,
+    xboxOne,
+    nswitch,
+    ios,
+    android,
+    vr,
+    emulator,
   ];
-
-  /// Console and handheld families a game can be played on an emulator from.
-  /// Not PC or mobile (they are the platform the emulator itself runs on), and
-  /// not VR.
-  static const Set<GamePlatform> _emulatable = {
-    GamePlatform.ps5,
-    GamePlatform.ps4,
-    GamePlatform.playstation,
-    GamePlatform.xbox,
-    GamePlatform.nswitch,
-    GamePlatform.nintendo,
-  };
 }
 
 // Emulator is stored under its original name, 'retro', so saved rows keep
@@ -92,27 +169,47 @@ GamePlatform? gamePlatformFromDb(Object? value) {
   if (raw == null || raw.isEmpty) return null;
   final normalized = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
   return switch (normalized) {
-    'pc' => GamePlatform.pc,
+    'pc' || 'windows' || 'win' || 'mac' || 'linux' || 'dos' => GamePlatform.pc,
     'steamdeck' => GamePlatform.steamDeck,
     'ps5' || 'playstation5' => GamePlatform.ps5,
     'ps4' || 'playstation4' => GamePlatform.ps4,
-    // Generic PlayStation: legacy consoles (PS1/PS2/PS3/PSP/Vita) roll up here.
-    'playstation' ||
-    'ps1' ||
-    'ps2' ||
-    'ps3' ||
-    'psp' ||
-    'vita' ||
-    'psvita' ||
-    'playstation1' ||
-    'playstation2' ||
-    'playstation3' ||
-    'playstationportable' ||
-    'playstationvita' => GamePlatform.playstation,
-    'xbox' || 'xboxseries' || 'xboxone' => GamePlatform.xbox,
+    'ps3' || 'playstation3' => GamePlatform.ps3,
+    'ps2' || 'playstation2' => GamePlatform.ps2,
+    'ps1' || 'psx' || 'playstation1' => GamePlatform.ps1,
+    'vita' || 'psvita' || 'playstationvita' => GamePlatform.vita,
+    'psp' || 'playstationportable' => GamePlatform.psp,
+    'playstation' => GamePlatform.playstation,
+    'xboxseries' ||
+    'xboxseriesx' ||
+    'xboxseriess' ||
+    'xboxseriesxs' => GamePlatform.xboxSeries,
+    'xboxone' => GamePlatform.xboxOne,
+    'xbox360' => GamePlatform.xbox360,
+    'xboxoriginal' => GamePlatform.xboxOriginal,
+    'xbox' => GamePlatform.xbox,
+    'nswitch2' || 'switch2' || 'nintendoswitch2' => GamePlatform.nswitch2,
     'switch' || 'nswitch' || 'nintendoswitch' => GamePlatform.nswitch,
+    'wiiu' => GamePlatform.wiiU,
+    'wii' => GamePlatform.wii,
+    'gamecube' || 'ngc' => GamePlatform.gamecube,
+    'n64' || 'nintendo64' => GamePlatform.n64,
+    'snes' || 'supernintendo' => GamePlatform.snes,
+    'nes' => GamePlatform.nes,
+    'n3ds' || '3ds' || 'nintendo3ds' => GamePlatform.n3ds,
+    'nds' || 'ds' || 'nintendods' => GamePlatform.nds,
+    'gba' || 'gameboyadvance' => GamePlatform.gba,
+    'gbc' || 'gameboycolor' => GamePlatform.gbc,
+    'gameboy' || 'gb' => GamePlatform.gameBoy,
+    'virtualboy' => GamePlatform.virtualBoy,
     'nintendo' => GamePlatform.nintendo,
-    'mobile' || 'ios' || 'android' => GamePlatform.mobile,
+    'dreamcast' || 'dc' => GamePlatform.dreamcast,
+    'saturn' || 'segasaturn' => GamePlatform.saturn,
+    'genesis' || 'megadrive' || 'segagenesis' => GamePlatform.genesis,
+    'mastersystem' || 'segamastersystem' => GamePlatform.masterSystem,
+    'gamegear' || 'segagamegear' => GamePlatform.gameGear,
+    'ios' => GamePlatform.ios,
+    'android' => GamePlatform.android,
+    'mobile' => GamePlatform.mobile,
     'vr' => GamePlatform.vr,
     // 'retro' is how Emulator is stored (see gamePlatformToDb); accept both.
     'emulator' || 'retro' => GamePlatform.emulator,
@@ -285,17 +382,17 @@ class Game {
   bool get inLibrary => status != null;
 
   /// What the "Played on" pickers offer for this game, in [GamePlatform] order:
-  /// the platforms it was released on, the saved choice (so it never vanishes),
-  /// Steam Deck when there is a PC release (Steam Deck plays PC games), and
-  /// Emulator when there is a console release to emulate. A game with no known
-  /// release platform offers every choice, as nothing says which are wrong.
+  /// exactly the platforms it was released on, the saved choice (so it never
+  /// vanishes), Steam Deck when there is a PC release (Steam Deck plays PC games),
+  /// and Emulator when there is a console release to emulate. A game with no known
+  /// release platform offers [GamePlatform.selectable], as nothing says which are
+  /// wrong.
   List<GamePlatform> get playedOnOptions {
     final options = <GamePlatform>{
       ...platforms,
       ?playedOn,
       if (platforms.contains(GamePlatform.pc)) GamePlatform.steamDeck,
-      if (platforms.any(GamePlatform._emulatable.contains))
-        GamePlatform.emulator,
+      if (platforms.any((p) => p.isConsole)) GamePlatform.emulator,
     };
     if (options.isEmpty) options.addAll(GamePlatform.selectable);
     return options.toList()..sort((a, b) => a.index.compareTo(b.index));
@@ -317,6 +414,8 @@ class Game {
     String? coverUrl,
     bool? isFavorite,
     List<Achievement>? achievements,
+    List<GamePlatform>? platforms,
+    List<String>? genres,
   }) =>
       Game(
         id: id,
@@ -324,11 +423,14 @@ class Game {
         publisher: publisher,
         developer: developer,
         releaseYear: releaseYear,
-        platforms: platforms,
-        genres: genres,
+        platforms: platforms ?? this.platforms,
+        genres: genres ?? this.genres,
         synopsis: synopsis,
         coverColors: coverColors,
-        coverIcon: coverIcon,
+        // The placeholder icon follows the genres and platforms when they change.
+        coverIcon: platforms == null && genres == null
+            ? coverIcon
+            : coverIconFor(genres ?? this.genres, platforms ?? this.platforms),
         coverUrl: coverUrl ?? this.coverUrl,
         igdbId: igdbId,
         steamAppId: steamAppId,
