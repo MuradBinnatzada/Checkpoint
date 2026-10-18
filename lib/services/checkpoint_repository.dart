@@ -12,6 +12,7 @@ import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_cover.dart';
+import 'package:checkpoint/models/game_friends.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/public_profile.dart';
@@ -742,6 +743,43 @@ class CheckpointRepository {
         .map<SocialUser>(_socialUserFromProfile)
         .toList(growable: false);
     return ResultsPage<SocialUser>(users, hasMore: users.length >= limit);
+  }
+
+  /// Members per status the Friends panel of a game's screen is sent; the
+  /// counts cover all of them.
+  static const int friendsPerStatus = 20;
+
+  /// The members the signed-in one follows who have [gameId] in their library,
+  /// with their status and rating: [friendsPerStatus] at most per status (rated
+  /// first, then the most recently added) and how many there are in all. One
+  /// request. Empty without a session.
+  Future<GameFriends> fetchFriendsWithGame(String gameId) async {
+    final data = await _client.rpc(
+      Db.rpcFollowingGameActivity,
+      params: {'target_game': gameId, 'per_status': friendsPerStatus},
+    );
+    if (data is! List) return const GameFriends();
+    final friends = <FriendWithGame>[];
+    final totals = <GameStatus, int>{};
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final status = gameStatusFromDb(row[Db.status]);
+      if (status == null) continue;
+      totals[status] = _int(row['status_total']);
+      friends.add(
+        FriendWithGame(
+          member: _socialUserFromProfile(row),
+          status: status,
+          rating: _double(row[Db.rating]),
+          dateAdded: _date(row[Db.dateAdded]),
+        ),
+      );
+    }
+    return GameFriends(
+      friends: List.unmodifiable(friends),
+      totals: Map.unmodifiable(totals),
+    );
   }
 
   /// [userId]'s achievements added up: unlocked, total, games with any and games

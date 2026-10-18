@@ -26,6 +26,10 @@ abstract final class Db {
   static const rpcAchievementSummary = 'public_achievement_summary';
   static const rpcGameAchievements = 'public_game_achievements';
 
+  /// The members the signed-in one follows who have a game, with their status
+  /// and rating: the Friends panel on a game's screen.
+  static const rpcFollowingGameActivity = 'following_game_activity';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';

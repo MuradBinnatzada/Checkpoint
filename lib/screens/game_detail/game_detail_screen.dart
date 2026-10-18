@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -133,6 +134,7 @@ class GameDetailScreen extends StatelessWidget {
                   const SizedBox(height: 14),
                   _SessionsPanel(gameId: game.id),
                   _AchievementsPanel(game: game),
+                  FriendsPanel(game: game),
                   AboutPanel(game: game),
                   GameInfoSections(game: game),
                 ]),

@@ -1,0 +1,239 @@
+import 'package:flutter/material.dart';
+
+import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_friends.dart';
+import 'package:checkpoint/state/game_friends_store.dart';
+import 'package:checkpoint/state/load_status.dart';
+import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/palette.dart';
+import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/widgets/panel.dart';
+import 'package:checkpoint/widgets/profile_avatar.dart';
+import 'package:checkpoint/widgets/star_rating.dart';
+
+/// Which of the members you follow completed the game, are playing it or want to
+/// play it (To Play or Wishlist), with their photos (each opens their profile)
+/// and the rating they gave. Asks when the screen opens (see [GameFriendsStore]);
+/// signed out, until the answer is here, when it fails or when none of them has
+/// the game, nothing is drawn.
+class FriendsPanel extends StatefulWidget {
+  const FriendsPanel({super.key, required this.game});
+
+  final Game game;
+
+  @override
+  State<FriendsPanel> createState() => _FriendsPanelState();
+}
+
+class _FriendsPanelState extends State<FriendsPanel> {
+  @override
+  void initState() {
+    super.initState();
+    _loadAfterFrame();
+  }
+
+  @override
+  void didUpdateWidget(FriendsPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.game.id != widget.game.id) _loadAfterFrame();
+  }
+
+  /// After the frame: loading notifies, which isn't allowed during build.
+  void _loadAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<GameFriendsStore>().load(widget.game.id);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final view = context.watch<GameFriendsStore>().viewOf(widget.game.id);
+    final friends = view.friends;
+    if (view.status != LoadStatus.ready || friends.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final groups = [
+      for (final group in FriendGroup.values)
+        if (friends.countOf(group) > 0) group,
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Panel(
+        title: 'Friends',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < groups.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: 28,
+                  color: Colors.white.withValues(alpha: 0.06),
+                ),
+              _FriendGroupRow(
+                group: groups[i],
+                count: friends.countOf(groups[i]),
+                members: friends.membersOf(groups[i]),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "3 friends completed it", "1 friend is playing", "2 friends want to play".
+String friendGroupHeadline(FriendGroup group, int count) {
+  final one = count == 1;
+  final who = '$count ${one ? 'friend' : 'friends'}';
+  return switch (group) {
+    FriendGroup.completed => '$who completed it',
+    FriendGroup.playing => '$who ${one ? 'is' : 'are'} playing',
+    FriendGroup.wantToPlay => '$who ${one ? 'wants' : 'want'} to play',
+  };
+}
+
+class _FriendGroupRow extends StatelessWidget {
+  const _FriendGroupRow({
+    required this.group,
+    required this.count,
+    required this.members,
+  });
+
+  final FriendGroup group;
+
+  /// All of them, which can be more than [members] holds.
+  final int count;
+  final List<FriendWithGame> members;
+
+  static const double _avatar = 46;
+  static const double _star = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final more = count - members.length;
+    final status = group.statuses.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(status.icon, size: 16, color: status.color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                friendGroupHeadline(group, count),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Palette.muted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: _avatar + 6 + _star + 2,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: members.length + (more > 0 ? 1 : 0),
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            itemBuilder: (context, i) => i < members.length
+                ? _FriendAvatar(
+                    friend: members[i],
+                    size: _avatar,
+                    starSize: _star,
+                  )
+                : _MoreBubble(more: more, size: _avatar),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A friend's photo, which opens their profile, over the stars they gave (blank
+/// when they did not rate the game).
+class _FriendAvatar extends StatelessWidget {
+  const _FriendAvatar({
+    required this.friend,
+    required this.size,
+    required this.starSize,
+  });
+
+  final FriendWithGame friend;
+  final double size;
+  final double starSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final member = friend.member;
+    return SizedBox(
+      // Wide enough for five stars under the photo.
+      width: starSize * 5 + 2,
+      child: Column(
+        children: [
+          Tooltip(
+            message: member.name,
+            child: Semantics(
+              button: true,
+              label: 'Open ${member.name}\'s profile',
+              excludeSemantics: true,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () =>
+                    openProfile(context, userId: member.id, preview: member),
+                child: ProfileAvatar(
+                  name: member.name,
+                  size: size,
+                  imageUrl: member.avatarUrl,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (friend.rating > 0)
+            StarRating(rating: friend.rating, size: starSize)
+          else
+            SizedBox(height: starSize),
+        ],
+      ),
+    );
+  }
+}
+
+/// How many more friends have the status than are shown.
+class _MoreBubble extends StatelessWidget {
+  const _MoreBubble({required this.more, required this.size});
+
+  final int more;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.06),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: Text(
+          '+$more',
+          style: const TextStyle(
+            color: Palette.muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}

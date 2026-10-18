@@ -1111,6 +1111,54 @@ void main() {
       expect(await repo.fetchPublicGameAchievements('m1', 'g2'), isNull);
     });
 
+    test('friends with a game are one function call: each with their status, rating and photo, and the counts', () async {
+      api.reply([
+        {
+          'id': 'm1',
+          'handle': 'zed',
+          'display_name': 'Zed',
+          'avatar_url': 'https://example.com/zed.jpg',
+          'status': 'completed',
+          'rating': 4.5,
+          'date_added': '2026-03-01T10:00:00+00:00',
+          'status_total': 3,
+        },
+        {
+          'id': 'm2',
+          'handle': 'amy',
+          'display_name': null,
+          'avatar_url': null,
+          'status': 'to_play',
+          'rating': '0',
+          'date_added': null,
+          'status_total': '1',
+        },
+        // A status this build does not know is skipped, not a failed read.
+        {'id': 'm3', 'handle': 'bo', 'status': 'abandoned', 'rating': 0, 'status_total': 1},
+      ]);
+
+      final friends = await repo.fetchFriendsWithGame('g1');
+
+      expect(api.last.url.path, '/rest/v1/rpc/following_game_activity');
+      expect(api.bodyOf(api.last), {'target_game': 'g1', 'per_status': CheckpointRepository.friendsPerStatus});
+      expect(friends.friends.map((f) => f.member.id), ['m1', 'm2']);
+      final zed = friends.friends.first;
+      expect(zed.member.name, 'Zed');
+      expect(zed.member.handle, '@zed');
+      expect(zed.member.avatarUrl, 'https://example.com/zed.jpg');
+      expect(zed.status, GameStatus.completed);
+      expect(zed.rating, 4.5);
+      expect(zed.dateAdded, DateTime.utc(2026, 3, 1, 10).toLocal());
+      final amy = friends.friends.last;
+      expect(amy.member.name, 'amy'); // no display name: the handle
+      expect(amy.rating, 0);
+      expect(amy.dateAdded, isNull);
+      expect(friends.totals, {GameStatus.completed: 3, GameStatus.toPlay: 1});
+
+      api.reply(null);
+      expect((await repo.fetchFriendsWithGame('g2')).isEmpty, isTrue);
+    });
+
     test('no request for another member ever touches the private tables', () async {
       api.reply({'id': 'm1', 'handle': 'zed', 'display_name': 'Zed'});
       await repo.fetchPublicProfile('m1');
@@ -1120,6 +1168,7 @@ void main() {
       await repo.fetchPublicActivity('m1');
       await repo.fetchFollowers('m1');
       await repo.fetchFollowing('m1');
+      await repo.fetchFriendsWithGame('g1');
 
       for (final request in api.requests) {
         expect(request.url.path, isNot('/rest/v1/profiles'));

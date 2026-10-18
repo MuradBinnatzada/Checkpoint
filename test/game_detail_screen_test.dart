@@ -4,6 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/models/game_friends.dart';
+import 'package:checkpoint/screens/game_detail/friends_panel.dart';
+import 'package:checkpoint/screens/profile/public_profile_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/screens/game_detail/game_detail_screen.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
@@ -11,7 +14,9 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
+import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
+import 'package:checkpoint/widgets/star_rating.dart';
 
 import 'support/fakes.dart';
 
@@ -180,6 +185,106 @@ void main() {
       final screen = tester.widget<GameDetailScreen>(find.byType(GameDetailScreen).last);
       expect(screen.gameId, 'similar-1');
       expect(find.text('Game not found'), findsNothing);
+    });
+  });
+
+  group('friends who have the game', () {
+    Future<void> openWithFriends(WidgetTester tester, GameFriends friends, {bool signedIn = true}) async {
+      // Tall enough to have the whole page on screen.
+      tester.view.physicalSize = const Size(800, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      stores = AppStores(
+        repository: repo,
+        authService: FakeAuthService(signedIn ? testUser('u1') : null),
+        connectivity: FakeConnectivity(),
+        apiService: detailsApi,
+      );
+      repo.library = [testGame('g1', cover: false)];
+      repo.popular = [testGame('g1', status: null, cover: false)];
+      repo.friendsWithGame['g1'] = friends;
+      await start(tester, const GameDetailScreen(gameId: 'g1'));
+      await tester.pumpAndSettle();
+    }
+
+    Finder inPanel(Finder finder) => find.descendant(of: find.byType(FriendsPanel), matching: finder);
+
+    testWidgets('shows who completed it, is playing it and wants to play it, with the stars they gave', (tester) async {
+      await openWithFriends(
+        tester,
+        testGameFriends([
+          testFriend('a', GameStatus.completed, rating: 4.5, name: 'Ann'),
+          testFriend('b', GameStatus.completed, name: 'Ben'),
+          testFriend('c', GameStatus.playing, name: 'Cy'),
+          testFriend('d', GameStatus.wishlist, name: 'Di'),
+          testFriend('e', GameStatus.toPlay, name: 'Ed'),
+          testFriend('f', GameStatus.dropped, name: 'Fay'),
+        ]),
+      );
+
+      expect(repo.friendReads, ['g1']);
+      expect(inPanel(find.text('Friends')), findsOneWidget);
+      expect(find.text('2 friends completed it'), findsOneWidget);
+      expect(find.text('1 friend is playing'), findsOneWidget);
+      expect(find.text('2 friends want to play'), findsOneWidget);
+      for (final name in ['Ann', 'Ben', 'Cy', 'Di', 'Ed']) {
+        expect(find.byTooltip(name), findsOneWidget, reason: name);
+      }
+      // Dropped is not a row.
+      expect(find.byTooltip('Fay'), findsNothing);
+      // Only Ann rated it.
+      expect(tester.widget<StarRating>(inPanel(find.byType(StarRating))).rating, 4.5);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('says how many more have it than were sent', (tester) async {
+      await openWithFriends(
+        tester,
+        testGameFriends([testFriend('a', GameStatus.completed, name: 'Ann')], totals: {GameStatus.completed: 25}),
+      );
+
+      expect(find.text('25 friends completed it'), findsOneWidget);
+      expect(find.text('+24'), findsOneWidget);
+      expect(find.text('1 friend is playing'), findsNothing);
+    });
+
+    testWidgets('tapping a friend opens their profile', (tester) async {
+      await openWithFriends(tester, testGameFriends([testFriend('a', GameStatus.playing, name: 'Ann')]));
+
+      await tester.tap(find.byTooltip('Ann'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<PublicProfileScreen>(find.byType(PublicProfileScreen)).userId, 'a');
+    });
+
+    testWidgets('is left out when none of them has the game', (tester) async {
+      await openWithFriends(tester, testGameFriends([testFriend('f', GameStatus.dropped)]));
+
+      expect(repo.friendReads, ['g1']);
+      expect(inPanel(find.text('Friends')), findsNothing);
+      expect(find.byType(Panel), findsWidgets); // the rest of the page is there
+    });
+
+    testWidgets('is left out when the read fails', (tester) async {
+      repo.failFriendsReads = true;
+      await openWithFriends(tester, testGameFriends([testFriend('a', GameStatus.playing, name: 'Ann')]));
+
+      expect(inPanel(find.text('Friends')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('signed out, nothing is asked and nothing is shown', (tester) async {
+      await openWithFriends(tester, testGameFriends([testFriend('a', GameStatus.playing, name: 'Ann')]), signedIn: false);
+
+      expect(repo.friendReads, isEmpty);
+      expect(inPanel(find.text('Friends')), findsNothing);
+    });
+
+    test('the headline counts in words', () {
+      expect(friendGroupHeadline(FriendGroup.completed, 1), '1 friend completed it');
+      expect(friendGroupHeadline(FriendGroup.playing, 3), '3 friends are playing');
+      expect(friendGroupHeadline(FriendGroup.wantToPlay, 1), '1 friend wants to play');
+      expect(friendGroupHeadline(FriendGroup.wantToPlay, 2), '2 friends want to play');
     });
   });
 

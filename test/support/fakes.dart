@@ -10,6 +10,7 @@ import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/models/game_friends.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -99,6 +100,36 @@ SocialUser testMember(String id, {String? name, String? avatarUrl}) => SocialUse
   gamesLogged: 0,
   followers: 0,
   avatarUrl: avatarUrl,
+);
+
+/// A member the signed-in user follows who has a game with [status].
+FriendWithGame testFriend(
+  String id,
+  GameStatus status, {
+  double rating = 0,
+  DateTime? added,
+  String? name,
+}) => FriendWithGame(
+  member: testMember(id, name: name),
+  status: status,
+  rating: rating,
+  dateAdded: added,
+);
+
+/// [friends] as `following_game_activity` sends them: [totals] defaults to
+/// counting [friends], as when every one of them was sent.
+GameFriends testGameFriends(
+  List<FriendWithGame> friends, {
+  Map<GameStatus, int>? totals,
+}) => GameFriends(
+  friends: friends,
+  totals:
+      totals ??
+      {
+        for (final status in GameStatus.values)
+          if (friends.any((f) => f.status == status))
+            status: friends.where((f) => f.status == status).length,
+      },
 );
 
 /// A [CheckpointRepository] that answers from memory. [offline] makes every read
@@ -522,6 +553,25 @@ class FakeRepository implements CheckpointRepository {
     _checkOnline();
     if (failFollowLists) throw Exception('list failed');
     return _page(followingOf[userId] ?? const [], offset, limit);
+  }
+
+  /// The members the signed-in user follows who have each game, by game id, as
+  /// `following_game_activity` answers. [friendsGate] holds the read until
+  /// completed; [failFriendsReads] fails it.
+  final Map<String, GameFriends> friendsWithGame = {};
+  Completer<void>? friendsGate;
+  bool failFriendsReads = false;
+
+  /// The games [fetchFriendsWithGame] was asked about, in order.
+  final List<String> friendReads = [];
+
+  @override
+  Future<GameFriends> fetchFriendsWithGame(String gameId) async {
+    friendReads.add(gameId);
+    await friendsGate?.future;
+    _checkOnline();
+    if (failFriendsReads) throw Exception('friends read failed');
+    return friendsWithGame[gameId] ?? const GameFriends();
   }
 
   /// Added up from [achievementSummaries], as the database does.
