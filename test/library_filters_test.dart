@@ -355,4 +355,70 @@ void main() {
       expect(find.text('Horror (3)'), findsOneWidget);
     },
   );
+
+  testWidgets('a decade narrows the library by release year, and shows as a chip', (
+    tester,
+  ) async {
+    repo.library = [
+      testGame('a', title: 'Alpha', cover: false, year: 2005),
+      testGame('b', title: 'Bravo', cover: false, year: 2015),
+      testGame('c', title: 'Charlie', cover: false, year: 2018),
+    ];
+    await start(tester);
+    await openSheet(tester);
+
+    expect(find.text('Release year'), findsOneWidget);
+    await tester.tap(find.text('2010s'));
+    await tester.pump();
+    expect(find.text('Showing 2 of 3 games'), findsOneWidget);
+    await closeSheet(tester);
+
+    expect(find.text('ALPHA'), findsNothing);
+    expect(find.text('BRAVO'), findsWidgets);
+    expect(find.widgetWithText(InputChip, '2010s'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Remove 2010s'));
+    await tester.pump();
+    expect(find.text('ALPHA'), findsWidgets);
+  });
+
+  testWidgets('several platforms can be picked: a game on any of them stays', (
+    tester,
+  ) async {
+    repo.library = [
+      testGame('a', title: 'Alpha', cover: false, platforms: [GamePlatform.pc]),
+      testGame(
+        'b',
+        title: 'Bravo',
+        cover: false,
+        platforms: [GamePlatform.ps4],
+        playedOn: GamePlatform.ps4,
+      ),
+      testGame(
+        'c',
+        title: 'Charlie',
+        cover: false,
+        platforms: [GamePlatform.nswitch],
+        playedOn: GamePlatform.nswitch,
+      ),
+    ];
+    await start(tester);
+    await openSheet(tester);
+
+    await tester.tap(find.text('PS4'));
+    await tester.pump();
+    await tester.tap(find.text('Switch'));
+    await tester.pump();
+    expect(find.text('Showing 2 of 3 games'), findsOneWidget);
+    expect(find.text('2 picked'), findsOneWidget);
+    await closeSheet(tester);
+
+    expect(find.text('ALPHA'), findsNothing);
+    expect(find.widgetWithText(InputChip, 'PS4'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'Switch'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(Badge), matching: find.text('2')),
+      findsOneWidget,
+    );
+  });
 }

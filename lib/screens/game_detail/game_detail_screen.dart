@@ -6,6 +6,7 @@ import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
+import 'package:checkpoint/sheets/game_backdrop_sheet.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -50,8 +51,20 @@ class GameDetailScreen extends StatelessWidget {
           ),
           actions: [
             // Wishlist and favorite are always side by side, whatever the game's
-            // status. Favoriting a game that is not in the library adds it.
+            // status. Favoriting a game that is not in the library adds it. The
+            // backdrop is saved on the library row, so it needs one.
             if (isLoggedIn) ...[
+              if (canChangeBackdrop(game))
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Center(
+                    child: _RoundIconButton(
+                      icon: Icons.wallpaper_rounded,
+                      tooltip: 'Change backdrop',
+                      onTap: () => showGameBackdropSheet(context, game.id),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.only(right: 10),
                 child: Center(child: _WishlistButton(game: game)),
@@ -245,7 +258,8 @@ class _DetailHeaderArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(fit: StackFit.expand, children: [
-      // Blurred cover-art backdrop (baked in, not a BackdropFilter: see CoverBackdrop).
+      // The chosen backdrop, or the blurred cover art (baked in, not a
+      // BackdropFilter: see CoverBackdrop).
       CoverBackdrop(game: game),
       Padding(
         padding: EdgeInsets.fromLTRB(20, topInset + kToolbarHeight, 20, 20),

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
@@ -14,6 +15,11 @@ import 'package:checkpoint/state/nav_store.dart';
 /// The Search tab: games from IGDB, members from the database, and the recent
 /// searches. Results are paged, one request at a time, as the lists are scrolled.
 /// Nothing here is cached for offline use: a search is a live question.
+///
+/// The game search can be narrowed by [activeFilters] (genres, game modes,
+/// themes, platforms, release years). With filters and no search text, the
+/// results are the games matching the filters, in their sort order: what a tag
+/// tapped on a game's screen opens (see [NavStore.switchTab]).
 class SearchStore extends ChangeNotifier {
   SearchStore({
     required this._repository,
@@ -35,15 +41,29 @@ class SearchStore extends ChangeNotifier {
     _recentSearches = List<String>.of(prefs.getStringList('recent_searches') ?? const []);
     _userId = _auth.user?.id;
     _authSubscription = _auth.userChanges.listen(_onUser);
-    // Leaving the Search tab drops its results.
-    _nav.addListener(clearSearch);
+    _nav.addListener(_onNavChanged);
   }
 
   @override
   void dispose() {
     unawaited(_authSubscription?.cancel());
-    _nav.removeListener(clearSearch);
+    _nav.removeListener(_onNavChanged);
     super.dispose();
+  }
+
+  /// Leaving the Search tab drops its results and its filters. Being sent to it
+  /// with filters browses by them.
+  void _onNavChanged() {
+    final requested = _nav.takeDiscoverFilters();
+    if (requested != null) {
+      unawaited(browseBy(requested));
+      return;
+    }
+    clearSearch();
+    if (_activeFilters != FilterOptions.none) {
+      _activeFilters = FilterOptions.none;
+      notifyListeners();
+    }
   }
 
   /// A different account (or signing out) must not see the previous account's
@@ -80,11 +100,54 @@ class SearchStore extends ChangeNotifier {
     await prefs.setStringList('recent_searches', _recentSearches);
   }
 
+  // ---- Filters ----
+
+  FilterOptions _activeFilters = FilterOptions.none;
+
+  /// What the game search is narrowed down by, and the order of a filtered list
+  /// without search text.
+  FilterOptions get activeFilters => _activeFilters;
+
+  /// Narrows the game search down by [filter]. With [triggerSearch] the results
+  /// are fetched again for it: the current search text narrowed by [filter], or
+  /// with no text the games matching it (with nothing picked either, the results
+  /// are dropped). Without, the results stay as they are until the next search.
+  Future<void> setFilter(
+    FilterOptions filter, {
+    bool triggerSearch = true,
+  }) async {
+    if (filter == _activeFilters &&
+        (!triggerSearch || filter == _resultsFilters)) {
+      return;
+    }
+    _activeFilters = filter;
+    notifyListeners();
+    if (triggerSearch) await _search(_searchTerm, remember: false);
+  }
+
+  int _browseRequests = 0;
+
+  /// How many times [browseBy] replaced the search with filters. The Search
+  /// screen empties its search box when this goes up.
+  int get browseRequests => _browseRequests;
+
+  /// Drops the search text and shows the games matching [filters].
+  Future<void> browseBy(FilterOptions filters) async {
+    _browseRequests++;
+    _activeFilters = filters;
+    notifyListeners();
+    await _search('', remember: false);
+  }
+
   // ---- Game search paging ----
   // [searchExternalGames] loads the first page; [loadMoreSearchResults] appends
   // the next ones as the results list is scrolled.
   List<Game> _searchResults = [];
   String _searchTerm = '';
+  // The filters [_searchResults] were fetched with: the next pages use them too,
+  // even when [_activeFilters] changed without a new search.
+  FilterOptions _resultsFilters = FilterOptions.none;
+  bool _searchLoading = false;
   int _searchNextOffset = 0; // IGDB hits consumed so far: where the next page starts
   bool _searchHasMore = false;
   bool _searchLoadingMore = false;
@@ -96,6 +159,13 @@ class SearchStore extends ChangeNotifier {
   int _searchSeq = 0;
 
   List<Game> get searchResults => _searchResults;
+
+  /// The text of the search on screen (trimmed); empty for none, or for a list
+  /// of games matching the filters alone.
+  String get searchTerm => _searchTerm;
+
+  /// The first page of a search is being fetched.
+  bool get searchLoading => _searchLoading;
 
   /// A search result by id, for opening or adding a game that isn't in the
   /// library yet.
@@ -116,17 +186,33 @@ class SearchStore extends ChangeNotifier {
   /// retries it.
   bool get searchLoadMoreFailed => _searchLoadMoreFailed;
 
-  Future<void> searchExternalGames(String query) async {
-    unawaited(addRecentSearch(query));
+  /// Searches IGDB for [query], narrowed by [activeFilters], and remembers
+  /// [query] as a recent search. An empty [query] lists the games matching the
+  /// filters, or, with none picked, drops the results.
+  Future<void> searchExternalGames(String query) =>
+      _search(query, remember: true);
+
+  Future<void> _search(String query, {required bool remember}) async {
+    final term = query.trim();
+    if (remember) unawaited(addRecentSearch(term));
+    final filters = _activeFilters;
+    if (term.isEmpty && filters.isEmpty) {
+      clearSearch();
+      return;
+    }
     final seq = ++_searchSeq;
+    _searchTerm = term;
+    _resultsFilters = filters;
     // Paging belongs to the previous search. Switch it off now, so a scroll
     // while this request is in flight can't append the old term's next page.
     _searchHasMore = false;
     _searchLoadingMore = false;
     _searchLoadMoreFailed = false;
-    final page = await _apiService.searchGames(query);
+    _searchLoading = true;
+    notifyListeners();
+    final page = await _apiService.searchGames(term, filters: filters);
     if (seq != _searchSeq) return;
-    _searchTerm = query.trim();
+    _searchLoading = false;
     // A failed request shows as "no results", as it did before paging.
     _searchResults = page?.items ?? const [];
     _searchNextOffset = page?.fetched ?? 0;
@@ -138,7 +224,8 @@ class SearchStore extends ChangeNotifier {
   /// call whenever: the results list calls it each time its end scrolls into
   /// view, and it does nothing unless there is a next page and none is loading.
   Future<void> loadMoreSearchResults() async {
-    if (!_searchHasMore || _searchLoadingMore || _searchTerm.isEmpty) return;
+    if (!_searchHasMore || _searchLoadingMore) return;
+    if (_searchTerm.isEmpty && _resultsFilters.isEmpty) return;
     final seq = _searchSeq;
     _searchLoadingMore = true;
     _searchLoadMoreFailed = false;
@@ -146,6 +233,7 @@ class SearchStore extends ChangeNotifier {
 
     final page = await _apiService.searchGames(
       _searchTerm,
+      filters: _resultsFilters,
       offset: _searchNextOffset,
     );
     // A newer search (or clearSearch) took over and already reset the flags.
@@ -170,15 +258,18 @@ class SearchStore extends ChangeNotifier {
   }
 
   /// Drops the current search results (search box emptied, or the user left
-  /// the Search tab) and discards any search still in flight.
+  /// the Search tab) and discards any search still in flight. The filters stay.
   void clearSearch() {
     _searchSeq++;
     final changed = _searchResults.isNotEmpty ||
+        _searchLoading ||
         _searchHasMore ||
         _searchLoadingMore ||
         _searchLoadMoreFailed;
     _searchResults = [];
     _searchTerm = '';
+    _resultsFilters = FilterOptions.none;
+    _searchLoading = false;
     _searchNextOffset = 0;
     _searchHasMore = false;
     _searchLoadingMore = false;

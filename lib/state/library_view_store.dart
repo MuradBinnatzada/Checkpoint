@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
@@ -13,9 +14,11 @@ import 'package:checkpoint/state/nav_store.dart';
 /// re-sorting rebuilds the Library tab and nothing that merely reads the games.
 /// Hand [visible] / [count] the games from [LibraryStore].
 ///
-/// The filters narrow the games by platform (one), and by genre, theme, game mode,
-/// perspective, engine, developer and publisher (any number of values of each).
-/// A game must pass all of them; of one attribute's picked values it needs any one.
+/// The filters ([filters]) narrow the games by platform, release year, and by
+/// genre, theme, game mode, perspective, engine, developer and publisher (any
+/// number of values of each). A game must pass all of them; of one kind's picked
+/// values it needs any one. A game whose release year is not known passes no
+/// year range.
 /// Genres are on the games handed in; the other attributes are looked up in
 /// [LibraryAttributesStore], which only knows the games IGDB details were saved
 /// for, so a game without them passes no filter on those attributes.
@@ -36,10 +39,7 @@ class LibraryViewStore extends ChangeNotifier {
   LibraryView _view = LibraryView.grid;
   SortField _sortField = SortField.dateAdded;
   bool _sortDescending = true;
-  GamePlatform? _platformFilter;
-
-  /// The values picked per attribute; an attribute with none picked is not here.
-  final Map<GameAttribute, Set<String>> _attributeFilters = {};
+  FilterOptions _filters = FilterOptions.none;
 
   /// Selected status tab. `null` means "All" (the default).
   GameStatus? _selectedStatus;
@@ -47,7 +47,20 @@ class LibraryViewStore extends ChangeNotifier {
   LibraryView get view => _view;
   SortField get sortField => _sortField;
   bool get sortDescending => _sortDescending;
-  GamePlatform? get platformFilter => _platformFilter;
+
+  /// Everything picked. Its sort is not used: the Library has [sortField].
+  FilterOptions get filters => _filters;
+
+  /// The platforms picked; a game needs to be on any one of them.
+  Set<GamePlatform> get platformFilters => _filters.platforms;
+
+  /// The platform picked when it is the only one, else null: what a menu that
+  /// picks one platform (another member's Library) shows.
+  GamePlatform? get platformFilter =>
+      _filters.platforms.length == 1 ? _filters.platforms.single : null;
+
+  /// The release years picked.
+  YearRange get yearFilter => _filters.years;
 
   /// Selected status, or `null` when "All" is selected.
   GameStatus? get selectedStatus => _selectedStatus;
@@ -68,8 +81,7 @@ class LibraryViewStore extends ChangeNotifier {
   /// filters. With [sortBy], also sorts by that field, highest first.
   void openTab(GameStatus? status, {SortField? sortBy}) {
     _selectedStatus = status;
-    _platformFilter = null;
-    _attributeFilters.clear();
+    _filters = FilterOptions.none;
     if (sortBy != null) {
       _sortField = sortBy;
       _sortDescending = true;
@@ -93,66 +105,67 @@ class LibraryViewStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setPlatformFilter(GamePlatform? p) {
-    _platformFilter = p;
+  /// Replaces every filter with [filters] (the filter sheet's changes).
+  void setFilters(FilterOptions filters) {
+    if (filters == _filters) return;
+    _filters = filters;
     notifyListeners();
   }
+
+  /// Picks only [p], or no platform at all when it is null.
+  void setPlatformFilter(GamePlatform? p) =>
+      setFilters(_filters.withPlatforms([?p]));
+
+  /// Picks [p] as well, or lets go of it when it is picked.
+  void togglePlatform(GamePlatform p) =>
+      setFilters(_filters.togglePlatform(p));
+
+  void setYearFilter(YearRange years) => setFilters(_filters.withYears(years));
 
   /// The values picked for [attribute], none when it is not filtered.
   Set<String> filterValues(GameAttribute attribute) =>
-      Set.unmodifiable(_attributeFilters[attribute] ?? const <String>{});
+      _filters.valuesOf(attribute);
 
   /// Whether [value] is picked for [attribute].
   bool isFilterOn(GameAttribute attribute, String value) =>
-      _attributeFilters[attribute]?.contains(value) ?? false;
+      _filters.has(attribute, value);
 
   /// Picks [value] of [attribute], or lets go of it when it is picked.
-  void toggleFilter(GameAttribute attribute, String value) {
-    final values = _attributeFilters.putIfAbsent(attribute, () => {});
-    if (!values.remove(value)) values.add(value);
-    if (values.isEmpty) _attributeFilters.remove(attribute);
-    notifyListeners();
-  }
+  void toggleFilter(GameAttribute attribute, String value) =>
+      setFilters(_filters.toggle(attribute, value));
 
   /// Lets go of every value picked for [attribute].
-  void clearFilter(GameAttribute attribute) {
-    if (_attributeFilters.remove(attribute) == null) return;
-    notifyListeners();
-  }
+  void clearFilter(GameAttribute attribute) =>
+      setFilters(_filters.clear(attribute));
 
-  /// Removes the platform filter and every attribute filter.
-  void clearFilters() {
-    if (!hasFilters) return;
-    _platformFilter = null;
-    _attributeFilters.clear();
-    notifyListeners();
-  }
+  /// Removes every filter.
+  void clearFilters() => setFilters(_filters.cleared());
 
   /// Whether any filter narrows the Library.
-  bool get hasFilters => _platformFilter != null || _attributeFilters.isNotEmpty;
+  bool get hasFilters => !_filters.isEmpty;
 
   /// Whether a value of something IGDB's details say is picked (a theme, mode,
   /// perspective, engine, developer or publisher), which a game without them can
-  /// never match. A platform or genre does not depend on them.
-  bool get hasDetailFilters => _attributeFilters.keys.any((a) => a.isFromIgdb);
+  /// never match. A platform, year or genre does not depend on them.
+  bool get hasDetailFilters => _filters.hasDetailFilters;
 
-  /// How many things are picked: the platform and every attribute value.
-  int get filterCount => [
-    if (_platformFilter != null) 1,
-    for (final values in _attributeFilters.values) values.length,
-  ].fold(0, (sum, n) => sum + n);
+  /// How many things are picked: every platform, the year range and every
+  /// attribute value.
+  int get filterCount => _filters.count;
 
-  bool _matches(Game g) => _matchesPlatform(g) && _matchesAttributes(g);
+  bool _matches(Game g) =>
+      _matchesPlatform(g) &&
+      _filters.years.contains(g.releaseYear) &&
+      _matchesAttributes(g);
 
   bool _matchesPlatform(Game g) {
-    final p = _platformFilter;
-    if (p == null) return true;
-    return _isOn(g, p);
+    final picked = _filters.platforms;
+    return picked.isEmpty || picked.any((p) => _isOn(g, p));
   }
 
   bool _matchesAttributes(Game g) {
     for (final MapEntry(key: attribute, value: wanted)
-        in _attributeFilters.entries) {
+        in _filters.attributes.entries) {
       if (!_valuesOf(g, attribute).any(wanted.contains)) return false;
     }
     return true;
@@ -171,12 +184,30 @@ class LibraryViewStore extends ChangeNotifier {
 
   /// The platforms the platform filter should offer: those at least one game of
   /// [library] is on, in [GamePlatform] order, so the menu never lists a platform
-  /// that would only show an empty library. The active filter stays listed so it
-  /// can still be seen and changed.
+  /// that would only show an empty library. The platforms picked stay listed so
+  /// they can still be seen and changed.
   List<GamePlatform> filterOptions(Iterable<Game> library) => [
     for (final p in GamePlatform.values)
-      if (p == _platformFilter || library.any((g) => _isOn(g, p))) p,
+      if (_filters.platforms.contains(p) || library.any((g) => _isOn(g, p))) p,
   ];
+
+  /// The earliest and latest release year of [library]'s games (those whose year
+  /// is known), widened to take in the years picked; null when no game has one,
+  /// so there is nothing to pick from.
+  ({int min, int max})? yearSpan(Iterable<Game> library) {
+    int? min;
+    int? max;
+    for (final year in [
+      for (final g in library)
+        if (g.hasReleaseYear) g.releaseYear,
+      ?_filters.years.from,
+      ?_filters.years.to,
+    ]) {
+      if (min == null || year < min) min = year;
+      if (max == null || year > max) max = year;
+    }
+    return min == null || max == null ? null : (min: min, max: max);
+  }
 
   /// The values the filter for [attribute] should offer: those at least one game
   /// of [library] has, with how many do, most common first (then by name), so the
@@ -192,7 +223,7 @@ class LibraryViewStore extends ChangeNotifier {
         counts.update(value, (n) => n + 1, ifAbsent: () => 1);
       }
     }
-    for (final value in _attributeFilters[attribute] ?? const <String>{}) {
+    for (final value in _filters.valuesOf(attribute)) {
       counts.putIfAbsent(value, () => 0);
     }
     return [
@@ -244,7 +275,12 @@ class LibraryViewStore extends ChangeNotifier {
   /// (which leaves the store idle, and it never is once asked): what was picked
   /// from the previous account's library means nothing for the next one's.
   void _onAttributesChanged() {
-    if (_attributes?.status == LoadStatus.idle) _attributeFilters.clear();
+    if (_attributes?.status == LoadStatus.idle) {
+      _filters = FilterOptions(
+        platforms: _filters.platforms,
+        years: _filters.years,
+      );
+    }
     notifyListeners();
   }
 

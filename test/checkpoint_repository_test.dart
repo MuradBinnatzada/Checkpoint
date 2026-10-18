@@ -193,6 +193,22 @@ void main() {
       expect(game.inLibrary, isTrue);
     });
 
+    test('reads the member\'s chosen backdrop, and none when the row has none', () async {
+      const art = 'https://images.igdb.com/igdb/image/upload/t_1080p/ar5l8.jpg';
+      api.reply([
+        {...userGameRow('g1'), 'custom_backdrop_url': art},
+        userGameRow('g2'),
+      ]);
+
+      final games = await repo.fetchUserGames('u1');
+
+      expect(api.last.url.queryParameters['select'], contains('custom_backdrop_url'));
+      expect(games.firstWhere((g) => g.id == 'g1').customBackdropUrl, art);
+      expect(games.firstWhere((g) => g.id == 'g2').customBackdropUrl, isNull);
+      // The cover is always the catalog's.
+      expect(games.firstWhere((g) => g.id == 'g1').coverUrl, 'https://images.igdb.com/hades.jpg');
+    });
+
     test('asks for the user\'s rows only, and never for the heavy achievements column', () async {
       await repo.fetchUserGames('u1');
 
@@ -1272,6 +1288,26 @@ void main() {
       expect(row['played_on'], 'retro'); // how Emulator is stored
       expect(row['date_added'], '2026-07-01T09:00:00.000Z');
       expect(row['is_favorite'], isFalse);
+      expect(row.containsKey('custom_backdrop_url'), isTrue);
+      expect(row['custom_backdrop_url'], isNull); // the blurred cover
+    });
+
+    test('upsertUserGame sends the chosen backdrop', () async {
+      const art = 'https://images.igdb.com/igdb/image/upload/t_1080p/ar5l8.jpg';
+      await repo.upsertUserGame(
+        userId: 'u1',
+        gameId: 'g1',
+        status: GameStatus.playing,
+        rating: 0,
+        hoursPlayed: 1,
+        playedOn: null,
+        purchasePrice: 0,
+        isFavorite: false,
+        customBackdropUrl: art,
+      );
+
+      final row = api.bodyOf(api.last) as Map<String, dynamic>;
+      expect(row['custom_backdrop_url'], art);
     });
 
     test('setConnectedAccounts replaces the services and the account names on the signed-in user\'s row', () async {

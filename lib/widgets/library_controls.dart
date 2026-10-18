@@ -25,6 +25,7 @@ class LibrarySearchField extends StatelessWidget {
     required this.hasText,
     required this.onChanged,
     required this.onClear,
+    this.trailing,
   });
   final TextEditingController controller;
   final String tabLabel;
@@ -32,44 +33,57 @@ class LibrarySearchField extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
+  /// Beside the field, on its right (the filter button).
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide.none,
     );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: TextField(
-        controller: controller,
-        onChanged: onChanged,
-        textInputAction: TextInputAction.search,
-        cursorColor: Palette.accent,
-        style: const TextStyle(fontSize: 15),
-        decoration: InputDecoration(
-          isDense: true,
-          filled: true,
-          fillColor: Palette.surfaceHigh,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          hintText: 'Search in $tabLabel',
-          hintStyle: const TextStyle(color: Palette.muted),
-          prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
-          suffixIcon: hasText
-              ? IconButton(
-                  tooltip: 'Clear search',
-                  icon: const Icon(Icons.close_rounded, color: Palette.muted),
-                  onPressed: onClear,
-                )
-              : null,
-          border: border,
-          enabledBorder: border,
-          focusedBorder: border.copyWith(
-            borderSide: BorderSide(
-              color: Palette.accent.withValues(alpha: 0.6),
-            ),
+    final field = TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      cursorColor: Palette.accent,
+      style: const TextStyle(fontSize: 15),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: Palette.surfaceHigh,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        hintText: 'Search in $tabLabel',
+        hintStyle: const TextStyle(color: Palette.muted),
+        prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+        suffixIcon: hasText
+            ? IconButton(
+                tooltip: 'Clear search',
+                icon: const Icon(Icons.close_rounded, color: Palette.muted),
+                onPressed: onClear,
+              )
+            : null,
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border.copyWith(
+          borderSide: BorderSide(
+            color: Palette.accent.withValues(alpha: 0.6),
           ),
         ),
       ),
+    );
+    final trailing = this.trailing;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, trailing == null ? 16 : 6, 4),
+      child: trailing == null
+          ? field
+          : Row(
+              children: [
+                Expanded(child: field),
+                const SizedBox(width: 2),
+                trailing,
+              ],
+            ),
     );
   }
 }

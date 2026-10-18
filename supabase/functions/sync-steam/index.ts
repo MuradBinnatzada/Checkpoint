@@ -13,9 +13,16 @@
  *                  row with the app id in `steam_app_id` and an `igdb_id` is
  *                  resolved. A row with an app id but no `igdb_id` is a legacy
  *                  Steam-keyed row (adopted in step 5).
- *   3. IGDB        multi-pass match for the unresolved apps only
- *                  (`resolveMissingGames`). The Steam title is cleaned first
- *                  (™/®, edition + "Test Server"/"Open Beta" junk), then:
+ *                  IGDB's own Steam links (`/external_games`, source Steam, uid =
+ *                  app id) are read for every app. A known app whose game is not
+ *                  among its links was matched wrongly by title before: it is
+ *                  resolved again (step 3) and moved (step 5).
+ *   3. IGDB        IGDB's Steam links resolve an unresolved app exactly
+ *                  (`resolveBySteamLinks`); a title can name several games, an
+ *                  app id names one. Only apps IGDB has no link for go on to the
+ *                  multi-pass title match (`resolveMissingGames`). The Steam
+ *                  title is cleaned first (™/®, edition + "Test Server"/"Open
+ *                  Beta" junk), then:
  *                    Pass 1  cleaned title  → bulk case-insensitive exact match,
  *                                             then a fuzzy search
  *                    Pass 2  publisher prefix stripped ("Tom Clancy's ", "Sid Meier's ")
@@ -28,9 +35,12 @@
  *   4. Base games  bulk insert the games the catalog doesn't have yet. A game's id
  *                  is derived from its IGDB id (`igdbGameUuid`), the same id the
  *                  app's search uses, so a game is one row however it was added.
- *   5. Link        `link_steam_apps` (database function): record the Steam app on
- *                  its game and fold any legacy Steam-keyed row into it, for every
- *                  user at once. This is what merges the old duplicates.
+ *   5. Link        `relink_steam_apps` (database function) moves a wrongly matched
+ *                  app to its right game and this user's library row with it, and
+ *                  records the move so other owners' next syncs move theirs.
+ *                  `link_steam_apps` records every other Steam app on its game and
+ *                  folds any legacy Steam-keyed row into it, for every user at
+ *                  once. This is what merges the old duplicates.
  *   6. Library     bulk upsert `user_games`, one row per game (new rows get
  *                  defaults; existing rows only ever get a higher `hours_played`)
  *   7. Achievements count the achievements of every game played since it was
@@ -71,7 +81,9 @@
  * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`) and, for the
  * sync state and the background run, 20261017130000_background_steam_sync.sql
  * (a sync still works without it; it just is not recorded), and for step 7
- * 20261021120000_steam_achievement_counts.sql (without it the counts are skipped).
+ * 20261021120000_steam_achievement_counts.sql (without it the counts are skipped),
+ * and for moving wrongly matched games 20261024120000_steam_app_relinks.sql (without
+ * it they stay where they are).
  *
  * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
  * Column names follow checkpoint_repository.dart (`upsertBaseGame`,
@@ -92,6 +104,13 @@ import {
   type CountTarget,
 } from '../_shared/achievement_counts.ts'
 import { failureDelayMs, shouldStopBatch, successDelayMs } from '../_shared/sync_schedule.ts'
+import {
+  pickLinkedGame,
+  type SourceField,
+  STEAM_LINK_BATCH,
+  steamLinksByApp,
+  steamLinksQuery,
+} from '../_shared/steam_links.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -249,10 +268,12 @@ interface IgdbGame {
   genres?: { name?: string }[]
   summary?: string
   involved_companies?: { company?: { name?: string } }[]
+  version_parent?: number | null
+  total_rating_count?: number
 }
 
 const IGDB_FIELDS =
-  'name, cover.url, first_release_date, platforms.id, platforms.name, genres.name, summary, involved_companies.company.name'
+  'name, cover.url, first_release_date, platforms.id, platforms.name, genres.name, summary, involved_companies.company.name, version_parent, total_rating_count'
 
 // Non-game software Steam lists alongside games. Word boundaries keep short
 // terms like "obs" from matching titles such as "Observer". (No `g` flag: .test() stays stateless.)
@@ -547,8 +568,11 @@ function matchScore(title: string, candidate: string): number {
  * `targets` are the spellings the hit may match: the cleaned title, plus the
  * prefix-stripped one in Pass 2 (IGDB may list "Civilization VI" for Steam's
  * "Sid Meier's Civilization VI"). Test/beta/server entries are never accepted.
- * Best score wins; ties prefer a PC release, then one with a cover — so sequels
- * can't override the original and the top search hit is never taken blindly.
+ * Best score wins; ties prefer a PC release, then one with a cover, then the one
+ * more people rated (two games can share a name exactly: "Tomb Raider" is a 1996
+ * game and its 2013 reboot) — so sequels can't override the original and the top
+ * search hit is never taken blindly. Most games never get here: IGDB's own Steam
+ * links resolve them first (`resolveBySteamLinks`).
  */
 function pickBest(results: IgdbGame[], targets: string[]): IgdbGame | null {
   let best: IgdbGame | null = null
@@ -562,6 +586,7 @@ function pickBest(results: IgdbGame[], targets: string[]): IgdbGame | null {
       score,
       g.platforms?.some((p) => p.name?.includes('PC (Microsoft Windows)')) ? 1 : 0,
       g.cover?.url ? 1 : 0,
+      g.total_rating_count ?? 0,
     ]
     if (!best || outranks(rank, bestRank)) {
       best = g
@@ -952,6 +977,88 @@ async function igdbSearchMany(
   return { results, stopped }
 }
 
+/**
+ * IGDB's own Steam links for these apps: app id -> the IGDB game ids IGDB says the
+ * app is (see _shared/steam_links.ts). One request per STEAM_LINK_BATCH apps. An app
+ * missing from the answer has no link IGDB knows of, or sat in a batch that failed:
+ * either way nothing is known about it, and it is matched by title as before. A
+ * failure is recorded in `issues`, never thrown.
+ */
+async function igdbSteamLinks(appIds: number[], issues: SyncIssues): Promise<Map<number, number[]>> {
+  const byApp = new Map<number, number[]>()
+  let field: SourceField = 'external_game_source'
+  let failures = 0
+  for (const part of chunk(appIds, STEAM_LINK_BATCH)) {
+    if (failures >= IGDB_MAX_CONSECUTIVE_FAILURES) break
+    try {
+      let rows: unknown
+      try {
+        rows = await igdbFetch<unknown>('external_games', steamLinksQuery(part, field))
+      } catch (e) {
+        // IGDB refused the query itself: it may not know the new field name yet.
+        if (!(e instanceof HttpError && e.code === 'IGDB_ERROR') || field === 'category') throw e
+        console.warn('IGDB refused external_game_source, retrying with category:', e)
+        field = 'category'
+        rows = await igdbFetch<unknown>('external_games', steamLinksQuery(part, field))
+      }
+      for (const [app, games] of steamLinksByApp(rows) ?? []) byApp.set(app, games)
+      failures = 0
+    } catch (e) {
+      failures++
+      console.error('IGDB Steam link lookup failed:', e)
+      warn(issues, `IGDB Steam link lookup incomplete: ${(e as Error).message}`, e)
+    }
+    await sleep(IGDB_PACING_MS)
+  }
+  return byApp
+}
+
+/** These IGDB games, by id. A failed batch is recorded in `issues` and left out. */
+async function igdbGamesByIds(ids: number[], issues: SyncIssues): Promise<Map<number, IgdbGame>> {
+  const byId = new Map<number, IgdbGame>()
+  for (const part of chunk(ids, STEAM_LINK_BATCH)) {
+    try {
+      const games = await igdbFetch<IgdbGame[]>(
+        'games',
+        `fields ${IGDB_FIELDS}; where id = (${part.join(',')}); limit ${part.length};`,
+      )
+      for (const g of games) byId.set(g.id, g)
+    } catch (e) {
+      console.error('IGDB games-by-id lookup failed:', e)
+      warn(issues, `IGDB lookup incomplete: ${(e as Error).message}`, e)
+    }
+    await sleep(IGDB_PACING_MS)
+  }
+  return byId
+}
+
+/**
+ * Resolve Steam apps through IGDB's own Steam links (`steamLinks`, from
+ * `igdbSteamLinks`), which name the game exactly where a title can name several.
+ * Apps IGDB has no link for, or whose linked games could not be read, are left out
+ * of the answer for the title passes (`resolveMissingGames`) to try.
+ */
+async function resolveBySteamLinks(
+  entries: SteamEntry[],
+  steamLinks: Map<number, number[]>,
+  issues: SyncIssues,
+): Promise<Map<string, IgdbGame>> {
+  const matched = new Map<string, IgdbGame>()
+  const linked = entries.filter((e) => (steamLinks.get(e.appid)?.length ?? 0) > 0)
+  if (linked.length === 0) return matched
+  const ids = [...new Set(linked.flatMap((e) => steamLinks.get(e.appid) ?? []))]
+  const games = await igdbGamesByIds(ids, issues)
+  for (const e of linked) {
+    const candidates = (steamLinks.get(e.appid) ?? [])
+      .map((id) => games.get(id))
+      .filter((g): g is IgdbGame => !!g)
+    const clean = cleanSteamTitle(e.title)
+    const best = pickLinkedGame(candidates, (name) => matchScore(clean, name))
+    if (best) matched.set(e.id, best)
+  }
+  return matched
+}
+
 /** Per-game state while a Steam title works its way through the passes. */
 interface Pending {
   entry: SteamEntry
@@ -1175,6 +1282,54 @@ async function linkSteamApps(
   return { linked, merged }
 }
 
+interface RelinkRow {
+  app_id: number
+  from_id: string // the game an earlier title match wrongly linked the app to
+  into_id: string // the game IGDB's own Steam link says the app is
+}
+
+/**
+ * The relinks earlier syncs (anyone's) recorded for these apps, so this user's
+ * library row on a wrongly matched game moves too. Empty when there are none, or
+ * when the table is missing (20261024120000_steam_app_relinks.sql not applied):
+ * the sync works without it.
+ */
+async function fetchStoredRelinks(admin: SupabaseClient, appIds: number[]): Promise<RelinkRow[]> {
+  const out: RelinkRow[] = []
+  const results = await Promise.all(
+    chunk(appIds, DB_IN_CHUNK).map((part) =>
+      admin.from('steam_app_relinks').select('app_id, from_id, into_id').in('app_id', part),
+    ),
+  )
+  for (const { data, error } of results) {
+    if (error) {
+      console.warn('sync-steam: steam_app_relinks lookup failed:', error.message)
+      return []
+    }
+    for (const row of data ?? []) {
+      out.push({ app_id: Number(row.app_id), from_id: row.from_id as string, into_id: row.into_id as string })
+    }
+  }
+  return out
+}
+
+/**
+ * Moves Steam apps off the games an earlier title match wrongly linked them to
+ * (`relink_steam_apps`, service role only): records each relink so every other
+ * owner's next sync moves theirs too, points the app at the right game, and folds
+ * this user's library row and play sessions on the wrong game into the right one.
+ * Only this user's rows move: someone else may have added that other game on purpose.
+ */
+async function relinkSteamApps(admin: SupabaseClient, userId: string, links: RelinkRow[]): Promise<number> {
+  let moved = 0
+  for (const part of chunk(links, LINK_CHUNK)) {
+    const { data, error } = await admin.rpc('relink_steam_apps', { target_user: userId, links: part })
+    if (error) throw new Error(`relink_steam_apps failed: ${error.message}`)
+    moved += Number(data?.moved ?? 0)
+  }
+  return moved
+}
+
 /** Which of these game UUIDs already exist in the global `games` catalog? */
 async function fetchExistingGameIds(admin: SupabaseClient, ids: string[]): Promise<Set<string>> {
   const found = new Set<string>()
@@ -1254,22 +1409,49 @@ async function syncLibrary(
   //    `igdb_id`. A row with an app id but no igdb_id is a legacy Steam-keyed row
   //    from before game ids were unified on IGDB: it is matched again below, then
   //    folded into the IGDB-keyed row by `link_steam_apps`.
-  const known = await fetchKnownSteamApps(admin, entries.map((e) => e.appid))
+  //    IGDB's own Steam links are read for every app: they resolve new apps
+  //    exactly (step 3), and they catch an app that an earlier title match linked
+  //    to the wrong game ("Tomb Raider" the 1996 game for the 2013 one). Such an
+  //    app is resolved again through its links and moved in step 5.
+  const appIds = entries.map((e) => e.appid)
+  const [known, steamLinks, storedRelinks] = await Promise.all([
+    fetchKnownSteamApps(admin, appIds),
+    igdbSteamLinks(appIds, issues),
+    fetchStoredRelinks(admin, appIds),
+  ])
   const gameIdByEntry = new Map<string, string>() // SteamEntry.id -> games.id
   const legacyIdByEntry = new Map<string, string>() // SteamEntry.id -> legacy games.id
+  const mislinkedIdByEntry = new Map<string, string>() // SteamEntry.id -> wrongly linked games.id
   const toMatch: SteamEntry[] = []
   for (const e of entries) {
     const k = known.get(e.appid)
     if (k && k.igdbId !== null) {
-      gameIdByEntry.set(e.id, k.id)
+      const linkedTo = steamLinks.get(e.appid) ?? []
+      if (linkedTo.length > 0 && !linkedTo.includes(k.igdbId)) {
+        mislinkedIdByEntry.set(e.id, k.id)
+        toMatch.push(e)
+      } else {
+        gameIdByEntry.set(e.id, k.id)
+      }
       continue
     }
     if (k) legacyIdByEntry.set(e.id, k.id)
     toMatch.push(e)
   }
 
-  // 3. Multi-pass IGDB match for the apps that aren't resolved yet.
-  const { matched, unmatched, deferred, byPass } = await resolveMissingGames(toMatch, issues, limits)
+  // 3. Resolve the apps that aren't resolved yet: through IGDB's Steam links
+  //    first, then the multi-pass title match for the ones IGDB has no link for.
+  //    A mislinked app is only ever resolved through its links, since a title
+  //    match is what got it wrong.
+  const linkedMatches = await resolveBySteamLinks(toMatch, steamLinks, issues)
+  const byTitle = toMatch.filter((e) => !linkedMatches.has(e.id) && !mislinkedIdByEntry.has(e.id))
+  const {
+    matched: titleMatches,
+    unmatched,
+    deferred,
+    byPass,
+  } = await resolveMissingGames(byTitle, issues, limits)
+  const matched = new Map([...linkedMatches, ...titleMatches])
 
   // 4. Add the matched games the catalog doesn't have. A game's id comes from its
   //    IGDB id, so one that another user already added (through in-app search,
@@ -1290,20 +1472,56 @@ async function syncLibrary(
   // moment ago, that row wins and nothing is overwritten.
   await upsertChunked(admin, 'games', newGameRows, 'igdb_id', true)
 
-  // 5. Record each matched Steam app on its game, and fold legacy rows into it.
+  // 5. Move the mislinked apps to their right game (`relink_steam_apps`), with the
+  //    relinks other syncs recorded for this user's apps, so a library row on the
+  //    wrong game follows. Then record each other matched Steam app on its game,
+  //    and fold legacy rows into it.
   const entryById = new Map(entries.map((e) => [e.id, e]))
+  const relinks: RelinkRow[] = []
   const links: LinkRow[] = []
   for (const [entryId, g] of matched) {
     const entry = entryById.get(entryId)
     if (!entry) continue
     const gameId = igdbGameUuid(g.id)
     gameIdByEntry.set(entryId, gameId)
+    const wrongId = mislinkedIdByEntry.get(entryId)
+    if (wrongId) {
+      relinks.push({ app_id: entry.appid, from_id: wrongId, into_id: gameId })
+      continue
+    }
     links.push({
       app_id: entry.appid,
       game_id: gameId,
       legacy_id: legacyIdByEntry.get(entryId) ?? null,
     })
   }
+  // A stored relink applies only while the app still resolves to the game it moved to.
+  const gameIdByApp = new Map<number, string>()
+  for (const e of entries) {
+    const gameId = gameIdByEntry.get(e.id)
+    if (gameId) gameIdByApp.set(e.appid, gameId)
+  }
+  for (const r of storedRelinks) {
+    if (gameIdByApp.get(r.app_id) === r.into_id && !relinks.some((x) => x.app_id === r.app_id && x.from_id === r.from_id)) {
+      relinks.push(r)
+    }
+  }
+  let relinked = 0
+  if (relinks.length > 0) {
+    try {
+      relinked = await relinkSteamApps(admin, userId, relinks)
+    } catch (e) {
+      // Sync on the games as they were linked; the move is tried again next time.
+      console.error('sync-steam:', e)
+      warn(issues, `Could not move wrongly matched games: ${(e as Error).message}`)
+      for (const [entryId, wrongId] of mislinkedIdByEntry) gameIdByEntry.set(entryId, wrongId)
+    }
+  }
+  // A mislinked app whose links could not be read this time stays on its game.
+  for (const [entryId, wrongId] of mislinkedIdByEntry) {
+    if (!gameIdByEntry.has(entryId)) gameIdByEntry.set(entryId, wrongId)
+  }
+
   const { linked, merged } = await linkSteamApps(admin, links)
   // A legacy row that IGDB couldn't match this time keeps working as it did: its
   // hours still update. It is adopted on a later sync.
@@ -1400,8 +1618,9 @@ async function syncLibrary(
       cached: entries.length - toMatch.length,
       fetched_from_igdb: matched.size,
       steam_apps_linked: linked,
+      steam_apps_relinked: relinked,
       legacy_rows_merged: merged,
-      matched_by_pass: byPass,
+      matched_by_pass: { steam_link: linkedMatches.size, ...byPass },
       added,
       updated,
       unchanged,

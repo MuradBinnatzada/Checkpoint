@@ -219,6 +219,49 @@ void main() {
     expect(library.libraryGames.single.rating, 3);
   });
 
+  group('setBackdrop', () {
+    const art = 'https://images.igdb.com/igdb/image/upload/t_1080p/ar5l8.jpg';
+
+    test('shows and saves the chosen backdrop, then the default again', () async {
+      repo.library = [testGame('a')];
+      await library.initialize();
+      await pumpEventQueue();
+
+      await library.setBackdrop('a', art);
+      expect(library.libraryGames.single.customBackdropUrl, art);
+      expect(repo.backdrops['a'], art);
+
+      await library.setBackdrop('a', null);
+      expect(library.libraryGames.single.customBackdropUrl, isNull);
+      expect(repo.backdrops.containsKey('a'), isTrue);
+      expect(repo.backdrops['a'], isNull);
+    });
+
+    test('is kept on later edits of the game', () async {
+      repo.library = [testGame('a')];
+      await library.initialize();
+      await pumpEventQueue();
+
+      await library.setBackdrop('a', art);
+      await library.setRating('a', 2);
+
+      expect(repo.backdrops['a'], art);
+    });
+
+    test('does nothing for a game outside the library', () async {
+      repo.library = [testGame('a')];
+      repo.popular = [testGame('p', status: null)];
+      await library.initialize();
+      await pumpEventQueue();
+      final writes = repo.writes.length;
+
+      await library.setBackdrop('p', art);
+
+      expect(repo.writes, hasLength(writes));
+      expect(library.gameById('p').customBackdropUrl, isNull);
+    });
+  });
+
   group('applyDetails', () {
     test('puts the exact platforms and genres on the game, in the library and the combined list', () async {
       repo.library = [testGame('a', platforms: [GamePlatform.pc], status: GameStatus.playing)];

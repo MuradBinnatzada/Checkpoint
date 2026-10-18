@@ -973,6 +973,17 @@ class LibraryStore extends ChangeNotifier {
     await _saveUserGame(next);
   }
 
+  /// Sets the member's own backdrop for a game in their library (null: the
+  /// blurred cover). [url] is an IGDB image URL from the game's artworks or
+  /// screenshots (see `showGameBackdropSheet`).
+  Future<void> setBackdrop(String id, String? url) async {
+    final game = gameById(id);
+    if (!game.inLibrary || game.customBackdropUrl == url) return;
+    final next = game.withBackdrop(url);
+    _replaceGame(next);
+    await _saveUserGame(next);
+  }
+
   GameStatus _statusAfterLogging(GameStatus? s) =>
       s == GameStatus.completed ? GameStatus.completed : GameStatus.playing;
 
@@ -1099,6 +1110,7 @@ class LibraryStore extends ChangeNotifier {
       purchasePrice: game.purchasePrice,
       dateAdded: game.dateAdded,
       isFavorite: game.isFavorite,
+      customBackdropUrl: game.customBackdropUrl,
     );
   }
 

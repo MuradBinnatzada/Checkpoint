@@ -10,13 +10,14 @@ import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
-import 'package:checkpoint/widgets/app_choice_chip.dart';
+import 'package:checkpoint/widgets/filter_sheet.dart';
 import 'package:checkpoint/widgets/sheet_frame.dart';
 
 // The filters of the signed-in member's Library tab: the button that opens the
-// filter sheet, the sheet itself (platform, genre and what IGDB says about the
-// games: themes, game modes, perspectives, engines, developers, publishers) and
-// the row of what is picked. They read and write the nearest [LibraryViewStore].
+// filter sheet, the sheet itself (platforms, release years, genre and what IGDB
+// says about the games: themes, game modes, perspectives, engines, developers,
+// publishers) and the row of what is picked. They read and write the nearest
+// [LibraryViewStore], and are built from the pieces in filter_sheet.dart.
 
 /// The attributes that come from IGDB's details, which the library does not hold:
 /// everything but the genre.
@@ -37,8 +38,8 @@ Future<void> showLibraryFilterSheet(BuildContext context) async {
   );
 }
 
-/// The filter icon of the Library header, lit and badged with how many things are
-/// picked; opens [showLibraryFilterSheet].
+/// The filter icon next to the Library's search field, lit and badged with how
+/// many things are picked; opens [showLibraryFilterSheet].
 class LibraryFilterButton extends StatelessWidget {
   const LibraryFilterButton({super.key, required this.count});
 
@@ -47,19 +48,9 @@ class LibraryFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: 'Filter',
+    return FilterButton(
+      count: count,
       onPressed: () => showLibraryFilterSheet(context),
-      icon: Badge(
-        isLabelVisible: count > 0,
-        label: Text('$count'),
-        backgroundColor: Palette.accent,
-        textColor: Palette.onAccent,
-        child: Icon(
-          Icons.filter_list_rounded,
-          color: count > 0 ? Palette.accent : null,
-        ),
-      ),
     );
   }
 }
@@ -77,6 +68,7 @@ class LibraryFilterSheet extends StatelessWidget {
     final view = context.watch<LibraryViewStore>();
     final attributes = context.watch<LibraryAttributesStore>();
     final platforms = view.filterOptions(library);
+    final years = view.yearSpan(library);
     final shown = view.count(library, null);
 
     return SheetFrame(
@@ -96,24 +88,24 @@ class LibraryFilterSheet extends StatelessWidget {
                 child: const Text('Clear all'),
               ),
             ),
-          if (platforms.isNotEmpty)
-            _Section(
-              title: 'Platform',
-              icon: Icons.sports_esports_rounded,
-              selected: view.platformFilter == null ? 0 : 1,
-              onClear: () => view.setPlatformFilter(null),
-              children: [
-                for (final p in platforms)
-                  AppChoiceChip(
-                    label: p.label,
-                    icon: p.icon,
-                    iconColor: p.color,
-                    selected: view.platformFilter == p,
-                    onSelected: () => view.setPlatformFilter(
-                      view.platformFilter == p ? null : p,
-                    ),
-                  ),
-              ],
+          ChipFilterSection<GamePlatform>(
+            title: 'Platform',
+            icon: Icons.sports_esports_rounded,
+            options: platforms,
+            labelOf: (p) => p.label,
+            iconOf: (p) => p.icon,
+            iconColorOf: (p) => p.color,
+            isSelected: view.platformFilters.contains,
+            selectedCount: view.platformFilters.length,
+            onToggle: view.togglePlatform,
+            onClear: () => view.setPlatformFilter(null),
+          ),
+          if (years != null)
+            YearRangeSection(
+              value: view.yearFilter,
+              onChanged: view.setYearFilter,
+              min: years.min,
+              max: years.max,
             ),
           _AttributeSection(
             attribute: GameAttribute.genre,
@@ -199,165 +191,29 @@ class _DetailsStatus extends StatelessWidget {
   }
 }
 
-/// One kind of filter: a title, how many values are picked, a way to clear them,
-/// and the chips.
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.title,
-    required this.icon,
-    required this.selected,
-    required this.onClear,
-    required this.children,
-    this.header,
-  });
-
-  final String title;
-  final IconData icon;
-  final int selected;
-  final VoidCallback onClear;
-  final List<Widget> children;
-
-  /// Shown between the title and the chips (the search field of a long list).
-  final Widget? header;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: Palette.muted),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (selected > 0) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '$selected picked',
-                  style: const TextStyle(color: Palette.accent, fontSize: 12.5),
-                ),
-              ],
-              const Spacer(),
-              if (selected > 0)
-                TextButton(
-                  onPressed: onClear,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    minimumSize: const Size(0, 28),
-                  ),
-                  child: const Text('Clear'),
-                ),
-            ],
-          ),
-          if (header != null) ...[const SizedBox(height: 6), header!],
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: children),
-        ],
-      ),
-    );
-  }
-}
-
 /// The filter for one [GameAttribute]: its values as chips, most common first, with
-/// how many games have each. A long list shows its first values (and every one
-/// picked) and unfolds on request, with a search box once it is long. Nothing is
-/// shown for an attribute no game has a value of.
-class _AttributeSection extends StatefulWidget {
+/// how many games have each (see [ChipFilterSection] for how a long list folds).
+/// Nothing is shown for an attribute no game has a value of.
+class _AttributeSection extends StatelessWidget {
   const _AttributeSection({required this.attribute, required this.options});
 
   final GameAttribute attribute;
   final List<FilterOption> options;
 
   @override
-  State<_AttributeSection> createState() => _AttributeSectionState();
-}
-
-class _AttributeSectionState extends State<_AttributeSection> {
-  /// A list this long gets a search box when unfolded.
-  static const _searchFrom = 20;
-
-  bool _expanded = false;
-  String _query = '';
-
-  @override
   Widget build(BuildContext context) {
-    final attribute = widget.attribute;
-    final options = widget.options;
-    if (options.isEmpty) return const SizedBox.shrink();
     final view = context.watch<LibraryViewStore>();
     final picked = view.filterValues(attribute);
-    final folds = options.length > attribute.collapsedCount;
-    final searchable = _expanded && options.length >= _searchFrom;
-    final query = searchable ? _query.trim().toLowerCase() : '';
-
-    var listed = options;
-    if (query.isNotEmpty) {
-      listed = [
-        for (final o in options)
-          if (o.value.toLowerCase().contains(query)) o,
-      ];
-    } else if (folds && !_expanded) {
-      listed = [
-        for (var i = 0; i < options.length; i++)
-          if (i < attribute.collapsedCount || picked.contains(options[i].value))
-            options[i],
-      ];
-    }
-
-    return _Section(
+    return ChipFilterSection<FilterOption>(
       title: attribute.pluralLabel,
       icon: attribute.icon,
-      selected: picked.length,
+      options: options,
+      labelOf: (o) => '${o.value} (${o.count})',
+      isSelected: (o) => picked.contains(o.value),
+      selectedCount: picked.length,
+      onToggle: (o) => view.toggleFilter(attribute, o.value),
       onClear: () => view.clearFilter(attribute),
-      header: searchable
-          ? TextField(
-              onChanged: (v) => setState(() => _query = v),
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: Palette.surfaceHigh,
-                hintText: 'Search ${attribute.pluralLabel.toLowerCase()}',
-                hintStyle: const TextStyle(color: Palette.muted),
-                prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            )
-          : null,
-      children: [
-        for (final o in listed)
-          AppChoiceChip(
-            label: '${o.value} (${o.count})',
-            selected: picked.contains(o.value),
-            onSelected: () => view.toggleFilter(attribute, o.value),
-          ),
-        if (query.isNotEmpty && listed.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 6),
-            child: Text('No match.', style: TextStyle(color: Palette.muted)),
-          ),
-        if (folds && query.isEmpty)
-          TextButton(
-            onPressed: () => setState(() {
-              _expanded = !_expanded;
-              _query = '';
-            }),
-            child: Text(
-              _expanded ? 'Show fewer' : 'Show all ${options.length}',
-            ),
-          ),
-      ],
+      collapsedCount: attribute.collapsedCount,
     );
   }
 }
@@ -375,67 +231,16 @@ class LibraryActiveFilters extends StatelessWidget {
   Widget build(BuildContext context) {
     final view = context.watch<LibraryViewStore>();
     if (!view.hasFilters) return const SizedBox.shrink();
-    final platform = view.platformFilter;
     final missing = view.hasDetailFilters
         ? view.gamesWithoutDetails(library) ?? 0
         : 0;
-
-    InputChip chip({
-      required IconData icon,
-      required Color color,
-      required String label,
-      required VoidCallback onDeleted,
-    }) => InputChip(
-      avatar: Icon(icon, size: 16, color: color),
-      label: Text(label, style: const TextStyle(fontSize: 12.5)),
-      onDeleted: onDeleted,
-      deleteIcon: const Icon(Icons.close_rounded, size: 16),
-      deleteButtonTooltipMessage: 'Remove $label',
-      backgroundColor: Palette.surfaceHigh,
-      side: BorderSide(color: Palette.accent.withValues(alpha: 0.5)),
-      shape: const StadiumBorder(),
-      visualDensity: VisualDensity.compact,
-    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                if (platform != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: chip(
-                      icon: platform.icon,
-                      color: platform.color,
-                      label: platform.label,
-                      onDeleted: () => view.setPlatformFilter(null),
-                    ),
-                  ),
-                for (final a in GameAttribute.values)
-                  for (final value in view.filterValues(a))
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: chip(
-                        icon: a.icon,
-                        color: Palette.muted,
-                        label: value,
-                        onDeleted: () => view.toggleFilter(a, value),
-                      ),
-                    ),
-                if (view.filterCount > 1)
-                  TextButton(
-                    onPressed: view.clearFilters,
-                    child: const Text('Clear all'),
-                  ),
-              ],
-            ),
-          ),
+          ActiveFilterChips(filters: view.filters, onChanged: view.setFilters),
           if (missing > 0)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),

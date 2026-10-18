@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/models/game_media.dart';
 import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/services/sync_failure.dart';
 
@@ -93,6 +96,48 @@ class GameApiService {
     39: GamePlatform.ios, // iOS
     55: GamePlatform.mobile, // Legacy Mobile Device
   };
+
+  /// The platforms a Discover filter can pick: every one IGDB games are
+  /// released on, in [GamePlatform] order.
+  static final List<GamePlatform> discoverPlatforms = [
+    for (final p in GamePlatform.values)
+      if (_platformMap.containsValue(p)) p,
+  ];
+
+  /// The IGDB platforms that are [platform] (Windows, Mac, Linux and DOS for PC).
+  static List<int> igdbPlatformIds(GamePlatform platform) => [
+    for (final MapEntry(:key, :value) in _platformMap.entries)
+      if (value == platform) key,
+  ];
+
+  /// [filters] as the `filters` object of `igdb-handler` (IGDB ids per kind and
+  /// the year range), with only the kinds picked. A value that is not in
+  /// [CatalogTags] (the Library's attributes go further than IGDB's fixed
+  /// lists) or a platform IGDB does not release on is left out.
+  static Map<String, Object> filtersToWire(FilterOptions filters) {
+    List<int> tagIds(GameAttribute attribute) => {
+      for (final value in filters.valuesOf(attribute))
+        ?CatalogTags.find(attribute, value)?.igdbId,
+    }.toList();
+    final genres = tagIds(GameAttribute.genre);
+    final themes = tagIds(GameAttribute.theme);
+    final modes = tagIds(GameAttribute.gameMode);
+    final platforms = {
+      for (final p in filters.platforms) ...igdbPlatformIds(p),
+    }.toList();
+    final years = filters.years;
+    return {
+      if (genres.isNotEmpty) 'genres': genres,
+      if (themes.isNotEmpty) 'themes': themes,
+      if (modes.isNotEmpty) 'game_modes': modes,
+      if (platforms.isNotEmpty) 'platforms': platforms,
+      if (!years.isAny)
+        'year': {
+          if (years.from != null) 'from': years.from!,
+          if (years.to != null) 'to': years.to!,
+        },
+    };
+  }
 
   // Converts IGDB's `platforms` array into a de-duplicated list of the app's
   // platforms, preserving first-seen order (Windows + Mac -> [pc]).
@@ -315,15 +360,27 @@ class GameApiService {
   // 4. Search games, one page at a time; null when the request failed. [offset]
   //    counts IGDB hits (the previous pages' [ResultsPage.fetched] added up), not
   //    the games kept: hits without a usable IGDB id are left out of the page.
+  //    [filters] narrow the search; with no [query] they are browsed on their
+  //    own, in their [FilterOptions.sort] order (a search is by relevance).
   Future<ResultsPage<Game>?> searchGames(
     String query, {
+    FilterOptions filters = FilterOptions.none,
     int offset = 0,
     int limit = searchPageSize,
   }) async {
     final q = query.trim();
-    if (q.isEmpty) return ResultsPage<Game>(const [], hasMore: false);
+    final wireFilters = filtersToWire(filters);
+    if (q.isEmpty && wireFilters.isEmpty) {
+      return ResultsPage<Game>(const [], hasMore: false);
+    }
 
-    final data = await _invoke({'query': q, 'limit': limit, 'offset': offset});
+    final data = await _invoke({
+      if (q.isNotEmpty) 'query': q,
+      if (wireFilters.isNotEmpty) 'filters': wireFilters,
+      if (q.isEmpty) 'sort': filters.sort.wireName,
+      'limit': limit,
+      'offset': offset,
+    });
     if (data == null) return null;
     final games = [for (final hit in data) ?gameFromHit(hit)];
 
@@ -373,7 +430,23 @@ class GameApiService {
     }
   }
 
-  // 7. Fills in the catalog rows of up to [maxBackfillIds] games from IGDB (exact
+  // 7. The art a member can pick for a game's backdrop: its artworks and
+  //    screenshots. Null when the request failed or IGDB has no such game.
+  Future<GameMedia?> fetchMedia(int igdbId) async {
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'igdb-handler',
+        body: {'mode': 'media', 'igdb_id': igdbId},
+      );
+      final raw = res.data;
+      return GameMedia.fromJson(raw is String ? json.decode(raw) : raw);
+    } catch (e) {
+      debugPrint('igdb-handler media request failed: $e');
+      return null;
+    }
+  }
+
+  // 8. Fills in the catalog rows of up to [maxBackfillIds] games from IGDB (exact
   //    platforms, genres, themes, modes, perspectives, engines, developers and
   //    publishers) and answers what each row holds now. For the library's games
   //    that were never filled in; see `CatalogBackfill`.

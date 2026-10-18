@@ -235,7 +235,8 @@ class _HeroCard extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Blurred cover-art backdrop (baked in, not a BackdropFilter: see CoverBackdrop).
+          // The chosen backdrop, or the blurred cover art (baked in, not a
+          // BackdropFilter: see CoverBackdrop).
           CoverBackdrop(game: game),
           Padding(
             padding: const EdgeInsets.all(16),

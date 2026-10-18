@@ -384,11 +384,16 @@ class FakeRepository implements CheckpointRepository {
     required GamePlatform? playedOn,
     required double purchasePrice,
     required bool isFavorite,
+    String? customBackdropUrl,
     DateTime? dateAdded,
   }) async {
     _checkWrite();
     writes.add('game:$gameId:$status:$rating');
+    backdrops[gameId] = customBackdropUrl;
   }
+
+  /// The backdrop each game's last save sent.
+  final Map<String, String?> backdrops = {};
 
   @override
   Future<ResultsPage<SocialUser>> searchSocialUsers(

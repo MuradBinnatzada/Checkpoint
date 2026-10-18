@@ -114,6 +114,10 @@ abstract final class Db {
   static const note = 'note';
   static const isFavorite = 'is_favorite';
 
+  /// `user_games` (and `public_user_games`): the member's own backdrop for the
+  /// game, an IGDB image URL; NULL: the blurred cover.
+  static const customBackdropUrl = 'custom_backdrop_url';
+
   static const followerId = 'follower_id';
   static const followeeId = 'followee_id';
 

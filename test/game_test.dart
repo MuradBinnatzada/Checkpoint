@@ -43,6 +43,18 @@ void main() {
       expect(read.isFavorite, isTrue);
     });
 
+    test('keeps the chosen backdrop, and withoutUserState drops it', () {
+      const art = 'https://images.igdb.com/igdb/image/upload/t_1080p/ar5l8.jpg';
+      final game = testGame('g1').withBackdrop(art);
+
+      expect(Game.fromJson(game.toJson()).customBackdropUrl, art);
+      expect(game.copyWith(rating: 2).customBackdropUrl, art);
+      expect(game.withBackdrop(null).customBackdropUrl, isNull);
+      expect(game.withBackdrop(null).coverUrl, game.coverUrl);
+      expect(game.withoutUserState().customBackdropUrl, isNull);
+      expect(Game.fromJson(gameJson()).customBackdropUrl, isNull); // saved before backdrops
+    });
+
     test('optional fields may be null', () {
       final game = Game.fromJson(gameJson());
 

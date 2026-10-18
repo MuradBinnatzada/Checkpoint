@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -362,6 +363,72 @@ void main() {
       expect(plain.count(games, null), 0);
       plain.toggleFilter(GameAttribute.theme, 'Horror');
       expect(plain.visible(games, null), isEmpty); // nothing can have it
+    });
+  });
+
+  group('platforms and release years', () {
+    final games = [
+      testGame('a', title: 'Alpha', year: 2005, platforms: [GamePlatform.pc], playedOn: GamePlatform.pc),
+      testGame('b', title: 'Bravo', year: 2015, platforms: [GamePlatform.ps4], playedOn: GamePlatform.ps4),
+      testGame('c', title: 'Charlie', year: 2018, platforms: [GamePlatform.nswitch], playedOn: GamePlatform.nswitch),
+      testGame('d', title: 'Delta', year: 0, platforms: [GamePlatform.pc], playedOn: GamePlatform.pc), // year unknown
+    ];
+
+    test('several platforms show the games on any of them', () {
+      view.togglePlatform(GamePlatform.pc);
+      view.togglePlatform(GamePlatform.ps4);
+
+      expect(titles(view.visible(games, null)), unorderedEquals(['Alpha', 'Bravo', 'Delta']));
+      expect(view.filterCount, 2);
+      expect(view.platformFilter, isNull); // not just one
+
+      view.togglePlatform(GamePlatform.pc);
+      expect(view.platformFilter, GamePlatform.ps4);
+      expect(titles(view.visible(games, null)), ['Bravo']);
+    });
+
+    test('a year range keeps the games released in it, and never one of unknown year', () {
+      view.setYearFilter(const YearRange.decade(2010));
+      expect(titles(view.visible(games, null)), unorderedEquals(['Bravo', 'Charlie']));
+      expect(view.filterCount, 1);
+
+      view.setYearFilter(const YearRange(to: 2015));
+      expect(titles(view.visible(games, null)), unorderedEquals(['Alpha', 'Bravo']));
+
+      view.clearFilters();
+      expect(view.yearFilter, YearRange.any);
+      expect(view.visible(games, null), hasLength(4));
+    });
+
+    test('the year span is the library\'s known years, widened to what is picked', () {
+      expect(view.yearSpan(games), (min: 2005, max: 2018));
+      expect(view.yearSpan([games.last]), isNull); // no year known
+
+      view.setYearFilter(const YearRange(from: 1999, to: 2020));
+      expect(view.yearSpan(games), (min: 1999, max: 2020));
+    });
+
+    test('setFilters replaces everything, and only a change is heard', () {
+      var heard = 0;
+      view.addListener(() => heard++);
+      final filters = FilterOptions(platforms: [GamePlatform.ps4], years: const YearRange(from: 2010));
+
+      view.setFilters(filters);
+      view.setFilters(FilterOptions(platforms: [GamePlatform.ps4], years: const YearRange(from: 2010)));
+
+      expect(view.filters, filters);
+      expect(heard, 1);
+      expect(titles(view.visible(games, null)), ['Bravo']);
+    });
+
+    test('openTab clears the platforms and years too', () {
+      view.togglePlatform(GamePlatform.pc);
+      view.setYearFilter(const YearRange.decade(2000));
+
+      view.openTab(GameStatus.playing);
+
+      expect(view.hasFilters, isFalse);
+      expect(nav.index, NavTab.library);
     });
   });
 }

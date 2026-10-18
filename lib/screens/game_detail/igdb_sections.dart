@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/panel.dart';
 
@@ -14,7 +17,8 @@ import 'package:checkpoint/widgets/panel.dart';
 /// IGDB's story and the game info (genres, main developers, publishers, themes,
 /// game modes, player perspectives, engine). The description, genres and
 /// developer come with the library, so they show at once; the rest joins them
-/// when IGDB answers (see [GameInfoSections], which asks).
+/// when IGDB answers (see [GameInfoSections], which asks). A genre, theme or game
+/// mode the Discover tab can filter by is a button: it opens Discover on it.
 class AboutPanel extends StatelessWidget {
   const AboutPanel({super.key, required this.game});
 
@@ -27,18 +31,18 @@ class AboutPanel extends StatelessWidget {
         .viewOf(game.id)
         .details;
     final hasInfo = details?.hasInfo ?? false;
-    // (label, values, as chips)
-    final rows = <(String, List<String>, bool)>[
-      ('Genres', game.genres, true),
+    // (label, values, as chips, what a chip filters Discover by)
+    final rows = <(String, List<String>, bool, GameAttribute?)>[
+      ('Genres', game.genres, true, GameAttribute.genre),
       if (hasInfo) ...[
-        ('Main developers', details!.developers, false),
-        ('Publishers', details.publishers, false),
-        ('Themes', details.themes, true),
-        ('Game modes', details.gameModes, true),
-        ('Player perspectives', details.perspectives, true),
-        ('Game engine', details.engines, true),
+        ('Main developers', details!.developers, false, null),
+        ('Publishers', details.publishers, false, null),
+        ('Themes', details.themes, true, GameAttribute.theme),
+        ('Game modes', details.gameModes, true, GameAttribute.gameMode),
+        ('Player perspectives', details.perspectives, true, null),
+        ('Game engine', details.engines, true, null),
       ] else
-        ('Developer', [game.developer], false),
+        ('Developer', [game.developer], false, null),
     ].where((row) => row.$2.any((v) => v.trim().isNotEmpty)).toList();
     final synopsis = game.synopsis.trim();
     final storyline = details?.storyline?.trim() ?? '';
@@ -69,13 +73,38 @@ class AboutPanel extends StatelessWidget {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [for (final v in rows[i].$2) Chip(label: Text(v))],
+                children: [
+                  for (final v in rows[i].$2)
+                    _TagChip(value: v, attribute: rows[i].$4),
+                ],
               )
             else
               Text(rows[i].$2.join(', '), style: const TextStyle(height: 1.4)),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// One genre, theme or game mode of a game. When the Discover tab can filter by
+/// it (it is in [CatalogTags]), tapping it opens Discover on the games that have
+/// it; anything else is only a label.
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.value, this.attribute});
+
+  final String value;
+  final GameAttribute? attribute;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = attribute;
+    final tag = a == null ? null : CatalogTags.find(a, value);
+    if (a == null || tag == null) return Chip(label: Text(value));
+    return ActionChip(
+      label: Text(value),
+      tooltip: 'Browse ${tag.label} games',
+      onPressed: () => openDiscover(context, FilterOptions.only(a, tag.name)),
     );
   }
 }

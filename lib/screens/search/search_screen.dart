@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/search/browse_results_screen.dart';
@@ -15,6 +16,7 @@ import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
+import 'package:checkpoint/widgets/filter_sheet.dart';
 import 'package:checkpoint/widgets/load_more_footer.dart';
 import 'package:checkpoint/widgets/member_tile.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
@@ -34,16 +36,22 @@ class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
   SearchKind _kind = SearchKind.games;
   Timer? _debounce;
+  late final SearchStore _store;
+  late int _browseRequests;
 
   @override
   void initState() {
     super.initState();
     // Focus decides between the Recent Searches and Browse By states.
     _searchFocus.addListener(_onFocusChanged);
+    _store = context.read<SearchStore>(); // non-subscribing lookup is allowed in initState
+    _browseRequests = _store.browseRequests;
+    _store.addListener(_onStoreChanged);
   }
 
   @override
   void dispose() {
+    _store.removeListener(_onStoreChanged);
     _searchFocus.removeListener(_onFocusChanged);
     _searchFocus.dispose();
     _controller.dispose();
@@ -55,11 +63,34 @@ class _SearchScreenState extends State<SearchScreen> {
     if (mounted) setState(() {});
   }
 
+  /// The search was replaced by a list of games matching filters (a tag tapped on
+  /// a game's screen): empty the box, so it shows that list.
+  void _onStoreChanged() {
+    if (_store.browseRequests == _browseRequests) return;
+    _browseRequests = _store.browseRequests;
+    _debounce?.cancel();
+    _controller.clear();
+    _searchFocus.unfocus();
+    setState(() {
+      _query = '';
+      _kind = SearchKind.games;
+    });
+  }
+
+  /// The box was emptied: with filters picked, list the games matching them;
+  /// without, drop the previous results so they can't flash back.
+  void _onQueryEmptied(SearchStore store) {
+    if (store.activeFilters.isEmpty) {
+      store.clearSearch();
+    } else {
+      unawaited(store.searchExternalGames(''));
+    }
+  }
+
   void _onQueryChanged(String v) {
     final store = context.read<SearchStore>();
     setState(() => _query = v);
-    // Emptied the box: drop the previous results so they can't flash back.
-    if (v.trim().isEmpty) store.clearSearch();
+    if (v.trim().isEmpty) _onQueryEmptied(store);
     _debounce?.cancel();
     if (_kind == SearchKind.games) {
       _debounce = Timer(const Duration(milliseconds: 600), () {
@@ -92,9 +123,34 @@ class _SearchScreenState extends State<SearchScreen> {
     _controller.clear();
     setState(() => _query = '');
     final store = context.read<SearchStore>();
-    store.clearSearch();
+    _onQueryEmptied(store);
     if (_kind == SearchKind.users) unawaited(store.findUsers(''));
     _searchFocus.requestFocus();
+  }
+
+  /// Opens the filter sheet, and searches again with what it picked.
+  Future<void> _openFilters() async {
+    _searchFocus.unfocus();
+    final picked = await showDiscoverFilterSheet(
+      context,
+      initial: context.read<SearchStore>().activeFilters,
+      searching: _query.trim().isNotEmpty,
+    );
+    if (picked != null && mounted) _applyFilters(picked);
+  }
+
+  /// Narrows the games down by [filters], for what is in the box now: a search
+  /// still waiting on the typing pause starts at once.
+  void _applyFilters(FilterOptions filters) {
+    _debounce?.cancel();
+    final store = context.read<SearchStore>();
+    final term = _query.trim();
+    if (term == store.searchTerm) {
+      unawaited(store.setFilter(filters));
+    } else {
+      unawaited(store.setFilter(filters, triggerSearch: false));
+      unawaited(store.searchExternalGames(term));
+    }
   }
 
   /// Tapping a recent search fills the box and runs it right away.
@@ -114,6 +170,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final store = context.watch<SearchStore>();
     final isUsers = _kind == SearchKind.users;
     final hasQuery = _query.trim().isNotEmpty;
+    final filters = store.activeFilters;
+    final filtering = !isUsers && !filters.isEmpty;
 
     final Widget body;
     if (isUsers) {
@@ -150,19 +208,44 @@ class _SearchScreenState extends State<SearchScreen> {
         loadMoreFailed: store.userLoadMoreFailed,
         onLoadMore: store.loadMoreUsers,
       );
-    } else if (hasQuery) {
-      // State A: active search.
+    } else if (hasQuery || (filtering && !_searchFocus.hasFocus)) {
+      // State A: active search, or (box empty) the games matching the filters.
       // A result already in the library shows its library state (status pill).
       final library = context.watch<LibraryStore>();
       final games = [for (final g in store.searchResults) library.maybeGame(g.id) ?? g];
+      final loading = store.searchLoading;
       body = _ResultsPane(
-        label: _countLabel(games.length, store.searchHasMore),
+        label: loading && games.isEmpty
+            ? 'Searching…'
+            : _countLabel(games.length, store.searchHasMore),
         count: games.length,
-        empty: EmptyState(
-          icon: Icons.search_off_rounded,
-          title: 'No games found',
-          message: 'Try a different title, studio or genre.',
-        ),
+        refreshing: loading && games.isNotEmpty,
+        empty: loading
+            ? const Center(child: CircularProgressIndicator())
+            : !context.watch<AuthStore>().isLoggedIn
+            // The Edge Function answers signed-in users only.
+            ? EmptyState(
+                icon: Icons.lock_outline_rounded,
+                title: 'Log in to search games',
+                message: 'Games come from IGDB, which Checkpoint only reaches for signed-in users.',
+                actionLabel: 'Log in',
+                onAction: context.read<AuthStore>().logIn,
+              )
+            : !filtering
+            ? EmptyState(
+                icon: Icons.search_off_rounded,
+                title: 'No games found',
+                message: 'Try a different title, studio or genre.',
+              )
+            : EmptyState(
+                icon: Icons.filter_list_off_rounded,
+                title: hasQuery ? 'No games found' : 'No games match these filters',
+                message: hasQuery
+                    ? 'Try a different title, or fewer filters.'
+                    : 'Try fewer filters, or a wider range of years.',
+                actionLabel: filters.count > 1 ? 'Clear filters' : 'Clear filter',
+                onAction: () => _applyFilters(filters.cleared()),
+              ),
         itemBuilder: (_, i) => _SearchTile(game: games[i]),
         hasMore: store.searchHasMore,
         loadingMore: store.searchLoadingMore,
@@ -185,27 +268,36 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Text('Discover', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: TextField(
-            controller: _controller,
-            focusNode: _searchFocus,
-            textInputAction: TextInputAction.search,
-            onChanged: _onQueryChanged,
-            onSubmitted: _submitSearch,
-            onTapOutside: (_) => _searchFocus.unfocus(),
-            decoration: fieldDecoration(
-              'Search',
-              hint: isUsers ? 'Names or @handles…' : 'Games, studios, platforms…',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Clear',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: _clearQuery,
-                    ),
-            ).copyWith(labelText: null),
-          ),
+          padding: EdgeInsets.fromLTRB(20, 0, isUsers ? 20 : 8, 0),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _searchFocus,
+                textInputAction: TextInputAction.search,
+                onChanged: _onQueryChanged,
+                onSubmitted: _submitSearch,
+                onTapOutside: (_) => _searchFocus.unfocus(),
+                decoration: fieldDecoration(
+                  'Search',
+                  hint: isUsers ? 'Names or @handles…' : 'Games, studios, platforms…',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: _clearQuery,
+                        ),
+                ).copyWith(labelText: null),
+              ),
+            ),
+            // Members have nothing to filter by.
+            if (!isUsers) ...[
+              const SizedBox(width: 2),
+              FilterButton(count: filters.count, onPressed: _openFilters),
+            ],
+          ]),
         ),
         const SizedBox(height: 12),
         Padding(
@@ -238,6 +330,16 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
         ),
+        if (filtering)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: ActiveFilterChips(
+              filters: filters,
+              onChanged: _applyFilters,
+              labelOf: CatalogTags.labelOf,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+          ),
         Expanded(child: body),
       ]),
     );
@@ -350,10 +452,15 @@ class _ResultsPane extends StatelessWidget {
     this.loadingMore = false,
     this.loadMoreFailed = false,
     this.onLoadMore,
+    this.refreshing = false,
   });
   final String label;
   final int count;
   final Widget empty;
+
+  /// The list on screen is being replaced (the filters changed): a thin bar runs
+  /// under the label until it is.
+  final bool refreshing;
   final IndexedWidgetBuilder itemBuilder;
   final bool hasMore;
   final bool loadingMore;
@@ -365,6 +472,10 @@ class _ResultsPane extends StatelessWidget {
     final showFooter = hasMore || loadingMore || loadMoreFailed;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _SectionLabel(label),
+      SizedBox(
+        height: 2,
+        child: refreshing ? const LinearProgressIndicator(minHeight: 2) : null,
+      ),
       Expanded(
         child: count == 0
             ? empty

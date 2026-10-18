@@ -94,7 +94,6 @@ class _LibraryScreenState extends State<LibraryScreen>
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                   ),
                 ),
-                LibraryFilterButton(count: view.filterCount),
                 LibrarySortButton(
                   field: view.sortField,
                   descending: view.sortDescending,
@@ -130,6 +129,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             hasText: _searchQuery.isNotEmpty,
             onChanged: _onSearchChanged,
             onClear: _clearSearch,
+            trailing: LibraryFilterButton(count: view.filterCount),
           ),
           Expanded(
             child: TabBarView(

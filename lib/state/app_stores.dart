@@ -34,7 +34,9 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    same for everyone; [LibraryStore] also fills in, in the background, the
 ///    catalog rows of its games that IGDB never filled in (CatalogBackfill);
 ///  * [SearchStore] and [LibraryViewStore] use [NavStore] (leaving the Search tab
-///    clears its results; opening a Library tab switches to it);
+///    clears its results and filters, and filters handed to it with the tab
+///    switch, from a tag on a game's screen, are browsed; opening a Library tab
+///    switches to it);
 ///  * [LibraryAttributesStore] follows [AuthStore] and holds what the Library's
 ///    filters need that the library itself does not (themes, game modes,
 ///    developers...), which [LibraryViewStore] reads. [LibraryStore] tells it

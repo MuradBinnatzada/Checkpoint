@@ -285,6 +285,7 @@ class Game {
     this.dateAdded,
     this.isFavorite = false,
     this.achievements,
+    this.customBackdropUrl,
   });
 
   final String id;
@@ -299,6 +300,11 @@ class Game {
   final IconData coverIcon;
   final String? coverUrl;
   final bool isFavorite;
+
+  /// The member's own backdrop for the game (behind its screen's header and its
+  /// Home card), an IGDB artwork or screenshot (`user_games.custom_backdrop_url`);
+  /// null: the blurred cover.
+  final String? customBackdropUrl;
 
   /// The game's IGDB id (`games.igdb_id`). `null` only for legacy Steam-keyed
   /// catalog rows that sync-steam hasn't adopted yet; everything the app adds
@@ -351,6 +357,7 @@ class Game {
       purchasePrice: (json['purchasePrice'] as num).toDouble(),
       dateAdded: dateAdded == null ? null : DateTime.tryParse('$dateAdded')?.toLocal(),
       isFavorite: json['isFavorite'] == true,
+      customBackdropUrl: json['customBackdropUrl'] as String?,
     );
   }
 
@@ -377,6 +384,7 @@ class Game {
         'purchasePrice': purchasePrice,
         'dateAdded': dateAdded?.toUtc().toIso8601String(),
         'isFavorite': isFavorite,
+        'customBackdropUrl': customBackdropUrl,
       };
 
   bool get inLibrary => status != null;
@@ -442,10 +450,39 @@ class Game {
         dateAdded: dateAdded ?? this.dateAdded,
         isFavorite: isFavorite ?? this.isFavorite,
         achievements: achievements ?? this.achievements,
+        customBackdropUrl: customBackdropUrl,
+      );
+
+  /// This game with the member's own backdrop set to exactly [url] (null: the
+  /// blurred cover). [copyWith] can't clear it: a null argument there means
+  /// "keep the current value".
+  Game withBackdrop(String? url) => Game(
+        id: id,
+        title: title,
+        publisher: publisher,
+        developer: developer,
+        releaseYear: releaseYear,
+        platforms: platforms,
+        genres: genres,
+        synopsis: synopsis,
+        coverColors: coverColors,
+        coverIcon: coverIcon,
+        coverUrl: coverUrl,
+        igdbId: igdbId,
+        steamAppId: steamAppId,
+        status: status,
+        rating: rating,
+        hoursPlayed: hoursPlayed,
+        playedOn: playedOn,
+        purchasePrice: purchasePrice,
+        dateAdded: dateAdded,
+        isFavorite: isFavorite,
+        achievements: achievements,
+        customBackdropUrl: url,
       );
 
   /// This game as the catalog knows it, with all of the user's tracking state
-  /// (status, rating, hours, favourite, achievements...) cleared. [copyWith]
+  /// (status, rating, hours, favourite, achievements, backdrop...) cleared. [copyWith]
   /// can't do this: a null argument there means "keep the current value".
   Game withoutUserState() => Game(
         id: id,

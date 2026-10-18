@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/models/game_media.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/utils/lru_cache.dart';
@@ -32,7 +33,8 @@ class GameDetailsStore extends ChangeNotifier {
     this._onLoaded,
     int capacity = 30,
   }) : _apiService = apiService ?? GameApiService(),
-       _views = LruCache(capacity);
+       _views = LruCache(capacity),
+       _media = LruCache(capacity);
 
   final GameApiService _apiService;
 
@@ -41,6 +43,9 @@ class GameDetailsStore extends ChangeNotifier {
 
   final LruCache<String, GameDetailsView> _views;
   final Map<String, Future<void>> _loading = {};
+
+  /// The art each game's "Change backdrop" sheet offered, by IGDB id.
+  final LruCache<int, GameMedia> _media;
   bool _disposed = false;
 
   GameDetailsView viewOf(String gameId) =>
@@ -99,6 +104,19 @@ class GameDetailsStore extends ChangeNotifier {
       _views[gameId] = const GameDetailsView(status: LoadStatus.failed);
     }
     _notify();
+  }
+
+  /// The art [game]'s backdrop can be picked from (see [GameMedia]).
+  /// Asked for once per game and kept with its details; null for a game without
+  /// an IGDB id or when the request failed, which the next call asks again.
+  Future<GameMedia?> media(Game game) async {
+    final igdbId = game.igdbId;
+    if (igdbId == null) return null;
+    final cached = _media[igdbId];
+    if (cached != null) return cached;
+    final media = await _apiService.fetchMedia(igdbId);
+    if (media != null) _media[igdbId] = media;
+    return media;
   }
 
   void _notify() {

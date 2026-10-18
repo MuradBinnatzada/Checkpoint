@@ -257,6 +257,7 @@ class CheckpointRepository {
           ${Db.purchasePrice},
           ${Db.dateAdded},
           ${Db.isFavorite},
+          ${Db.customBackdropUrl},
           ${Db.games}!inner (
             ${Db.id},
             ${Db.igdbId},
@@ -626,6 +627,7 @@ class CheckpointRepository {
     Db.playedOn,
     Db.dateAdded,
     Db.isFavorite,
+    Db.customBackdropUrl,
     ..._catalogColumns,
   ].join(', ');
 
@@ -862,6 +864,7 @@ class CheckpointRepository {
     required GamePlatform? playedOn,
     required double purchasePrice,
     required bool isFavorite,
+    String? customBackdropUrl,
     DateTime? dateAdded,
   }) async {
     await _client.from(Db.userGames).upsert({
@@ -874,6 +877,7 @@ class CheckpointRepository {
       Db.purchasePrice: purchasePrice,
       Db.dateAdded: (dateAdded ?? DateTime.now()).toUtc().toIso8601String(),
       Db.isFavorite: isFavorite,
+      Db.customBackdropUrl: customBackdropUrl,
     }, onConflict: '${Db.userId},${Db.gameId}');
   }
 
@@ -1087,7 +1091,7 @@ Game _gameFromPublicRow(Map<String, dynamic> row) {
     playedOn: gamePlatformFromDb(row[Db.playedOn]),
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
-  );
+  ).withBackdrop(_firstText([row[Db.customBackdropUrl]]));
 }
 
 GameAttributes _attributesFromRow(Map<String, dynamic> row) => GameAttributes(
@@ -1156,7 +1160,7 @@ Game _gameFromUserGameRow(Map<String, dynamic> row) {
     isFavorite: row[Db.isFavorite] == true,
     // `achievements` is intentionally not read here: fetchUserGames doesn't
     // select it. See fetchGameAchievements.
-  );
+  ).withBackdrop(_firstText([row[Db.customBackdropUrl]]));
 }
 
 LogEntry _logFromRow(Map<String, dynamic> row) => LogEntry(

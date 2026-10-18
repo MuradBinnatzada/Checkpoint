@@ -4,11 +4,29 @@
 // ship in the app. Only logged-in Supabase users may call it.
 //
 // Request  (POST, JSON): { "query": "zelda", "limit": 20, "offset": 0 }
+//                        optionally narrowed by the Discover tab's filters:
+//                        { "query": "zelda", "filters": { "genres": [12],
+//                          "themes": [19], "game_modes": [1, 3], "platforms": [6, 14],
+//                          "year": { "from": 2010, "to": 2019 } }, ... }
+//                          IGDB ids per kind (genres, themes, game_modes,
+//                          platforms), every kind optional; a game needs any id of
+//                          a kind, and every kind picked. `year` is an inclusive
+//                          range of release years, either end optional. A search
+//                          stays in IGDB's relevance order.
+//                        or, to browse by filters with no text (`query` empty or
+//                        left out; at least one filter needed):
+//                        { "filters": { "themes": [19] }, "sort": "popular",
+//                          "limit": 30, "offset": 0 }
+//                          sort optional, one of popular (most ratings first),
+//                          top_rated, newest (released up to now), oldest. Only
+//                          main games with a cover, like the browse lists.
+//                        (the queries live in _shared/game_filters.ts)
 //                        or, to browse instead of search:
 //                        { "mode": "popular" | "top_rated" | "new_releases",
 //                          "limit": 20, "offset": 0 }
 //                        limit optional, 1-50; offset optional, for paging.
-//                        With a `mode` the `query` is ignored. Modes:
+//                        With a `mode` the `query`, `filters` and `sort` are
+//                        ignored. Modes:
 //                          popular       most popular first (IGDB visits)
 //                          top_rated     best total_rating, with more than 50 ratings
 //                          new_releases  released in the last 90 days, newest first
@@ -28,6 +46,13 @@
 //                          write needs the service role (RLS lets a member edit only
 //                          the catalog rows they created) and only ever touches those
 //                          columns, from IGDB's own answer, never from the caller.
+//                        or, for the art a member can pick for a game's backdrop
+//                        (the game screen's "Change backdrop" sheet):
+//                        { "mode": "media", "igdb_id": 472 }
+//                          answers { "artworks": [...], "screenshots": [...] },
+//                          each picture as { image_id, width, height }
+//                          (_shared/game_media.ts). The app builds each URL from
+//                          `image_id`.
 //                        or, to fill in many games' catalog rows at once (the app
 //                        sends its library's never-filled-in games in the
 //                        background, so every game shows its exact platforms
@@ -61,7 +86,7 @@
 //                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
 //                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
 //                          UNAUTHENTICATED   (401)  no valid user session
-//                          NOT_FOUND         (404)  `details` for an IGDB id with no game
+//                          NOT_FOUND         (404)  `details` / `media` for an IGDB id with no game
 //                          BAD_REQUEST       (400 / 405)
 //                          NOT_CONFIGURED    (500)  missing secrets
 //                          INTERNAL          (500)  anything else
@@ -96,6 +121,17 @@ import {
   timeToBeat,
   timeToBeatQuery,
 } from "../_shared/game_details.ts";
+import {
+  type DiscoverSort,
+  discoverQuery,
+  filteredSearchQuery,
+  type GameFilters,
+  hasFilters,
+  isDiscoverSort,
+  NO_FILTERS,
+  parseGameFilters,
+} from "../_shared/game_filters.ts";
+import { gameMedia, mediaQuery } from "../_shared/game_media.ts";
 import {
   type BrowseMode,
   gamesByIdQuery,
@@ -382,12 +418,33 @@ async function queryIgdb(url: string, apicalypse: string): Promise<unknown> {
 
 function searchGames(
   term: string,
+  filters: GameFilters,
   limit: number,
   offset: number,
 ): Promise<unknown> {
   return queryIgdb(
     IGDB_GAMES_URL,
-    `search "${term}"; fields ${GAME_FIELDS}; limit ${limit}; offset ${offset};`,
+    filteredSearchQuery(GAME_FIELDS, term, filters, limit, offset),
+  );
+}
+
+// Games matching [filters], with no search term, in [sort] order.
+function discoverGames(
+  filters: GameFilters,
+  sort: DiscoverSort,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
+  return queryIgdb(
+    IGDB_GAMES_URL,
+    discoverQuery(
+      GAME_FIELDS,
+      filters,
+      sort,
+      limit,
+      offset,
+      Math.floor(Date.now() / 1000),
+    ),
   );
 }
 
@@ -446,6 +503,17 @@ async function gameDetails(igdbId: number): Promise<unknown> {
 
   await saveCatalogRow(igdbId, game);
   return { game, time_to_beat: timeToBeat(firstRow(timeToBeatRows)) };
+}
+
+// ---------------------------------------------------------------------------
+// Media: the art a member can pick for a game's backdrop
+// ---------------------------------------------------------------------------
+
+// One game's artworks and screenshots.
+async function gameMediaFor(igdbId: number): Promise<unknown> {
+  const game = firstRow(await queryIgdb(IGDB_GAMES_URL, mediaQuery(igdbId)));
+  if (!game) throw new HttpError(404, "NOT_FOUND", "No such game");
+  return gameMedia(game);
 }
 
 // A client with the service role, or null when its secrets are missing. It
@@ -637,6 +705,21 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(await gameDetails(igdbId));
     }
 
+    // `media`: the art a member can pick for one game's backdrop, by IGDB id.
+    if (payload?.mode === "media") {
+      const igdbId = parseIgdbId(payload?.igdb_id);
+      if (igdbId === null) {
+        return jsonResponse(
+          {
+            error: "`igdb_id` must be a positive whole number",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      return jsonResponse(await gameMediaFor(igdbId));
+    }
+
     // `backfill`: the catalog rows of up to MAX_BACKFILL_IDS games, by IGDB id.
     if (payload?.mode === "backfill") {
       const igdbIds = parseIgdbIds(payload?.igdb_ids);
@@ -659,7 +742,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(
         {
           error:
-            "`mode` must be one of: popular, top_rated, new_releases, details, backfill",
+            "`mode` must be one of: popular, top_rated, new_releases, details, media, backfill",
           code: "BAD_REQUEST",
         },
         400,
@@ -668,11 +751,36 @@ Deno.serve(async (req: Request) => {
 
     const rawQuery = typeof payload?.query === "string" ? payload.query : "";
     const term = sanitizeSearchTerm(rawQuery.slice(0, MAX_QUERY_LENGTH));
-    if (mode === null && !term) {
-      return jsonResponse(
-        { error: "A non-empty `query` string is required", code: "BAD_REQUEST" },
-        400,
-      );
+
+    // Filters and a sort only mean something to a search or a filtered browse.
+    let filters: GameFilters = NO_FILTERS;
+    let sort: DiscoverSort = "popular";
+    if (mode === null) {
+      const parsed = parseGameFilters(payload?.filters);
+      if (typeof parsed === "string") {
+        return jsonResponse({ error: parsed, code: "BAD_REQUEST" }, 400);
+      }
+      filters = parsed;
+      const rawSort = payload?.sort ?? null;
+      if (rawSort !== null && !isDiscoverSort(rawSort)) {
+        return jsonResponse(
+          {
+            error: "`sort` must be one of: popular, top_rated, newest, oldest",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      if (rawSort !== null) sort = rawSort;
+      if (!term && !hasFilters(filters)) {
+        return jsonResponse(
+          {
+            error: "A non-empty `query` string or at least one filter is required",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
     }
 
     const offset = parseOffset(payload?.offset);
@@ -681,9 +789,11 @@ Deno.serve(async (req: Request) => {
     if (offset >= MAX_RESULTS) return jsonResponse([]);
 
     const limit = parseLimit(payload?.limit);
-    const games = mode === null
-      ? await searchGames(term, limit, offset)
-      : await browseGames(mode, limit, offset);
+    const games = mode !== null
+      ? await browseGames(mode, limit, offset)
+      : term
+      ? await searchGames(term, filters, limit, offset)
+      : await discoverGames(filters, sort, limit, offset);
     return jsonResponse(games);
   } catch (err) {
     if (err instanceof HttpError) return errorResponse(err);
