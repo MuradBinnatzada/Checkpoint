@@ -16,6 +16,7 @@ class UserProfile {
     this.discordId,
     this.instagramId,
     this.twitchId,
+    this.showSteamAchievements = true,
     required this.joined,
     this.followers = 248,
     this.following = 120,
@@ -33,6 +34,8 @@ class UserProfile {
         discordId: json['discordId'] as String?,
         instagramId: json['instagramId'] as String?,
         twitchId: json['twitchId'] as String?,
+        // A copy saved before the setting existed: the default.
+        showSteamAchievements: json['showSteamAchievements'] as bool? ?? true,
         joined: DateTime.parse(json['joined'] as String).toLocal(),
         followers: (json['followers'] as num).toInt(),
         following: (json['following'] as num).toInt(),
@@ -59,6 +62,11 @@ class UserProfile {
   final String? discordId;
   final String? instagramId;
   final String? twitchId;
+
+  /// Whether other members see the Achievements card on this profile
+  /// (`profiles.show_steam_achievements`, Settings > Privacy). The member always
+  /// sees their own.
+  final bool showSteamAchievements;
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
@@ -77,6 +85,7 @@ class UserProfile {
         'discordId': discordId,
         'instagramId': instagramId,
         'twitchId': twitchId,
+        'showSteamAchievements': showSteamAchievements,
         'joined': joined.toUtc().toIso8601String(),
         'followers': followers,
         'following': following,
@@ -90,6 +99,7 @@ class UserProfile {
     String? steamId,
     // copyWith can't tell "leave it" from "set to null", so clearing is explicit.
     bool clearSteamId = false,
+    bool? showSteamAchievements,
   }) =>
       UserProfile(
         name: name ?? this.name,
@@ -103,6 +113,8 @@ class UserProfile {
         discordId: discordId,
         instagramId: instagramId,
         twitchId: twitchId,
+        showSteamAchievements:
+            showSteamAchievements ?? this.showSteamAchievements,
         joined: joined,
         followers: followers,
         following: following,

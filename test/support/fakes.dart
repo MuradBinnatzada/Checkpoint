@@ -156,6 +156,12 @@ class FakeRepository implements CheckpointRepository {
   /// The Steam ID saved on the profile; null means no Steam account is connected.
   String? steamId;
 
+  /// `profiles.show_steam_achievements`: whether other members see them.
+  bool showSteamAchievements = true;
+
+  /// Holds [setShowSteamAchievements] until completed.
+  Completer<void>? privacyGate;
+
   /// `profiles.connected_services`: the services saved for the signed-in user, as
   /// other members see them (Steam is never in it), and the account names saved
   /// with them (`psn_id`, `xbox_id`, `discord_id`, `instagram_id`, `twitch_id`).
@@ -265,6 +271,7 @@ class FakeRepository implements CheckpointRepository {
       discordId: savedDiscordId,
       instagramId: savedInstagramId,
       twitchId: savedTwitchId,
+      showSteamAchievements: showSteamAchievements,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -292,6 +299,14 @@ class FakeRepository implements CheckpointRepository {
     _checkWrite();
     steamId = id.trim();
     writes.add('steam:$steamId');
+  }
+
+  @override
+  Future<void> setShowSteamAchievements(bool show) async {
+    await privacyGate?.future;
+    _checkWrite();
+    showSteamAchievements = show;
+    writes.add('show-achievements:$show');
   }
 
   @override

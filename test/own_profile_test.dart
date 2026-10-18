@@ -73,6 +73,7 @@ void main() {
     testWidgets('is laid out like another member\'s, from your own library', (
       tester,
     ) async {
+      repo.steamId = '76561198000000000';
       await open(tester);
 
       expect(find.text('Ada'), findsOneWidget);

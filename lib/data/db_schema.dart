@@ -72,6 +72,10 @@ abstract final class Db {
   static const followersCount = 'followers_count';
   static const viewerFollows = 'viewer_follows';
 
+  /// Whether other members may see the member's Steam achievements (Settings >
+  /// Privacy). Written on your own `profiles` row, readable in `public_profiles`.
+  static const showSteamAchievements = 'show_steam_achievements';
+
   static const weeklyGoalHours = 'weekly_goal_hours';
 
   static const igdbId = 'igdb_id';

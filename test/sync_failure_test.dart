@@ -25,7 +25,7 @@ void main() {
         'UNAUTHENTICATED', 'NO_STEAM_ID', 'STEAM_PROFILE_PRIVATE', 'STEAM_RATE_LIMITED',
         'STEAM_UNAVAILABLE', 'STEAM_ERROR', 'IGDB_RATE_LIMITED', 'IGDB_UNAVAILABLE',
         'IGDB_ERROR', 'NOT_CONFIGURED', 'INTERNAL', 'GAME_NOT_LINKED', 'NOT_IN_LIBRARY',
-        'BAD_REQUEST', 'SYNC_PARTIAL',
+        'BAD_REQUEST', 'SYNC_PARTIAL', 'ACHIEVEMENTS_HIDDEN',
       ];
       for (final wire in sent) {
         expect(SyncFailureCode.fromWire(wire), isNotNull, reason: wire);

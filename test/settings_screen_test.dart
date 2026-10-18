@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
+import 'package:checkpoint/screens/settings/privacy_section.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/load_status.dart';
@@ -107,6 +110,19 @@ void main() {
     matching: find.widgetWithText(TextButton, 'Connect'),
   );
 
+  /// Scrolls the Privacy section down to [text]; a phone doesn't fit all of it.
+  Future<void> scrollPrivacyTo(WidgetTester tester, String text) =>
+      tester.scrollUntilVisible(
+        find.text(text),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(PrivacySection),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+
   group('the sections', () {
     testWidgets('are chips across the head of a phone screen', (tester) async {
       await open(tester);
@@ -130,6 +146,7 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Privacy'));
       await tester.pumpAndSettle();
       expect(find.text('Visible to other signed-in members'), findsOneWidget);
+      await scrollPrivacyTo(tester, 'Private to you');
       expect(find.text('Private to you'), findsOneWidget);
     });
 
@@ -524,9 +541,91 @@ void main() {
         'Purchase prices',
         'Session notes',
       ]) {
+        await scrollPrivacyTo(tester, text);
         expect(find.text(text), findsOneWidget, reason: text);
       }
       expect(find.textContaining('Instagram and Twitch'), findsOneWidget);
+    });
+
+    SwitchListTile achievementsSwitch(WidgetTester tester) => tester.widget(
+      find.widgetWithText(SwitchListTile, 'Show Steam Achievements'),
+    );
+
+    Future<void> tapSwitch(WidgetTester tester) async {
+      await tester.tap(find.text('Show Steam Achievements'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Show Steam Achievements is on until turned off, and is saved', (
+      tester,
+    ) async {
+      await open(tester, section: SettingsSection.privacy);
+
+      expect(
+        find.text(
+          'Allow other players to view your Steam achievements on your public profile.',
+        ),
+        findsOneWidget,
+      );
+      expect(achievementsSwitch(tester).value, isTrue);
+
+      await tapSwitch(tester);
+
+      expect(achievementsSwitch(tester).value, isFalse);
+      expect(stores.profile.showSteamAchievements, isFalse);
+      expect(repo.showSteamAchievements, isFalse);
+      expect(repo.writes, ['show-achievements:false']);
+
+      await tapSwitch(tester);
+
+      expect(achievementsSwitch(tester).value, isTrue);
+      expect(repo.showSteamAchievements, isTrue);
+    });
+
+    testWidgets('shows the saved choice', (tester) async {
+      repo.showSteamAchievements = false;
+      await open(tester, section: SettingsSection.privacy);
+
+      expect(achievementsSwitch(tester).value, isFalse);
+    });
+
+    testWidgets('moves at once, and goes back with a message when the save fails', (
+      tester,
+    ) async {
+      await open(tester, section: SettingsSection.privacy);
+      repo
+        ..privacyGate = Completer<void>()
+        ..rejectWrites = true;
+
+      await tester.tap(find.text('Show Steam Achievements'));
+      await tester.pump();
+      // Before the server answers: moved, and waiting for the save.
+      expect(achievementsSwitch(tester).value, isFalse);
+      expect(achievementsSwitch(tester).onChanged, isNull);
+
+      repo.privacyGate!.complete();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pumpAndSettle();
+
+      expect(achievementsSwitch(tester).value, isTrue);
+      expect(repo.showSteamAchievements, isTrue);
+      expect(
+        find.text('Could not save your privacy setting. Please try again.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('is not kept for later when the server cannot be reached', (
+      tester,
+    ) async {
+      await open(tester, section: SettingsSection.privacy);
+      repo.writesDown = true;
+
+      await tapSwitch(tester);
+
+      expect(achievementsSwitch(tester).value, isTrue);
+      expect(find.textContaining('was not changed'), findsOneWidget);
     });
   });
 }

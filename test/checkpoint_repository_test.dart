@@ -600,6 +600,15 @@ void main() {
       expect((await repo.fetchProfile(testUser('u1'))).connectedServices, isEmpty);
     });
 
+    test('the profile carries whether other members see the achievements', () async {
+      api.reply({'id': 'u1', 'display_name': 'Ada', 'handle': 'ada', 'show_steam_achievements': false});
+      expect((await repo.fetchProfile(testUser('u1'))).showSteamAchievements, isFalse);
+
+      // A row from before the setting existed shows them, like the column's default.
+      api.reply({'id': 'u1', 'display_name': 'Ada', 'handle': 'ada'});
+      expect((await repo.fetchProfile(testUser('u1'))).showSteamAchievements, isTrue);
+    });
+
     test('a blank steam_id means no Steam account is connected', () async {
       api.reply({'id': 'u1', 'display_name': 'Ada', 'handle': 'ada', 'steam_id': '  '});
 
@@ -915,6 +924,15 @@ void main() {
       expect(await repo.fetchPublicProfile('ghost'), isNull);
     });
 
+    test('fetchPublicProfile reads whether the member shares their achievements', () async {
+      api.reply({'id': 'm1', 'handle': 'zed', 'steam_connected': true, 'show_steam_achievements': false});
+
+      final profile = (await repo.fetchPublicProfile('m1'))!;
+
+      expect(api.last.url.queryParameters['select'], contains('show_steam_achievements'));
+      expect(profile.showSteamAchievements, isFalse);
+    });
+
     test('a profile without a Steam flag or a name still reads', () async {
       api.reply({'id': 'm9', 'handle': null, 'display_name': null});
 
@@ -923,6 +941,7 @@ void main() {
       expect(profile.name, 'Player');
       expect(profile.handle, startsWith('@player_'));
       expect(profile.steamConnected, isFalse);
+      expect(profile.showSteamAchievements, isTrue);
       expect(profile.services, isEmpty);
       expect(profile.connectedServices, isEmpty);
     });
@@ -1374,6 +1393,17 @@ void main() {
       final body = api.bodyOf(api.last) as Map<String, dynamic>;
       expect(body['psn_id'], isNull);
       expect(body['xbox_id'], 'x' * accountNameMaxLength);
+    });
+
+    test('setShowSteamAchievements writes only that column of the signed-in user\'s row', () async {
+      await signIn('u1');
+
+      await repo.setShowSteamAchievements(false);
+
+      expect(api.last.method, 'PATCH');
+      expect(api.last.url.path, '/rest/v1/profiles');
+      expect(api.last.url.queryParameters['id'], 'eq.u1');
+      expect(api.bodyOf(api.last), {'show_steam_achievements': false});
     });
 
     test('setConnectedAccounts with nothing connected clears everything', () async {

@@ -51,8 +51,9 @@ class SearchStore extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Leaving the Search tab drops its results and its filters. Being sent to it
-  /// with filters browses by them.
+  /// Leaving the Search tab drops its results and its filters, and empties its
+  /// search box (see [searchBoxResets]): coming back starts over. Being sent to
+  /// it with filters browses by them.
   void _onNavChanged() {
     final requested = _nav.takeDiscoverFilters();
     if (requested != null) {
@@ -60,10 +61,9 @@ class SearchStore extends ChangeNotifier {
       return;
     }
     clearSearch();
-    if (_activeFilters != FilterOptions.none) {
-      _activeFilters = FilterOptions.none;
-      notifyListeners();
-    }
+    _activeFilters = FilterOptions.none;
+    _searchBoxResets++;
+    notifyListeners();
   }
 
   /// A different account (or signing out) must not see the previous account's
@@ -125,15 +125,16 @@ class SearchStore extends ChangeNotifier {
     if (triggerSearch) await _search(_searchTerm, remember: false);
   }
 
-  int _browseRequests = 0;
+  int _searchBoxResets = 0;
 
-  /// How many times [browseBy] replaced the search with filters. The Search
-  /// screen empties its search box when this goes up.
-  int get browseRequests => _browseRequests;
+  /// How many times the search text was dropped from outside the Search screen:
+  /// by [browseBy], or by leaving the tab. The Search screen empties its search
+  /// box when this goes up, so the box never holds text the results are not for.
+  int get searchBoxResets => _searchBoxResets;
 
   /// Drops the search text and shows the games matching [filters].
   Future<void> browseBy(FilterOptions filters) async {
-    _browseRequests++;
+    _searchBoxResets++;
     _activeFilters = filters;
     notifyListeners();
     await _search('', remember: false);
@@ -186,11 +187,12 @@ class SearchStore extends ChangeNotifier {
   /// retries it.
   bool get searchLoadMoreFailed => _searchLoadMoreFailed;
 
-  /// Searches IGDB for [query], narrowed by [activeFilters], and remembers
-  /// [query] as a recent search. An empty [query] lists the games matching the
-  /// filters, or, with none picked, drops the results.
-  Future<void> searchExternalGames(String query) =>
-      _search(query, remember: true);
+  /// Searches IGDB for [query], narrowed by [activeFilters], and with [remember]
+  /// keeps [query] as a recent search (not for a search run while typing: it
+  /// would keep every half-typed word). An empty [query] lists the games
+  /// matching the filters, or, with none picked, drops the results.
+  Future<void> searchExternalGames(String query, {bool remember = true}) =>
+      _search(query, remember: remember);
 
   Future<void> _search(String query, {required bool remember}) async {
     final term = query.trim();

@@ -114,6 +114,9 @@ class ProfileScreen extends StatelessWidget {
             library: stats,
             emptyHours: 'Log a session to see your breakdown.',
             onStatus: viewStore.openTab,
+            // Your own achievements show whatever the privacy setting says; that
+            // only hides them from others.
+            showAchievements: profileStore.steamConnected,
             links: [
               ProfileLink(
                 icon: Icons.collections_bookmark_rounded,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,5 +110,38 @@ void main() {
     expect(profile.followingCount, 0);
     expect(await cache.readProfile('u1'), isNull);
     expect(await cache.readSocial('u1'), isNull);
+  });
+
+  test('one privacy save at a time; a failed one goes back to what the server has', () async {
+    await profile.initialize();
+    await pumpEventQueue();
+
+    repo
+      ..privacyGate = Completer<void>()
+      ..writesDown = true;
+    final first = profile.toggleSteamAchievementsPrivacy(false);
+    expect(profile.showSteamAchievements, isFalse);
+    expect(profile.savingSteamAchievementsPrivacy, isTrue);
+    // Ignored while the first is on its way.
+    expect(await profile.toggleSteamAchievementsPrivacy(true), isNull);
+    expect(profile.showSteamAchievements, isFalse);
+
+    repo.privacyGate!.complete();
+    expect(await first, isNotNull);
+
+    expect(profile.savingSteamAchievementsPrivacy, isFalse);
+    expect(profile.showSteamAchievements, isTrue);
+    expect(repo.showSteamAchievements, isTrue);
+  });
+
+  test('a saved privacy choice is kept in the saved copy of the profile', () async {
+    await profile.initialize();
+    await pumpEventQueue();
+
+    expect(await profile.toggleSteamAchievementsPrivacy(false), isNull);
+    await pumpEventQueue();
+
+    expect(repo.showSteamAchievements, isFalse);
+    expect((await cache.readProfile('u1'))!.value.showSteamAchievements, isFalse);
   });
 }

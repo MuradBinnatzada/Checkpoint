@@ -30,6 +30,7 @@ enum SyncFailureCode {
   ),
   gameNotLinked('GAME_NOT_LINKED', 'This game is not linked to a Steam app yet. Sync your Steam library first.'),
   notInLibrary('NOT_IN_LIBRARY', 'That game is not in your library.'),
+  achievementsHidden('ACHIEVEMENTS_HIDDEN', 'This member keeps their achievements private.'),
 
   // Needs the owner, or a bug.
   notConfigured('NOT_CONFIGURED', 'Syncing is not available right now.'),

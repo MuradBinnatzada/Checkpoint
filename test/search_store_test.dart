@@ -76,14 +76,27 @@ void main() {
     expect(search.searchHasMore, isFalse);
   });
 
-  test('leaving the Search tab drops the results', () async {
+  test('leaving the Search tab drops the results, and has its search box emptied', () async {
     await search.searchExternalGames('zelda');
     expect(search.searchResults, isNotEmpty);
+    final resetsBefore = search.searchBoxResets;
 
     nav.select(NavTab.library);
 
     expect(search.searchResults, isEmpty);
     expect(search.searchHasMore, isFalse);
+    expect(search.searchTerm, '');
+    expect(search.searchBoxResets, resetsBefore + 1);
+  });
+
+  test('a search run while typing is not remembered', () async {
+    await search.searchExternalGames('elden rin', remember: false);
+    expect(api.calls.single.query, 'elden rin');
+    expect(search.searchTerm, 'elden rin');
+    expect(search.recentSearches, isEmpty);
+
+    await search.searchExternalGames('elden ring');
+    expect(search.recentSearches, ['elden ring']);
   });
 
   test('remembers recent searches, newest first, without repeats', () async {
@@ -172,6 +185,7 @@ void main() {
     test('a tag sent through NavStore replaces the search with its filters', () async {
       await search.searchExternalGames('zelda');
       nav.select(NavTab.library);
+      final resetsBefore = search.searchBoxResets;
       final shooter = FilterOptions.only(GameAttribute.genre, 'Shooter');
 
       nav.switchTab(NavTab.search, discoverFilters: shooter);
@@ -180,7 +194,7 @@ void main() {
       expect(nav.index, NavTab.search);
       expect(search.activeFilters, shooter);
       expect(search.searchTerm, '');
-      expect(search.browseRequests, 1);
+      expect(search.searchBoxResets, greaterThan(resetsBefore));
       expect(api.calls.last, (query: '', filters: shooter, offset: 0));
       expect(search.searchResults, hasLength(2));
       expect(nav.takeDiscoverFilters(), isNull); // handed over once

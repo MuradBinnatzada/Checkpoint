@@ -352,6 +352,8 @@ String _steamFailureMessage(Object error, {required bool own}) {
           : 'They have not connected a Steam account.',
     SyncFailureCode.gameNotLinked =>
       'This game is not linked to a Steam game yet.',
+    SyncFailureCode.achievementsHidden =>
+      'They keep their Steam achievements private.',
     SyncFailureCode.notInLibrary =>
       own
           ? 'That game is not in your library.'

@@ -40,8 +40,8 @@ class _FilterApi extends GameApiService {
       testDetails(igdbId: igdbId);
 }
 
-/// The Discover tab's filters, and the tags of a game's screen that open them, in
-/// the real app shell on fake data sources.
+/// The Discover tab's filters, the tags of a game's screen that open them, and
+/// its search box, in the real app shell on fake data sources.
 void main() {
   late FakeRepository repo;
   late _FilterApi api;
@@ -335,6 +335,76 @@ void main() {
       final box = tester.widget<TextField>(find.byType(TextField));
       expect(box.controller!.text, isEmpty);
       expect(find.widgetWithText(InputChip, 'RPG'), findsOneWidget);
+    });
+  });
+
+  group('the search box', () {
+    String boxText(WidgetTester tester) =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+    testWidgets('searches as you type, without remembering half-typed words', (
+      tester,
+    ) async {
+      await start(tester);
+      stores.nav.select(NavTab.search);
+      await settle(tester);
+
+      await tester.enterText(find.byType(TextField), 'elden rin');
+      await settle(tester);
+      await tester.pump();
+      expect(api.searches.single.query, 'elden rin');
+      expect(find.text('Result One'), findsOneWidget);
+      expect(stores.search.recentSearches, isEmpty);
+
+      // A space after the word has nothing new to look up.
+      await tester.enterText(find.byType(TextField), 'elden rin ');
+      await settle(tester);
+      expect(api.searches, hasLength(1));
+
+      // The keyboard's search key keeps it.
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await settle(tester);
+      expect(stores.search.recentSearches, ['elden rin']);
+    });
+
+    testWidgets('text left in it goes with the results when Discover is left', (
+      tester,
+    ) async {
+      await start(tester);
+      stores.nav.select(NavTab.search);
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), 'zelda');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await settle(tester);
+      expect(find.text('Result One'), findsOneWidget);
+
+      stores.nav.select(NavTab.library);
+      await settle(tester);
+      stores.nav.select(NavTab.search);
+      await settle(tester);
+
+      expect(boxText(tester), isEmpty);
+      expect(find.text('No games found'), findsNothing);
+      expect(find.text('Browse by'.toUpperCase()), findsOneWidget);
+    });
+
+    testWidgets('back on Games, what was typed for Users is searched', (
+      tester,
+    ) async {
+      await start(tester);
+      stores.nav.select(NavTab.search);
+      await settle(tester);
+      await tester.tap(find.text('Users'));
+      await settle(tester);
+      await tester.enterText(find.byType(TextField), 'ada');
+      await settle(tester);
+      expect(api.searches, isEmpty);
+
+      await tester.tap(find.text('Games'));
+      await settle(tester);
+
+      expect(api.searches.single.query, 'ada');
+      expect(find.text('Result One'), findsOneWidget);
     });
   });
 }

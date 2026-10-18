@@ -135,8 +135,10 @@ export function filterConditions(filters: GameFilters): string[] {
 }
 
 /**
- * A text search narrowed by [filters]. IGDB orders a search by relevance, so
- * there is no sort; [term] must already be sanitized for the quoted string.
+ * A text search narrowed by [filters], without the games of [excludeIds] (the
+ * title matches listed ahead of it, see game_search.ts). IGDB orders a search
+ * by relevance, so there is no sort; [term] must already be sanitized for the
+ * quoted string, and [excludeIds] be IGDB ids from IGDB's own answer.
  */
 export function filteredSearchQuery(
   fields: string,
@@ -144,8 +146,10 @@ export function filteredSearchQuery(
   filters: GameFilters,
   limit: number,
   offset: number,
+  excludeIds: number[] = [],
 ): string {
   const conditions = filterConditions(filters)
+  if (excludeIds.length > 0) conditions.push(`id != (${excludeIds.join(',')})`)
   const where = conditions.length > 0 ? ` where ${conditions.join(' & ')};` : ''
   return `search "${term}"; fields ${fields};${where} limit ${limit}; offset ${offset};`
 }

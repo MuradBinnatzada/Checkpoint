@@ -96,8 +96,8 @@ class ProfileHeader extends StatelessWidget {
 /// One profile page for everyone, yours included: who they are, icons of the
 /// accounts they connected, their bio, who follows them, then their favorites,
 /// latest sessions, playtime, library numbers (each box opens a library), hours per
-/// platform, ratings, their achievement count, and last of all a short menu into
-/// their library and follow lists.
+/// platform, ratings, their achievements (when [showAchievements]), and last of
+/// all a short menu into their library and follow lists.
 ///
 /// It only lays things out. Where the numbers come from, and what a tap does,
 /// differ between your own profile (your live library, the Library tab) and
@@ -117,6 +117,7 @@ class ProfileLayout extends StatelessWidget {
     required this.library,
     required this.onStatus,
     required this.links,
+    required this.showAchievements,
     this.notice,
     this.bio,
     this.actions,
@@ -152,6 +153,11 @@ class ProfileLayout extends StatelessWidget {
   final Set<ConnectedService> services;
   final Map<ConnectedService, String> accountNames;
   final List<ProfileLink> links;
+
+  /// Whether the page has the Achievements card. Only with Steam connected, and
+  /// on someone else's page only when they share them (Settings > Privacy); the
+  /// callers decide.
+  final bool showAchievements;
 
   final String emptyFavorites;
   final String emptyHours;
@@ -256,10 +262,12 @@ class ProfileLayout extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         RatingsPanel(stats: library),
-        const SizedBox(height: 14),
         // The count shows at once; the games and their achievements are fetched
         // only when asked for.
-        AchievementsSection(userId: userId),
+        if (showAchievements) ...[
+          const SizedBox(height: 14),
+          AchievementsSection(userId: userId),
+        ],
         const SizedBox(height: 24),
         ProfileLinkRows(links: links),
       ],

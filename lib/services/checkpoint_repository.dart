@@ -162,6 +162,17 @@ class CheckpointRepository {
         .eq(Db.id, userId);
   }
 
+  /// Saves whether other members may see the signed-in user's Steam achievements
+  /// (`profiles.show_steam_achievements`). The achievement functions and
+  /// `sync-achievements` read it on every request, so it holds from the next one.
+  Future<void> setShowSteamAchievements(bool show) async {
+    final userId = _requireUserId();
+    await _client
+        .from(Db.profiles)
+        .update({Db.showSteamAchievements: show})
+        .eq(Db.id, userId);
+  }
+
   /// Saves which services the signed-in user has connected, and the account
   /// names behind PSN, Xbox, Discord, Instagram and Twitch, on their own
   /// `profiles` row. This is what
@@ -573,6 +584,7 @@ class CheckpointRepository {
     Db.instagramId,
     Db.twitchId,
     Db.joinedAt,
+    Db.showSteamAchievements,
   ].join(', ');
 
   /// The header of [userId]'s profile, or null when no such member exists.
@@ -1027,6 +1039,7 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     discordId: _firstText([row[Db.discordId]]),
     instagramId: _firstText([row[Db.instagramId]]),
     twitchId: _firstText([row[Db.twitchId]]),
+    showSteamAchievements: row[Db.showSteamAchievements] != false,
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,
@@ -1059,6 +1072,8 @@ PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
     ),
     avatarUrl: _firstText([row[Db.avatarUrl]]),
     steamConnected: row[Db.steamConnected] == true,
+    // Only an explicit "no" hides them, as the column's default is "yes".
+    showSteamAchievements: row[Db.showSteamAchievements] != false,
     services: connectedServicesFromDb(row[Db.connectedServices]),
     bio: _firstText([row[Db.bio]]),
     steamId: _firstText([row[Db.steamId]]),

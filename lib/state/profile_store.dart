@@ -818,6 +818,57 @@ class ProfileStore extends ChangeNotifier {
     unawaited(_pushServices(userAction: true));
   }
 
+  // ---- Privacy ----
+
+  /// Whether other members see the Achievements card on the signed-in user's
+  /// profile (Settings > Privacy). Their own profile always shows it.
+  bool get showSteamAchievements => _profile.showSteamAchievements;
+
+  bool _savingPrivacy = false;
+
+  /// A [toggleSteamAchievementsPrivacy] is on its way to the server. The switch
+  /// waits for it: with one save at a time, a failed one always knows what the
+  /// server still has.
+  bool get savingSteamAchievementsPrivacy => _savingPrivacy;
+
+  /// Shows or hides the signed-in user's Steam achievements from other members.
+  /// The switch moves at once and the choice is saved to the profile. It is not
+  /// kept for later when the save fails: the server is what hides them, so the
+  /// switch goes back rather than claim they are hidden when they are not. Does
+  /// nothing while a save is on its way. Returns null on success, or a message
+  /// that is safe to show.
+  Future<String?> toggleSteamAchievementsPrivacy(bool value) async {
+    final current = _user;
+    if (current == null) return 'Sign in to change your privacy settings.';
+    final previous = _profile.showSteamAchievements;
+    if (_savingPrivacy || value == previous) return null;
+
+    _savingPrivacy = true;
+    _profile = _profile.copyWith(showSteamAchievements: value);
+    notifyListeners();
+    String? error;
+    try {
+      _auth.requireSession();
+      await _repository.setShowSteamAchievements(value);
+    } catch (e, st) {
+      debugPrint('Saving the achievements privacy setting failed: $e\n$st');
+      error = isConnectionFailure(e)
+          ? 'Could not reach the server, so your achievements setting was not changed.'
+          : 'Could not save your privacy setting. Please try again.';
+    }
+    _savingPrivacy = false;
+    // Another account signed in meanwhile: its own profile is loaded instead.
+    if (_user?.id != current.id) return null;
+    // Set again even on success: a profile read that arrived during the save may
+    // hold the value from before it.
+    _profile = _profile.copyWith(
+      showSteamAchievements: error == null ? value : previous,
+    );
+    notifyListeners();
+    if (error == null) unawaited(_writeProfileCache());
+    return error;
+  }
+
   // ---- Editing the profile ----
 
   static String _normalizeHandle(String handle) =>

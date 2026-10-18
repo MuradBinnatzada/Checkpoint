@@ -19,8 +19,9 @@ import 'package:checkpoint/widgets/profile_link_rows.dart';
 /// are, icons of the accounts they connected, their bio, who follows them, then
 /// their favorites, latest sessions, playtime, library numbers (each box opens
 /// their library), hours per platform, ratings, their achievement count, and last
-/// of all a short menu into their library and follow lists. Their achievements
-/// stay behind a button.
+/// of all a short menu into their library and follow lists. The achievements are
+/// left out when they have not connected Steam or keep them private (on your own
+/// page, only when you have not connected Steam).
 ///
 /// [preview] is the row the member was tapped from; it fills in the name and
 /// photo while the profile loads.
@@ -140,6 +141,9 @@ class _Loaded extends StatelessWidget {
         ? own.followersCount
         : view.followersFor(viewerFollows: following);
     final followingCount = isSelf ? own.followingCount : stats.following;
+    final showAchievements = isSelf
+        ? own.steamConnected
+        : profile.steamConnected && profile.showSteamAchievements;
 
     void openFollowers(FollowListKind kind) => openFollows(
       context,
@@ -191,6 +195,7 @@ class _Loaded extends StatelessWidget {
       activity: view.activity,
       library: library,
       onStatus: (status) => openLibrary(status: status),
+      showAchievements: showAchievements,
       services: profile.connectedServices,
       accountNames: profile.accountNames,
       links: [

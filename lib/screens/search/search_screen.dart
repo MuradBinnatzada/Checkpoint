@@ -37,7 +37,7 @@ class _SearchScreenState extends State<SearchScreen> {
   SearchKind _kind = SearchKind.games;
   Timer? _debounce;
   late final SearchStore _store;
-  late int _browseRequests;
+  late int _searchBoxResets;
 
   @override
   void initState() {
@@ -45,7 +45,7 @@ class _SearchScreenState extends State<SearchScreen> {
     // Focus decides between the Recent Searches and Browse By states.
     _searchFocus.addListener(_onFocusChanged);
     _store = context.read<SearchStore>(); // non-subscribing lookup is allowed in initState
-    _browseRequests = _store.browseRequests;
+    _searchBoxResets = _store.searchBoxResets;
     _store.addListener(_onStoreChanged);
   }
 
@@ -63,11 +63,12 @@ class _SearchScreenState extends State<SearchScreen> {
     if (mounted) setState(() {});
   }
 
-  /// The search was replaced by a list of games matching filters (a tag tapped on
-  /// a game's screen): empty the box, so it shows that list.
+  /// The search was dropped from outside: replaced by a list of games matching
+  /// filters (a tag tapped on a game's screen), or the tab was left. Empty the
+  /// box, so it shows what the results are for, not text whose results are gone.
   void _onStoreChanged() {
-    if (_store.browseRequests == _browseRequests) return;
-    _browseRequests = _store.browseRequests;
+    if (_store.searchBoxResets == _searchBoxResets) return;
+    _searchBoxResets = _store.searchBoxResets;
     _debounce?.cancel();
     _controller.clear();
     _searchFocus.unfocus();
@@ -93,8 +94,14 @@ class _SearchScreenState extends State<SearchScreen> {
     if (v.trim().isEmpty) _onQueryEmptied(store);
     _debounce?.cancel();
     if (_kind == SearchKind.games) {
-      _debounce = Timer(const Duration(milliseconds: 600), () {
-        if (v.trim().isNotEmpty) store.searchExternalGames(v);
+      // Results follow the typing, half-typed words included (the server
+      // matches the start of title words). Only a finished search is
+      // remembered: one submitted, or one whose result was picked.
+      _debounce = Timer(const Duration(milliseconds: 400), () {
+        final term = v.trim();
+        // A space after a word changes nothing to look up.
+        if (term.isEmpty || term == store.searchTerm) return;
+        unawaited(store.searchExternalGames(term, remember: false));
       });
     } else {
       // Members are searched on the server, so wait for a pause in typing. An
@@ -149,7 +156,7 @@ class _SearchScreenState extends State<SearchScreen> {
       unawaited(store.setFilter(filters));
     } else {
       unawaited(store.setFilter(filters, triggerSearch: false));
-      unawaited(store.searchExternalGames(term));
+      unawaited(store.searchExternalGames(term, remember: false));
     }
   }
 
@@ -314,10 +321,15 @@ class _SearchScreenState extends State<SearchScreen> {
               onSelectionChanged: (s) {
                 setState(() => _kind = s.first);
                 _debounce?.cancel();
+                final search = context.read<SearchStore>();
+                final term = _query.trim();
                 // Members are fetched on demand, so (re)load them for whatever is
-                // typed in the box.
+                // typed in the box. The games were last searched for whatever was
+                // typed before switching to Users: catch up with the box.
                 if (_kind == SearchKind.users) {
-                  unawaited(context.read<SearchStore>().findUsers(_query));
+                  unawaited(search.findUsers(_query));
+                } else if (term.isNotEmpty && term != search.searchTerm) {
+                  unawaited(search.searchExternalGames(term, remember: false));
                 }
               },
               style: SegmentedButton.styleFrom(
@@ -520,9 +532,18 @@ class _SearchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The search found what was looked for: offer it again under Recent searches.
+    void rememberSearch() {
+      final search = context.read<SearchStore>();
+      unawaited(search.addRecentSearch(search.searchTerm));
+    }
+
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => openGame(context, game.id),
+      onTap: () {
+        rememberSearch();
+        openGame(context, game.id);
+      },
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Row(children: [
@@ -551,6 +572,7 @@ class _SearchTile extends StatelessWidget {
               tooltip: 'Add to library',
               icon: const Icon(Icons.add_circle_outline_rounded, color: Palette.accent, size: 28),
               onSelected: (s) {
+                rememberSearch();
                 context.read<LibraryStore>().addToLibrary(game.id, s);
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()

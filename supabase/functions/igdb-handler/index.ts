@@ -11,8 +11,12 @@
 //                          IGDB ids per kind (genres, themes, game_modes,
 //                          platforms), every kind optional; a game needs any id of
 //                          a kind, and every kind picked. `year` is an inclusive
-//                          range of release years, either end optional. A search
-//                          stays in IGDB's relevance order.
+//                          range of release years, either end optional.
+//                        A text search lists first the rated games whose title has
+//                        a word starting with every typed word ("elden rin": Elden
+//                        Ring), most ratings first, then IGDB's relevance search
+//                        for the rest (_shared/game_search.ts). `offset` counts
+//                        positions in that joined list.
 //                        or, to browse by filters with no text (`query` empty or
 //                        left out; at least one filter needed):
 //                        { "filters": { "themes": [19] }, "sort": "popular",
@@ -133,6 +137,13 @@ import {
 } from "../_shared/game_filters.ts";
 import { gameMedia, mediaQuery } from "../_shared/game_media.ts";
 import {
+  joinSearchPage,
+  searchPagePlan,
+  titleIds,
+  titleMatchQuery,
+  titleWords,
+} from "../_shared/game_search.ts";
+import {
   type BrowseMode,
   gamesByIdQuery,
   inRankOrder,
@@ -167,7 +178,8 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MAX_QUERY_LENGTH = 100;
 // How deep a search may be paged. IGDB's relevance ranking is noise long before
-// this, and every page costs a request against the Twitch/IGDB quota.
+// this, and every page costs requests (two for a text search) against the
+// Twitch/IGDB quota.
 const MAX_RESULTS = 200;
 
 const corsHeaders = {
@@ -375,12 +387,13 @@ async function igdbRequest(
   }
 }
 
-// Strip control characters and escape what would break out of the quoted
-// Apicalypse string.
+// Strip control characters, squeeze runs of spaces into one, and escape what
+// would break out of the quoted Apicalypse string.
 function sanitizeSearchTerm(term: string): string {
   return term
     // deno-lint-ignore no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
     .trim();
@@ -416,16 +429,74 @@ async function queryIgdb(url: string, apicalypse: string): Promise<unknown> {
   });
 }
 
-function searchGames(
+function asList(body: unknown): unknown[] {
+  return Array.isArray(body) ? body : [];
+}
+
+// The rated games whose title has a word starting with every word of [term]:
+// what was meant while the last word is still being typed. Only an extra on top
+// of IGDB's search, so a failure here leaves the search to answer alone.
+async function titleMatches(
+  term: string,
+  filters: GameFilters,
+): Promise<unknown[]> {
+  const words = titleWords(term);
+  if (words.length === 0) return [];
+  try {
+    return asList(
+      await queryIgdb(
+        IGDB_GAMES_URL,
+        titleMatchQuery(GAME_FIELDS, words, filters),
+      ),
+    );
+  } catch (err) {
+    console.error("IGDB title match failed:", err);
+    return [];
+  }
+}
+
+// One page of a text search: the title matches, then IGDB's relevance search
+// without them (_shared/game_search.ts). The first page, the one waited on while
+// typing, asks for both at once and drops the title matches from the search
+// itself; a later page needs the title matches' ids to ask the search for the
+// right hits.
+async function searchGames(
   term: string,
   filters: GameFilters,
   limit: number,
   offset: number,
-): Promise<unknown> {
-  return queryIgdb(
-    IGDB_GAMES_URL,
-    filteredSearchQuery(GAME_FIELDS, term, filters, limit, offset),
+): Promise<unknown[]> {
+  const search = (searchLimit: number, searchOffset: number, exclude: number[]) =>
+    queryIgdb(
+      IGDB_GAMES_URL,
+      filteredSearchQuery(
+        GAME_FIELDS,
+        term,
+        filters,
+        searchLimit,
+        searchOffset,
+        exclude,
+      ),
+    ).then(asList);
+
+  if (offset === 0) {
+    const [titles, hits] = await Promise.all([
+      titleMatches(term, filters),
+      search(limit, 0, []),
+    ]);
+    return joinSearchPage(titles, hits, 0, limit);
+  }
+
+  const titles = await titleMatches(term, filters);
+  const { searchOffset, searchLimit } = searchPagePlan(
+    offset,
+    limit,
+    titles.length,
   );
+  const hits = searchLimit > 0
+    ? await search(searchLimit, searchOffset, titleIds(titles))
+    : [];
+  return joinSearchPage(titles, hits, offset, limit);
 }
 
 // Games matching [filters], with no search term, in [sort] order.

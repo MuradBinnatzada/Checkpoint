@@ -4,8 +4,11 @@
  * POST { game_id, user_id? }   (the caller is identified by their Supabase JWT)
  *   Without `user_id` (or with the caller's own id) it loads the caller's
  *   achievements. With another member's `user_id` it loads THEIRS, for their
- *   profile: the game must be in their library and they must have a Steam ID on
- *   their profile. A `steam_id` sent in the request body is always ignored: the
+ *   profile: the game must be in their library, they must have a Steam ID on
+ *   their profile, and they must not have turned off "Show Steam Achievements"
+ *   (`profiles.show_steam_achievements`, see
+ *   20261025120000_steam_achievements_privacy.sql). A `steam_id` sent in the
+ *   request body is always ignored: the
  *   Steam ID is read from `profiles.steam_id` of the member whose achievements
  *   these are, so nobody can attach someone else's Steam account to a profile.
  *
@@ -17,7 +20,8 @@
  *   OTHERS_REFRESH_MS is answered from the database instead of asking Steam again,
  *   so viewers can't make the function hammer Steam.
  *
- *   0. Profile: look up the member's `profiles.steam_id`
+ *   0. Profile: for another member, check they share their achievements; then look
+ *      up the member's `profiles.steam_id`
  *   1. game_id → Steam app id: `games.steam_app_id`, or (a legacy Steam-keyed
  *      row that sync-steam hasn't adopted yet) decoded from its `57e40000-…` id
  *   2. ISteamUserStats/GetSchemaForGame/v2     → the game's global achievement
@@ -67,7 +71,7 @@ const OTHERS_REFRESH_MS = 10 * 60 * 1000
  * Same scheme as `sync-steam` (see `SyncFailureCode` in lib/services/sync_failure.dart).
  *   Retry later: STEAM_RATE_LIMITED, STEAM_UNAVAILABLE
  *   Needs the user: UNAUTHENTICATED, NO_STEAM_ID, STEAM_PROFILE_PRIVATE,
- *                   GAME_NOT_LINKED, NOT_IN_LIBRARY, BAD_REQUEST
+ *                   GAME_NOT_LINKED, NOT_IN_LIBRARY, ACHIEVEMENTS_HIDDEN, BAD_REQUEST
  *   Needs the owner: NOT_CONFIGURED, STEAM_ERROR, INTERNAL
  */
 type ErrorCode =
@@ -79,6 +83,7 @@ type ErrorCode =
   | 'STEAM_ERROR'
   | 'GAME_NOT_LINKED'
   | 'NOT_IN_LIBRARY'
+  | 'ACHIEVEMENTS_HIDDEN'
   | 'BAD_REQUEST'
   | 'NOT_CONFIGURED'
   | 'INTERNAL'
@@ -317,6 +322,24 @@ async function fetchSteamId(admin: SupabaseClient, userId: string, own = true): 
   return String(steamId).trim()
 }
 
+/**
+ * Throws ACHIEVEMENTS_HIDDEN when another member turned off "Show Steam Achievements":
+ * then neither their stored list nor Steam's is handed out. A member who doesn't
+ * exist passes, and fails later as NOT_IN_LIBRARY.
+ */
+async function assertAchievementsShared(admin: SupabaseClient, userId: string): Promise<void> {
+  const { data, error } = await admin
+    .from('profiles')
+    .select('show_steam_achievements')
+    .eq('id', userId)
+    .maybeSingle()
+  // Before the privacy migration there is no such column: fail rather than share.
+  if (error) throw new Error(`profiles lookup failed: ${error.message}`)
+  if (data && data.show_steam_achievements !== true) {
+    throw new HttpError(403, 'ACHIEVEMENTS_HIDDEN', 'This member keeps their achievements private.')
+  }
+}
+
 // ---- Orchestration ---------------------------------------------------------
 
 /**
@@ -483,6 +506,7 @@ serve(async (req) => {
     const own = userId === callerId.toLowerCase()
 
     if (!own) {
+      await assertAchievementsShared(admin, userId)
       const recent = await recentStoredAchievements(admin, userId, gameId)
       if (recent) return json({ success: true, achievements: recent })
     }

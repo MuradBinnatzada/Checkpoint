@@ -965,6 +965,7 @@ void main() {
     testWidgets('your own profile lists your games the same way', (
       tester,
     ) async {
+      repo.steamId = '76561198000000000';
       repo.achievementSummaries['u1'] = [
         const GameAchievementSummary(
           gameId: 'fav',
@@ -982,6 +983,7 @@ void main() {
     });
 
     testWidgets('your own empty profile says how to fill it', (tester) async {
+      repo.steamId = '76561198000000000';
       await open(tester, const Scaffold(body: ProfileScreen()));
       await tester.scrollUntilVisible(
         find.textContaining('Sync your Steam library'),
@@ -990,6 +992,77 @@ void main() {
       );
 
       expect(find.textContaining('Sync your Steam library'), findsOneWidget);
+    });
+
+    testWidgets('a member without Steam has no Achievements card', (
+      tester,
+    ) async {
+      repo.members['m1'] = const PublicProfile(
+        id: 'm1',
+        name: 'Member One',
+        handle: '@member_one',
+      );
+      await openProfile(tester);
+
+      expect(find.text('Wishlist'), findsOneWidget); // the page is there
+      expect(find.text('Achievements'), findsNothing);
+      expect(find.textContaining('No Steam achievements'), findsNothing);
+      expect(reads('achievement'), isEmpty);
+    });
+
+    testWidgets('a member who keeps their achievements private has no card', (
+      tester,
+    ) async {
+      repo.members['m1'] = const PublicProfile(
+        id: 'm1',
+        name: 'Member One',
+        handle: '@member_one',
+        steamConnected: true,
+        showSteamAchievements: false,
+      );
+      await openProfile(tester);
+
+      expect(find.text('Wishlist'), findsOneWidget);
+      expect(find.text('Achievements'), findsNothing);
+      expect(reads('achievement'), isEmpty);
+    });
+
+    testWidgets('your own profile has no card until Steam is connected', (
+      tester,
+    ) async {
+      await open(tester, const Scaffold(body: ProfileScreen()));
+
+      expect(find.text('Wishlist'), findsOneWidget);
+      expect(find.text('Achievements'), findsNothing);
+      expect(reads('achievement'), isEmpty);
+    });
+
+    testWidgets('your own profile shows them even when they are private', (
+      tester,
+    ) async {
+      repo
+        ..steamId = '76561198000000000'
+        ..showSteamAchievements = false;
+      await open(tester, const Scaffold(body: ProfileScreen()));
+      await scrollToAchievements(tester);
+
+      expect(find.text('Achievements'), findsOneWidget);
+      expect(reads('achievement'), isNotEmpty);
+    });
+
+    testWidgets('your own page opened as a member page follows your Steam link', (
+      tester,
+    ) async {
+      repo.members['u1'] = const PublicProfile(
+        id: 'u1',
+        name: 'Ada',
+        handle: '@ada',
+        steamConnected: true,
+        showSteamAchievements: false,
+      );
+      await openProfile(tester, 'u1');
+      // Not connected on your own (live) profile, whatever the copy says.
+      expect(find.text('Achievements'), findsNothing);
     });
   });
 }

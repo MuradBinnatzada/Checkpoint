@@ -14,6 +14,7 @@ class PublicProfile {
     required this.handle,
     this.avatarUrl,
     this.steamConnected = false,
+    this.showSteamAchievements = true,
     this.services = const {},
     this.bio,
     this.steamId,
@@ -32,6 +33,11 @@ class PublicProfile {
   final String handle;
   final String? avatarUrl;
   final bool steamConnected;
+
+  /// Whether they let other members see their Steam achievements
+  /// (`show_steam_achievements`, Settings > Privacy). When false the server hands
+  /// out none of them, and the profile leaves the Achievements card out.
+  final bool showSteamAchievements;
 
   /// The connected services besides Steam (`profiles.connected_services`).
   final Set<ConnectedService> services;
