@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
@@ -115,6 +117,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SectionHeader('Recent Activity'),
           const _RecentActivityRow(),
+          const _FriendsFeedRow(),
           const _PopularRow(),
         ],
       ),
@@ -442,6 +445,173 @@ class _RecentActivityRow extends StatelessWidget {
             subtitleIcon: e.platform.icon,
           );
         },
+      ),
+    );
+  }
+}
+
+/// "From people you follow": what the members you follow logged, completed or
+/// rated lately, newest first (see [FriendsFeedStore]). Hidden when signed out,
+/// until the answer is here, when it failed, and when none of them did anything.
+class _FriendsFeedRow extends StatefulWidget {
+  const _FriendsFeedRow();
+
+  @override
+  State<_FriendsFeedRow> createState() => _FriendsFeedRowState();
+}
+
+class _FriendsFeedRowState extends State<_FriendsFeedRow> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Runs again whenever the store changes, a sign-in included.
+    // [FriendsFeedStore.load] does nothing when signed out, while a request runs
+    // or for a while after one (answered or failed), so this can't loop.
+    final feed = context.read<FriendsFeedStore>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) feed.load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = context.watch<FriendsFeedStore>().items;
+    if (items.isEmpty) return const SizedBox.shrink();
+    const w = 124.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader('From people you follow'),
+        SizedBox(
+          height: posterCardHeight(context, w, subtitle: true),
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: items.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 14),
+            itemBuilder: (context, i) =>
+                _FriendActivityCard(item: items[i], width: w),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "+2h · 3h ago", "Completed", "Rated 4.5". A completion or a rating gets no
+/// time: the only date other members can see is when the game was added.
+String friendActivityCaption(FriendActivity item) => switch (item.kind) {
+  FriendActivityKind.session =>
+    '+${fmtHours(item.hours)}h · ${timeAgo(item.at)}',
+  FriendActivityKind.completed => 'Completed',
+  FriendActivityKind.rated => 'Rated ${fmtHours(item.rating)}',
+};
+
+/// One item of the friends feed: the game's cover (opens the game) with the
+/// member's photo on its corner (opens their profile), then the game's title,
+/// the member's name and what they did.
+class _FriendActivityCard extends StatelessWidget {
+  const _FriendActivityCard({required this.item, required this.width});
+
+  final FriendActivity item;
+  final double width;
+
+  static const double _avatar = 34;
+
+  @override
+  Widget build(BuildContext context) {
+    final member = item.member;
+    final game = item.game;
+    final icon = switch (item.kind) {
+      FriendActivityKind.session => Icons.schedule_rounded,
+      FriendActivityKind.completed => GameStatus.completed.icon,
+      FriendActivityKind.rated => Icons.star_rounded,
+    };
+    void openMember() =>
+        openProfile(context, userId: member.id, preview: member);
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            children: [
+              Semantics(
+                button: true,
+                label: 'Open ${game.title}',
+                excludeSemantics: true,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => openGame(context, game.id),
+                  child: CoverArt(game: game),
+                ),
+              ),
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: Tooltip(
+                  message: member.name,
+                  child: Semantics(
+                    button: true,
+                    label: "Open ${member.name}'s profile",
+                    excludeSemantics: true,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: openMember,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Palette.background,
+                            width: 2,
+                          ),
+                        ),
+                        child: ProfileAvatar(
+                          name: member.name,
+                          size: _avatar,
+                          imageUrl: member.avatarUrl,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            game.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: openMember,
+            child: Text(
+              member.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(icon, size: 12, color: Palette.muted),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  friendActivityCaption(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Palette.muted),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

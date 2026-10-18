@@ -9,6 +9,7 @@ import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/filter_options.dart';
+import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
@@ -133,6 +134,31 @@ GameFriends testGameFriends(
           if (friends.any((f) => f.status == status))
             status: friends.where((f) => f.status == status).length,
       },
+);
+
+/// An item of Home's friends feed: [memberId] did [kind] on [gameId]. The game
+/// is a catalog game, as `following_recent_activity` sends it.
+FriendActivity testActivity(
+  String memberId,
+  String gameId,
+  FriendActivityKind kind, {
+  String? name,
+  String? title,
+  double hours = 0,
+  double rating = 0,
+  DateTime? at,
+}) => FriendActivity(
+  member: testMember(memberId, name: name),
+  game: testGame(
+    gameId,
+    title: title,
+    status: null,
+    cover: false,
+  ).copyWith(rating: 0),
+  kind: kind,
+  hours: hours,
+  rating: rating,
+  at: at ?? DateTime.utc(2026, 3, 4, 5, 6, 7),
 );
 
 /// A [CheckpointRepository] that answers from memory. [offline] makes every read
@@ -601,6 +627,26 @@ class FakeRepository implements CheckpointRepository {
     _checkOnline();
     if (failFriendsReads) throw Exception('friends read failed');
     return friendsWithGame[gameId] ?? const GameFriends();
+  }
+
+  /// What `following_recent_activity` answers, newest first. [feedGate] holds
+  /// the read until completed; [failFeedReads] fails it.
+  List<FriendActivity> followingActivity = [];
+  Completer<void>? feedGate;
+  bool failFeedReads = false;
+
+  /// How many times [fetchFollowingActivity] was called.
+  int feedReads = 0;
+
+  @override
+  Future<List<FriendActivity>> fetchFollowingActivity({
+    int limit = CheckpointRepository.friendsFeedLimit,
+  }) async {
+    feedReads++;
+    await feedGate?.future;
+    _checkOnline();
+    if (failFeedReads) throw Exception('feed read failed');
+    return followingActivity.take(limit).toList();
   }
 
   /// Added up from [achievementSummaries], as the database does.

@@ -30,6 +30,10 @@ abstract final class Db {
   /// and rating: the Friends panel on a game's screen.
   static const rpcFollowingGameActivity = 'following_game_activity';
 
+  /// The newest sessions, completions and ratings of the members the signed-in
+  /// one follows: "From people you follow" on Home.
+  static const rpcFollowingRecentActivity = 'following_recent_activity';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';

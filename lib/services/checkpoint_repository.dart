@@ -9,6 +9,7 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_cover.dart';
@@ -799,6 +800,47 @@ class CheckpointRepository {
       friends: List.unmodifiable(friends),
       totals: Map.unmodifiable(totals),
     );
+  }
+
+  /// Items of "From people you follow" on Home. The server caps it at 100.
+  static const int friendsFeedLimit = 30;
+
+  /// What the members the signed-in one follows did lately, newest first: the
+  /// sessions they logged (the latest of each game), the games they completed and
+  /// the ratings they gave, at most [limit] in all. One request. Empty without a
+  /// session.
+  Future<List<FriendActivity>> fetchFollowingActivity({
+    int limit = friendsFeedLimit,
+  }) async {
+    final data = await _client.rpc(
+      Db.rpcFollowingRecentActivity,
+      params: {'max_rows': limit},
+    );
+    if (data is! List) return const [];
+    final items = <FriendActivity>[];
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final kind = switch (row['kind']) {
+        'session' => FriendActivityKind.session,
+        'completed' => FriendActivityKind.completed,
+        'rated' => FriendActivityKind.rated,
+        _ => null,
+      };
+      final at = _date(row['occurred_at']);
+      if (kind == null || at == null) continue;
+      items.add(
+        FriendActivity(
+          member: _socialUserFromProfile({...row, Db.id: row[Db.userId]}),
+          game: _gameFromCatalogRow({...row, Db.id: row[Db.gameId]}),
+          kind: kind,
+          at: at,
+          hours: _double(row[Db.hours]),
+          rating: _double(row[Db.rating]),
+        ),
+      );
+    }
+    return List.unmodifiable(items);
   }
 
   /// [userId]'s achievements added up: unlocked, total, games with any and games

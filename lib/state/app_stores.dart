@@ -10,6 +10,7 @@ import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/company_store.dart';
+import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
@@ -46,11 +47,13 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    (a callback set here) when the server filled in catalog rows, so it reads
 ///    again;
 ///  * [PublicProfileStore], [PublicLibraryStore], [SocialGraphStore],
-///    [PublicAchievementsStore] and [GameFriendsStore] hold what is fetched about
-///    OTHER members. They follow [AuthStore] only, so that a sign-out drops it,
-///    and never touch [ProfileStore] (the signed-in member's own profile).
-///    [LibraryStore] reads [PublicProfileStore] and [PublicLibraryStore] to open
-///    a game tapped on someone's profile or library, and tells
+///    [PublicAchievementsStore], [GameFriendsStore] and [FriendsFeedStore] hold
+///    what is fetched about OTHER members. They follow [AuthStore] only, so
+///    that a sign-out drops it, and never touch [ProfileStore] (the signed-in
+///    member's own profile).
+///    [LibraryStore] reads [PublicProfileStore], [PublicLibraryStore] and
+///    [FriendsFeedStore] to open a game tapped on someone's profile or library or
+///    in Home's friends feed, and tells
 ///    [PublicAchievementsStore] when the library was cleared (your own
 ///    achievements go with it) or synced with Steam (which counts them again).
 ///    [PublicAchievementsStore] hands the lists of your own games it fetches
@@ -91,6 +94,7 @@ class AppStores {
     publicLibraries = PublicLibraryStore(repository: repository, auth: auth);
     socialGraph = SocialGraphStore(repository: repository, auth: auth);
     gameFriends = GameFriendsStore(repository: repository, auth: auth);
+    friendsFeed = FriendsFeedStore(repository: repository, auth: auth);
     publicAchievements = PublicAchievementsStore(
       repository: repository,
       auth: auth,
@@ -110,7 +114,8 @@ class AppStores {
           gameDetails.similarGameById(id) ??
           companies.gameById(id) ??
           publicProfiles.gameById(id) ??
-          publicLibraries.gameById(id),
+          publicLibraries.gameById(id) ??
+          friendsFeed.gameById(id),
       onCleared: publicAchievements.markCleared,
       onCatalogFilled: () => libraryAttributes.markStale(),
       onSteamSynced: publicAchievements.refreshAfterSync,
@@ -139,6 +144,7 @@ class AppStores {
   late final PublicLibraryStore publicLibraries;
   late final SocialGraphStore socialGraph;
   late final GameFriendsStore gameFriends;
+  late final FriendsFeedStore friendsFeed;
   late final PublicAchievementsStore publicAchievements;
   late final LibraryStore library;
   late final LibraryAttributesStore libraryAttributes;
@@ -152,6 +158,7 @@ class AppStores {
     publicLibraries.initialize();
     socialGraph.initialize();
     gameFriends.initialize();
+    friendsFeed.initialize();
     publicAchievements.initialize();
     libraryAttributes.initialize();
     await Future.wait([
@@ -163,6 +170,7 @@ class AppStores {
 
   void dispose() {
     publicAchievements.dispose();
+    friendsFeed.dispose();
     gameFriends.dispose();
     socialGraph.dispose();
     publicLibraries.dispose();
