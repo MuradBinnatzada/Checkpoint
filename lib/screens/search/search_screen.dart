@@ -7,6 +7,7 @@ import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/search/browse_results_screen.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/search_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -391,9 +392,13 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final following = context.watch<ProfileStore>().isFollowing(user.id);
+    final games = user.gamesLogged;
+    final followers = user.followersFor(viewerFollows: following);
     return MemberTile(
       user: user,
-      subtitle: '${user.gamesLogged} games · ${fmtCount(user.followers)} followers',
+      subtitle: '${fmtCount(games)} ${games == 1 ? 'game' : 'games'} · '
+          '${fmtCount(followers)} ${followers == 1 ? 'follower' : 'followers'}',
     );
   }
 }

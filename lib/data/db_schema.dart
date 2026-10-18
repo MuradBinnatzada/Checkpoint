@@ -66,6 +66,12 @@ abstract final class Db {
   /// `public_profiles` only: `profiles.created_at`, the member's join date.
   static const joinedAt = 'joined_at';
 
+  /// `public_profiles` only: how many games the member has, how many members
+  /// follow them, and whether the signed-in member is one of those.
+  static const gamesCount = 'games_count';
+  static const followersCount = 'followers_count';
+  static const viewerFollows = 'viewer_follows';
+
   static const weeklyGoalHours = 'weekly_goal_hours';
 
   static const igdbId = 'igdb_id';

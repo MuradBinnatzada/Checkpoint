@@ -690,6 +690,26 @@ void main() {
       expect(page.items[1].handle, startsWith('@player_'));
     });
 
+    test('searchSocialUsers reads each member\'s counts and follow state', () async {
+      api.reply([
+        {'id': 'm1', 'handle': 'zed', 'display_name': 'Zed', 'games_count': 12, 'followers_count': 3, 'viewer_follows': true},
+        {'id': 'm2', 'handle': 'amy', 'display_name': 'Amy', 'games_count': 0, 'followers_count': 0, 'viewer_follows': false},
+      ]);
+
+      final page = await repo.searchSocialUsers('u1');
+
+      final select = api.last.url.queryParameters['select']!;
+      expect(select, allOf(contains('games_count'), contains('followers_count'), contains('viewer_follows')));
+      final zed = page.items[0];
+      expect((zed.gamesLogged, zed.followers, zed.startsFollowed), (12, 3, true));
+      // the count follows the button: unfollowing takes the viewer's own follow off
+      expect(zed.followersFor(viewerFollows: true), 3);
+      expect(zed.followersFor(viewerFollows: false), 2);
+      final amy = page.items[1];
+      expect((amy.gamesLogged, amy.followers, amy.startsFollowed), (0, 0, false));
+      expect(amy.followersFor(viewerFollows: true), 1);
+    });
+
     test('searchSocialUsers makes the typed text safe for the or() filter', () async {
       await repo.searchSocialUsers('u1', query: ' @Ada,(x)"%*\\ ');
 

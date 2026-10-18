@@ -469,7 +469,7 @@ class CheckpointRepository {
   }) async {
     var request = _client
         .from(Db.publicProfiles)
-        .select(_memberColumns)
+        .select(_memberWithCountsColumns)
         .neq(Db.id, currentUserId);
     final term = _likeTerm(query);
     if (term.isNotEmpty) {
@@ -544,6 +544,11 @@ class CheckpointRepository {
   /// Columns of a member row: `public_profiles`, `public_followers` and
   /// `public_following` all have them, under the same names.
   static const String _memberColumns = 'id, handle, display_name, avatar_url';
+
+  /// [_memberColumns] plus the counts under each member in the Users tab; only
+  /// `public_profiles` has them (20261023120000_member_list_counts.sql).
+  static const String _memberWithCountsColumns =
+      '$_memberColumns, ${Db.gamesCount}, ${Db.followersCount}, ${Db.viewerFollows}';
 
   /// Followers and following per request.
   static const int followListPageSize = 30;
@@ -1032,8 +1037,10 @@ SocialUser _socialUserFromProfile(Map<String, dynamic> row) {
     handle: _withAt(
       _firstText([row[Db.handle]]) ?? _handleFrom(name, '${row[Db.id]}'),
     ),
-    gamesLogged: 0,
-    followers: 0,
+    // Only the Users tab selects the counts; other lists leave them at 0.
+    gamesLogged: _int(row[Db.gamesCount]),
+    followers: _int(row[Db.followersCount]),
+    startsFollowed: row[Db.viewerFollows] == true,
     avatarUrl: _firstText([row[Db.avatarUrl]]),
   );
 }
