@@ -43,6 +43,9 @@
  *                  once. This is what merges the old duplicates.
  *   6. Library     bulk upsert `user_games`, one row per game (new rows get
  *                  defaults; existing rows only ever get a higher `hours_played`)
+ *                  and log a play session for every library game Steam reports
+ *                  more playtime for than at the last sync (`steam_playtime_minutes`,
+ *                  _shared/steam_sessions.ts)
  *   7. Achievements count the achievements of every game played since it was
  *                  last counted (ISteamUserStats/GetPlayerAchievements, one small
  *                  request per game, a few at a time, most recently played first)
@@ -81,8 +84,8 @@
  * (`games.igdb_id` unique, `games.steam_app_id`, `link_steam_apps`) and, for the
  * sync state and the background run, 20261017130000_background_steam_sync.sql
  * (a sync still works without it; it just is not recorded), and for step 7
- * 20261021120000_steam_achievement_counts.sql (without it the counts are skipped),
- * and for moving wrongly matched games 20261024120000_steam_app_relinks.sql (without
+ * 20261018160000_steam_achievement_counts.sql (without it the counts are skipped),
+ * and for moving wrongly matched games 20261018200000_steam_app_relinks.sql (without
  * it they stay where they are).
  *
  * ── SCHEMA NOTES ──────────────────────────────────────────────────────────────
@@ -104,6 +107,8 @@ import {
   type CountTarget,
 } from '../_shared/achievement_counts.ts'
 import { failureDelayMs, shouldStopBatch, successDelayMs } from '../_shared/sync_schedule.ts'
+import { type PlaytimeSeen, playtimeUpdates, steamSessionPlatform } from '../_shared/steam_sessions.ts'
+import { releaseDate } from '../_shared/game_details.ts'
 import {
   pickLinkedGame,
   type SourceField,
@@ -672,6 +677,7 @@ function toGameRow(g: IgdbGame): Record<string, unknown> {
     developer: company,
     publisher: company,
     release_year: releaseYearFromUnixSeconds(g.first_release_date),
+    release_date: releaseDate(g.first_release_date),
     // Release platforms (never Steam Deck / Emulator, which are "played on" picks).
     platforms: steamGamePlatformsToDb(g.platforms),
     genres: (g.genres ?? []).map((x) => x.name).filter((n): n is string => !!n),
@@ -1291,7 +1297,7 @@ interface RelinkRow {
 /**
  * The relinks earlier syncs (anyone's) recorded for these apps, so this user's
  * library row on a wrongly matched game moves too. Empty when there are none, or
- * when the table is missing (20261024120000_steam_app_relinks.sql not applied):
+ * when the table is missing (20261018200000_steam_app_relinks.sql not applied):
  * the sync works without it.
  */
 async function fetchStoredRelinks(admin: SupabaseClient, appIds: number[]): Promise<RelinkRow[]> {
@@ -1533,10 +1539,17 @@ async function syncLibrary(
   //    same IGDB game (a base game and its "Complete Edition"); they become one
   //    library entry with their playtime added together.
   const hoursByGame = new Map<string, number>()
+  const playtimeByGame = new Map<string, PlaytimeSeen>()
   for (const e of entries) {
     const gameId = gameIdByEntry.get(e.id)
     if (!gameId) continue // no IGDB match and no legacy row → skip rather than save a stub
     hoursByGame.set(gameId, Math.round(((hoursByGame.get(gameId) ?? 0) + e.hours) * 100) / 100)
+    const seen = playtimeByGame.get(gameId)
+    playtimeByGame.set(gameId, {
+      gameId,
+      minutes: (seen?.minutes ?? 0) + e.minutes,
+      lastPlayed: Math.max(seen?.lastPlayed ?? 0, e.lastPlayed),
+    })
   }
   // Read AFTER step 5: folding a legacy row moves the user's library row to the new id.
   const { rows: existingByGame, countedPlaytime } = hoursByGame.size
@@ -1549,27 +1562,73 @@ async function syncLibrary(
   let updated = 0
   let unchanged = 0
 
+  // What Steam playtime this sync records, and the sessions it logs: only for
+  // games already in the library with a baseline (a new game's playtime is its
+  // history, not a session).
+  const baselineBefore = new Map<string, number | null>()
+  for (const [gameId, row] of existingByGame) {
+    const minutes = row.steam_playtime_minutes
+    baselineBefore.set(gameId, minutes == null || !Number.isFinite(Number(minutes)) ? null : Number(minutes))
+  }
+  const playtime = new Map(
+    playtimeUpdates([...playtimeByGame.values()], baselineBefore, Date.now()).map((u) => [u.gameId, u]),
+  )
+
   for (const [gameId, hours] of hoursByGame) {
     const existing = existingByGame.get(gameId)
+    const baseline = playtime.get(gameId)?.baseline
     if (existing) {
       // Already in the library: only ever raise hours_played. We re-send the
-      // row we just read with that single field changed, so status / rating /
+      // row we just read with those fields changed, so status / rating /
       // is_favorite / etc. are written back exactly as they are.
       const current = Number(existing.hours_played) || 0
-      if (hours > current) {
-        libraryRows.push({ ...existing, hours_played: hours })
-        updated++
-      } else {
-        unchanged++
+      const raise = hours > current
+      if (raise || baseline !== undefined) {
+        libraryRows.push({
+          ...existing,
+          ...(raise ? { hours_played: hours } : {}),
+          ...(baseline !== undefined ? { steam_playtime_minutes: baseline } : {}),
+        })
       }
+      if (raise) updated++
+      else unchanged++
       continue
     }
-    libraryRows.push(newUserGameRow(userId, gameId, hours, nowIso))
+    libraryRows.push({
+      ...newUserGameRow(userId, gameId, hours, nowIso),
+      steam_playtime_minutes: baseline ?? playtimeByGame.get(gameId)?.minutes ?? null,
+    })
     added++
   }
 
   if (libraryRows.length > 0) {
     await upsertChunked(admin, 'user_games', libraryRows, 'user_id,game_id')
+  }
+
+  // The sessions go in after the baselines they were measured against moved on,
+  // so a failure here loses a session rather than logging it twice next time.
+  const sessionRows: Record<string, unknown>[] = []
+  for (const u of playtime.values()) {
+    if (!u.session) continue
+    sessionRows.push({
+      user_id: userId,
+      game_id: u.gameId,
+      hours: u.session.hours,
+      platform: steamSessionPlatform(existingByGame.get(u.gameId)?.played_on),
+      note: '',
+      logged_at: u.session.loggedAt,
+      source: 'steam',
+    })
+  }
+  let sessionsLogged = 0
+  for (const part of chunk(sessionRows, DB_WRITE_CHUNK)) {
+    const { error } = await admin.from('log_entries').insert(part)
+    if (error) {
+      console.error('sync-steam: logging Steam sessions failed:', error.message)
+      warn(issues, `Could not log play sessions from Steam: ${error.message}`)
+      break
+    }
+    sessionsLogged += part.length
   }
 
   // 7. Achievement counts for the games played since they were last counted. Only
@@ -1624,6 +1683,7 @@ async function syncLibrary(
       added,
       updated,
       unchanged,
+      steam_sessions_logged: sessionsLogged,
       unmatched: unmatched.length,
       deferred,
       achievements_due: achievements.due,

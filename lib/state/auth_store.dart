@@ -152,6 +152,11 @@ class AuthStore extends ChangeNotifier {
 
   Future<void> signInWithGoogle() => _service.signInWithGoogle();
 
+  /// Whether this device can sign in with Apple (iOS: see AuthService).
+  bool get offersAppleSignIn => _service.offersAppleSignIn;
+
+  Future<void> signInWithApple() => _service.signInWithApple();
+
   Future<void> logOut() async {
     if (_sessionPending) {
       // No live session to end: just forget the saved one.

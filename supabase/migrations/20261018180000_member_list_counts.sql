@@ -25,7 +25,7 @@
 -- Until then the Users tab fails to load (the new columns don't exist).
 
 -- Columns can only be added at the END of an existing view. The first fourteen
--- are those of 20261019120000_instagram_twitch_accounts.sql.
+-- are those of 20261018140000_instagram_twitch_accounts.sql.
 create or replace view public.public_profiles
   with (security_invoker = false) as
   select p.id,

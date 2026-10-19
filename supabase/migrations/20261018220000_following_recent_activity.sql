@@ -27,7 +27,7 @@
 -- signed-in member: the profile fields of `public_profiles`, the sessions of
 -- `public_recent_activity` (never the note) and the status, rating and
 -- date_added of `public_user_games` (never purchase_price or achievements). Like
--- `following_game_activity` (20261022120000_friends_on_game_screen.sql) it runs as
+-- `following_game_activity` (20261018170000_friends_on_game_screen.sql) it runs as
 -- its owner (SECURITY DEFINER) and names every column it returns: never add note,
 -- purchase_price, achievements, email or steam_id. It saves the app from listing
 -- everyone it follows and then each one's sessions and library.

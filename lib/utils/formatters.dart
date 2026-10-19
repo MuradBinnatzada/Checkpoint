@@ -89,3 +89,24 @@ const decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
 
 /// "Oct 2026": the month and year of [d], as stored, without shifting it to local time.
 String fmtMonthYear(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+
+/// "Today", "Yesterday", "Oct 14", or "Oct 14, 2025" in another year: the day of
+/// [d] as the device sees it, relative to [now].
+String fmtDay(DateTime d, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  // Calendar days in UTC, so a daylight saving change can't make a day 23 hours.
+  final daysAgo = DateTime.utc(today.year, today.month, today.day)
+      .difference(DateTime.utc(d.year, d.month, d.day))
+      .inDays;
+  if (daysAgo == 0) return 'Today';
+  if (daysAgo == 1) return 'Yesterday';
+  final monthDay = '${_monthNames[d.month - 1]} ${d.day}';
+  return d.year == today.year ? monthDay : '$monthDay, ${d.year}';
+}
+
+/// 0:04:09, 1:02:33: a running timer, hours first.
+String fmtElapsed(Duration d) {
+  final seconds = d.isNegative ? 0 : d.inSeconds;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${seconds ~/ 3600}:${two(seconds ~/ 60 % 60)}:${two(seconds % 60)}';
+}

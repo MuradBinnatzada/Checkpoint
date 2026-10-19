@@ -31,6 +31,7 @@ class PendingLog {
   );
 
   /// The id the session has on screen until the server gives it a real one.
+  /// For an edit of a session the server has ([PendingEdits.logEdits]), its id.
   final String localId;
   final String gameId;
   final double hours;
@@ -38,13 +39,16 @@ class PendingLog {
   final String note;
   final DateTime timestamp;
 
-  LogEntry toEntry() => LogEntry(
+  /// The session as shown. [fromSteam] is the server's, for an edit of a
+  /// session the Steam sync logged.
+  LogEntry toEntry({bool fromSteam = false}) => LogEntry(
     id: localId,
     gameId: gameId,
     timestamp: timestamp,
     hours: hours,
     platform: platform,
     note: note,
+    fromSteam: fromSteam,
   );
 
   Map<String, dynamic> toJson() => {
@@ -61,8 +65,9 @@ class PendingLog {
 /// saves only its own part (see [PendingEditsStorage]), so one can never
 /// overwrite what the other has queued.
 enum PendingScope {
-  /// Games, deletes and play sessions: [PendingEdits.games], [PendingEdits.removed]
-  /// and [PendingEdits.logs]. Owned by `LibraryStore`.
+  /// Games, deletes and play sessions: [PendingEdits.games], [PendingEdits.removed],
+  /// [PendingEdits.logs], [PendingEdits.logEdits] and [PendingEdits.logDeletes].
+  /// Owned by `LibraryStore`.
   library,
 
   /// Follows and unfollows: [PendingEdits.follows]. Owned by `ProfileStore`.
@@ -75,8 +80,9 @@ enum PendingScope {
 ///
 /// Edits are kept as the end result, not as a history: [games] holds the latest
 /// state of each edited game (a base game is inserted first if needed, like any
-/// save), [removed] the games to delete, [logs] the sessions to insert, and
-/// [follows] whether each person is to be followed or unfollowed.
+/// save), [removed] the games to delete, [logs] the sessions to insert,
+/// [logEdits] and [logDeletes] the changes to sessions the server already has,
+/// and [follows] whether each person is to be followed or unfollowed.
 class PendingEdits {
   PendingEdits();
 
@@ -93,6 +99,13 @@ class PendingEdits {
       for (final l in json['logs'] as List? ?? const [])
         PendingLog.fromJson(Map<String, dynamic>.from(l as Map)),
     ]);
+    for (final l in json['logEdits'] as List? ?? const []) {
+      final log = PendingLog.fromJson(Map<String, dynamic>.from(l as Map));
+      edits.logEdits[log.localId] = log;
+    }
+    edits.logDeletes.addAll([
+      for (final id in json['logDeletes'] as List? ?? const []) '$id',
+    ]);
     final follows = json['follows'] as Map? ?? const {};
     for (final entry in follows.entries) {
       edits.follows['${entry.key}'] = entry.value == true;
@@ -104,17 +117,34 @@ class PendingEdits {
   final Set<String> removed = {};
   final List<PendingLog> logs = [];
 
+  /// Sessions the server has, by id, as they were last edited.
+  final Map<String, PendingLog> logEdits = {};
+
+  /// Ids of sessions the server has that are to be deleted.
+  final Set<String> logDeletes = {};
+
   /// By user id: `true` to follow them, `false` to unfollow them.
   final Map<String, bool> follows = {};
 
   bool get isEmpty =>
-      games.isEmpty && removed.isEmpty && logs.isEmpty && follows.isEmpty;
+      isEmptyIn(PendingScope.library) && isEmptyIn(PendingScope.follows);
   bool get isNotEmpty => !isEmpty;
-  int get count => games.length + removed.length + logs.length + follows.length;
+  int get count =>
+      games.length +
+      removed.length +
+      logs.length +
+      logEdits.length +
+      logDeletes.length +
+      follows.length;
 
   /// Whether [scope]'s part is empty.
   bool isEmptyIn(PendingScope scope) => switch (scope) {
-    PendingScope.library => games.isEmpty && removed.isEmpty && logs.isEmpty,
+    PendingScope.library =>
+      games.isEmpty &&
+          removed.isEmpty &&
+          logs.isEmpty &&
+          logEdits.isEmpty &&
+          logDeletes.isEmpty,
     PendingScope.follows => follows.isEmpty,
   };
 
@@ -129,7 +159,30 @@ class PendingEdits {
   void markRemoved(String gameId) {
     games.remove(gameId);
     logs.removeWhere((l) => l.gameId == gameId);
+    logEdits.removeWhere((_, l) => l.gameId == gameId);
     removed.add(gameId);
+  }
+
+  /// Remembers [log] as the latest state of the session with its id: a session
+  /// still waiting to be inserted is inserted like that, one the server has is
+  /// updated.
+  void editLog(PendingLog log) {
+    final queued = logs.indexWhere((l) => l.localId == log.localId);
+    if (queued != -1) {
+      logs[queued] = log;
+    } else {
+      logEdits[log.localId] = log;
+    }
+  }
+
+  /// Remembers that the session [id] is to be deleted. One still waiting to be
+  /// inserted is simply not sent.
+  void removeLog(String id) {
+    final before = logs.length;
+    logs.removeWhere((l) => l.localId == id);
+    if (logs.length != before) return;
+    logEdits.remove(id);
+    logDeletes.add(id);
   }
 
   /// Remembers that [userId] is to be followed ([following]) or unfollowed. Only
@@ -149,6 +202,8 @@ class PendingEdits {
       'games': [for (final g in games.values) g.toJson()],
       'removed': removed.toList(),
       'logs': [for (final l in logs) l.toJson()],
+      'logEdits': [for (final l in logEdits.values) l.toJson()],
+      'logDeletes': logDeletes.toList(),
     },
     if (scope != PendingScope.library) 'follows': {...follows},
   };

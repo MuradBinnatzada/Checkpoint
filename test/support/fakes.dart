@@ -14,6 +14,7 @@ import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/game_friends.dart';
+import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -424,6 +425,105 @@ class FakeRepository implements CheckpointRepository {
   /// server's own time).
   final List<DateTime?> logTimes = [];
 
+  /// The shared catalog by IGDB id, for [fetchCatalogGame].
+  final Map<int, Game> catalog = {};
+
+  @override
+  Future<Game?> fetchCatalogGame(int igdbId) async {
+    _checkOnline();
+    return catalog[igdbId];
+  }
+
+  /// The member's lists on the server, by id, in the order they were made.
+  final Map<String, GameList> lists = {};
+  int _listIds = 0;
+
+  @override
+  Future<List<GameList>> fetchLists(String userId) async {
+    _checkOnline();
+    return [for (final l in lists.values) if (l.ownerId == userId || l.isPublic) l].reversed.toList();
+  }
+
+  @override
+  Future<GameList?> fetchList(String listId) async {
+    _checkOnline();
+    return lists[listId];
+  }
+
+  @override
+  Future<GameList> createList({required String title, String description = '', bool isPublic = false}) async {
+    _checkWrite();
+    final list = GameList(id: 'list-${++_listIds}', ownerId: 'u1', title: title.trim(), description: description.trim(), isPublic: isPublic);
+    lists[list.id] = list;
+    writes.add('create-list:${list.title}');
+    return list;
+  }
+
+  @override
+  Future<void> updateList(String listId, {required String title, required String description, required bool isPublic}) async {
+    _checkWrite();
+    writes.add('update-list:$listId:$title');
+    lists[listId] = lists[listId]!.copyWith(title: title, description: description, isPublic: isPublic);
+  }
+
+  @override
+  Future<void> deleteList(String listId) async {
+    _checkWrite();
+    writes.add('delete-list:$listId');
+    lists.remove(listId);
+  }
+
+  @override
+  Future<void> addToList(String listId, String gameId, int position) async {
+    _checkWrite();
+    writes.add('list-add:$listId:$gameId:$position');
+  }
+
+  @override
+  Future<void> removeFromList(String listId, String gameId) async {
+    _checkWrite();
+    writes.add('list-remove:$listId:$gameId');
+  }
+
+  @override
+  Future<void> reorderList(String listId, List<String> gameIds) async {
+    _checkWrite();
+    writes.add('list-order:$listId:${gameIds.join(',')}');
+  }
+
+  /// Like the server: changes the session in [logs] with that id, if any.
+  @override
+  Future<void> updateLogEntry({
+    required String id,
+    required double hours,
+    required GamePlatform platform,
+    required String note,
+    required DateTime loggedAt,
+  }) async {
+    _checkWrite();
+    writes.add('edit-log:$id:$hours');
+    logs = [
+      for (final l in logs)
+        l.id == id
+            ? LogEntry(
+                id: id,
+                gameId: l.gameId,
+                timestamp: loggedAt,
+                hours: hours,
+                platform: platform,
+                note: note,
+              )
+            : l,
+    ];
+  }
+
+  @override
+  Future<void> deleteLogEntry(String id) async {
+    _checkWrite();
+    writes.add('delete-log:$id');
+    logs = [for (final l in logs) if (l.id != id) l];
+  }
+
   @override
   Future<void> upsertUserGame({
     required String userId,
@@ -436,11 +536,16 @@ class FakeRepository implements CheckpointRepository {
     required bool isFavorite,
     String? customBackdropUrl,
     DateTime? dateAdded,
+    String review = '',
   }) async {
     _checkWrite();
     writes.add('game:$gameId:$status:$rating');
     backdrops[gameId] = customBackdropUrl;
+    reviews[gameId] = review;
   }
+
+  /// The review each game's last save sent.
+  final Map<String, String> reviews = {};
 
   /// The backdrop each game's last save sent.
   final Map<String, String?> backdrops = {};
@@ -783,6 +888,24 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> signInWithGoogle() async {
     final error = signInError;
+    if (error != null) throw error;
+    emit(testUser('u1'));
+  }
+
+  /// Whether the device offers Sign in with Apple (the real one: iOS only).
+  bool offersApple = false;
+
+  @override
+  bool get offersAppleSignIn => offersApple;
+
+  /// What [signInWithApple] throws, when set; otherwise it signs `u1` in.
+  Object? appleError;
+  int appleCalls = 0;
+
+  @override
+  Future<void> signInWithApple() async {
+    appleCalls++;
+    final error = appleError;
     if (error != null) throw error;
     emit(testUser('u1'));
   }

@@ -16,6 +16,7 @@ import {
   parseIgdbId,
   parseIgdbIds,
   planBackfill,
+  releaseDate,
   REFRESH_AFTER_DAYS,
   timeToBeat,
   timeToBeatQuery,
@@ -226,4 +227,14 @@ Deno.test('backfillGame is what the row holds once the patch is written', () => 
   })
   // A fresh row is answered as it is; NULL lists are empty.
   assertEquals(backfillGame(row(472, { platforms: null, genres: null })), { igdb_id: 472, platforms: [], genres: [] })
+})
+
+Deno.test('the release day is kept as the UTC date IGDB gives, when it is one the column takes', () => {
+  // 2011-11-11T00:00:00Z
+  assertEquals(releaseDate(1320969600), '2011-11-11')
+  assertEquals(catalogPatch({ first_release_date: 1320969600 }, false, NOW_ISO).release_date, '2011-11-11')
+  assertEquals(releaseDate(undefined), null)
+  assertEquals(releaseDate('2011'), null)
+  assertEquals(releaseDate(-2000000000), null) // 1906
+  assertEquals(catalogPatch({}, false, NOW_ISO).release_date, undefined)
 })

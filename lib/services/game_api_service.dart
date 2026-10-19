@@ -204,7 +204,16 @@ class GameApiService {
       coverColors: const [Color(0xFF2C2C2C), Color(0xFF1A1A1A)],
       coverIcon: Icons.sports_esports_rounded,
       coverUrl: coverUrl,
+      releaseDate: releaseDayFromUnixSeconds(hit['first_release_date']),
     );
+  }
+
+  /// The calendar day IGDB gives for a release (UNIX seconds at a UTC day), at
+  /// midnight on the device; null when missing or outside 1950-2100.
+  static DateTime? releaseDayFromUnixSeconds(Object? seconds) {
+    if (seconds is! num || releaseYearFromUnixSeconds(seconds) == null) return null;
+    final utc = DateTime.fromMillisecondsSinceEpoch(seconds.toInt() * 1000, isUtc: true);
+    return DateTime(utc.year, utc.month, utc.day);
   }
 
   /// One IGDB hit of a browse list as a [BrowseEntry], or null when it is not a

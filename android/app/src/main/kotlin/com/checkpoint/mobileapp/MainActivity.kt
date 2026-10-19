@@ -1,4 +1,4 @@
-package com.example.checkpoint
+package com.checkpoint.mobileapp
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
+import 'package:checkpoint/widgets/session_time_field.dart';
 import 'package:checkpoint/widgets/sheet_frame.dart';
 
 /// Read-only guard: returns true (and shows a hint) when logged out.
@@ -27,20 +31,62 @@ Future<void> showQuickLogSheet(BuildContext context, {String? gameId}) async {
   );
 }
 
+/// The Quick Log sheet for the play timer that is running, filled in with its
+/// game, its time and when it started. Saving logs the session and stops the
+/// timer; closing the sheet leaves the timer running.
+Future<void> showTimerLogSheet(BuildContext context) async {
+  if (_blockedByReadOnly(context)) return;
+  final timers = context.read<PlayTimerStore>();
+  final timer = timers.running;
+  if (timer == null) return;
+  if (context.read<LibraryStore>().maybeGame(timer.gameId) == null) {
+    timers.clear(); // the game is gone (removed on another device)
+    return;
+  }
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => QuickLogSheet(
+      initialGameId: timer.gameId,
+      initialHours: timerHours(timers.elapsed, maxHours: maxSessionHours),
+      startedAt: timer.startedAt,
+      fromTimer: true,
+    ),
+  );
+}
+
 /// FAB sheet: pick a game, pick the platform you played on, add a session.
 class QuickLogSheet extends StatefulWidget {
-  const QuickLogSheet({super.key, this.initialGameId});
+  const QuickLogSheet({
+    super.key,
+    this.initialGameId,
+    this.initialHours = 1,
+    this.startedAt,
+    this.fromTimer = false,
+  });
   final String? initialGameId;
+  final double initialHours;
+
+  /// When the session started, for one played earlier (the play timer's start).
+  final DateTime? startedAt;
+
+  /// Opened by stopping the play timer: saving stops it, and it can be thrown
+  /// away from here.
+  final bool fromTimer;
 
   @override
   State<QuickLogSheet> createState() => _QuickLogSheetState();
 }
 
 class _QuickLogSheetState extends State<QuickLogSheet> {
-  final _hours = TextEditingController(text: '1');
+  late final _hours = TextEditingController(text: fmtHours(widget.initialHours));
   final _note = TextEditingController();
   String? _gameId;
   GamePlatform? _platform;
+
+  /// When it was played; null is now.
+  late DateTime? _at = widget.startedAt;
 
   @override
   void initState() {
@@ -61,7 +107,8 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
 
   void _save(Game game, double hours) {
     final messenger = ScaffoldMessenger.of(context);
-    context.read<LibraryStore>().logSession(gameId: game.id, hours: hours, platform: _platform, note: _note.text);
+    context.read<LibraryStore>().logSession(gameId: game.id, hours: hours, platform: _platform, note: _note.text, at: _at);
+    if (widget.fromTimer) context.read<PlayTimerStore>().clear();
     Navigator.pop(context);
     messenger
       ..hideCurrentSnackBar()
@@ -73,7 +120,8 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
     final store = context.watch<LibraryStore>();
     final game = _gameId == null ? null : store.maybeGame(_gameId!);
     final hours = parseNum(_hours.text);
-    final canSave = game != null && hours != null && hours > 0;
+    final tooLong = hours != null && hours > maxSessionHours;
+    final canSave = game != null && hours != null && hours > 0 && !tooLong;
 
     final sorted = [...store.games]..sort((a, b) {
         int rank(Game g) => g.status == GameStatus.playing ? 0 : (g.inLibrary ? 1 : 2);
@@ -82,7 +130,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
       });
 
     return SheetFrame(
-      title: 'Log a session',
+      title: widget.fromTimer ? 'Log your timer' : 'Log a session',
       subtitle: 'Track your time and where you played.',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DropdownMenu<String>(
@@ -114,7 +162,12 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('Hours played this session', suffix: 'hrs'),
+          decoration: fieldDecoration('Hours played this session', suffix: 'hrs').copyWith(
+            errorText: tooLong
+                ? 'One session is at most ${fmtHours(maxSessionHours)} hours. To change a game\'s total, use Log Hours on its page.'
+                : null,
+            errorMaxLines: 3,
+          ),
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 8, children: [
@@ -125,7 +178,14 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
             ),
         ]),
         const SizedBox(height: 14),
-        TextField(controller: _note, textCapitalization: TextCapitalization.sentences, decoration: fieldDecoration('Note (optional)')),
+        SessionTimeField(value: _at, onChanged: (at) => setState(() => _at = at)),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _note,
+          maxLength: maxNoteLength,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: fieldDecoration('Note (optional)').copyWith(counterText: ''),
+        ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -135,6 +195,19 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
             child: const Text('Save session'),
           ),
         ),
+        if (widget.fromTimer) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              style: TextButton.styleFrom(foregroundColor: Palette.danger),
+              onPressed: () {
+                context.read<PlayTimerStore>().clear();
+                Navigator.pop(context);
+              },
+              child: const Text('Discard timer'),
+            ),
+          ),
+        ],
       ]),
     );
   }

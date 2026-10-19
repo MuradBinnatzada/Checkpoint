@@ -31,7 +31,7 @@ comment on column public.profiles.show_steam_achievements is
 
 -- 2. Public profile header ----------------------------------------------------
 -- Columns can only be added at the END of an existing view. The first seventeen
--- are those of 20261023120000_member_list_counts.sql.
+-- are those of 20261018180000_member_list_counts.sql.
 create or replace view public.public_profiles
   with (security_invoker = false) as
   select p.id,

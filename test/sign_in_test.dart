@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart'
+    show AuthorizationErrorCode, SignInWithAppleAuthorizationException;
 import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthApiException, AuthWeakPasswordException;
 
@@ -90,6 +92,36 @@ void main() {
     expect(find.text('Forgot password?'), findsOneWidget);
     // The name is only asked for when creating an account.
     expect(field('Display name'), findsNothing);
+  });
+
+  testWidgets('Apple is offered only where the device can do it', (
+    tester,
+  ) async {
+    await openGate(tester);
+    expect(find.text('Continue with Apple'), findsNothing);
+  });
+
+  testWidgets('Continue with Apple signs in, and a cancelled sheet says so', (
+    tester,
+  ) async {
+    authService.offersApple = true;
+    authService.appleError = const SignInWithAppleAuthorizationException(
+      code: AuthorizationErrorCode.canceled,
+      message: 'The user canceled.',
+    );
+    await openGate(tester);
+
+    await tap(tester, find.text('Continue with Apple'));
+    await settle(tester);
+    expect(find.text('Apple sign-in was cancelled.'), findsOneWidget);
+    expect(stores.auth.isLoggedIn, isFalse);
+
+    authService.appleError = null;
+    await tap(tester, find.text('Continue with Apple'));
+    await settle(tester);
+    expect(authService.appleCalls, 2);
+    expect(stores.auth.isLoggedIn, isTrue);
+    expect(find.text('Log in to track games'), findsNothing);
   });
 
   testWidgets('signing in with an email and password lifts the overlay', (

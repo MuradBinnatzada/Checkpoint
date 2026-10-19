@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -54,12 +55,14 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
   @override
   Widget build(BuildContext context) {
     final total = parseNum(_total.text);
-    final valid = total != null && total >= 0;
+    final valid = total != null && total >= 0 && total <= maxTotalHours;
     final delta = total == null ? null : total - _game.hoursPlayed;
 
     String preview;
     if (delta == null) {
       preview = 'Enter a valid number of hours.';
+    } else if (!valid) {
+      preview = 'The total can be at most ${fmtThousands(maxTotalHours.round())} hours.';
     } else if (delta > 0.04) {
       preview = 'Adds a ${fmtHours(delta)} h session on ${_platform?.label ?? 'your platform'}.';
     } else if (delta < -0.04) {
@@ -94,7 +97,12 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
         const SizedBox(height: 10),
         PlatformChips(platforms: _availablePlatforms, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
         const SizedBox(height: 18),
-        TextField(controller: _note, textCapitalization: TextCapitalization.sentences, decoration: fieldDecoration('Note (optional)')),
+        TextField(
+          controller: _note,
+          maxLength: maxNoteLength,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: fieldDecoration('Note (optional)').copyWith(counterText: ''),
+        ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,

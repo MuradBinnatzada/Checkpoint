@@ -14,6 +14,7 @@ import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/game_friends.dart';
+import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/public_profile.dart';
@@ -40,19 +41,37 @@ class CheckpointRepository {
         .select()
         .eq(Db.id, user.id)
         .maybeSingle();
-    if (existing != null) return _profileFromRow(existing, fallbackUser: user);
-
     final metadata = user.userMetadata ?? const <String, dynamic>{};
     // Google sends a name; an email sign-up sends the one typed in
-    // (AuthService.signUpWithEmail). The name and handle are public, so they
+    // (AuthService.signUpWithEmail), and Apple's is saved just after sign-in
+    // (AuthService.signInWithApple). The name and handle are public, so they
     // are never made from the email address.
-    final displayName =
-        _firstText([
-          metadata['full_name'],
-          metadata['name'],
-          metadata['display_name'],
-        ]) ??
-        'Player';
+    final accountName = _firstText([
+      metadata['full_name'],
+      metadata['name'],
+      metadata['display_name'],
+    ]);
+    if (existing != null) {
+      // Apple's name can arrive after the row was made with the stand-in: a
+      // row that still has it, untouched, takes the name.
+      if (accountName != null &&
+          existing[Db.displayName] == _defaultName &&
+          existing[Db.handle] == _handleFrom(_defaultName, user.id)) {
+        final renamed = await _client
+            .from(Db.profiles)
+            .update({
+              Db.displayName: accountName,
+              Db.handle: _handleFrom(accountName, user.id),
+            })
+            .eq(Db.id, user.id)
+            .select()
+            .single();
+        return _profileFromRow(renamed, fallbackUser: user);
+      }
+      return _profileFromRow(existing, fallbackUser: user);
+    }
+
+    final displayName = accountName ?? _defaultName;
 
     await _client.from(Db.profiles).upsert({
       Db.id: user.id,
@@ -70,6 +89,9 @@ class CheckpointRepository {
         .single();
     return _profileFromRow(inserted, fallbackUser: user);
   }
+
+  /// The name of a profile whose account came without one.
+  static const _defaultName = 'Player';
 
   Future<UserProfile> fetchProfile(User user) async {
     final row = await _client
@@ -246,6 +268,17 @@ class CheckpointRepository {
     return rows.map<Game>(_gameFromCatalogRow).toList(growable: false);
   }
 
+  /// The catalog's game with [igdbId], or null when it has none: a game opened
+  /// from a shared link. Anyone may read the catalog, signed in or not.
+  Future<Game?> fetchCatalogGame(int igdbId) async {
+    final row = await _client
+        .from(Db.games)
+        .select()
+        .eq(Db.igdbId, igdbId)
+        .maybeSingle();
+    return row == null ? null : _gameFromCatalogRow(row);
+  }
+
   /// Rows per request for the paged reads below ([_readAllPages]). It has to stay
   /// under the API's row cap (`max_rows` in supabase/config.toml and in the
   /// project's API settings, 1000 by default): a request for more is silently cut
@@ -271,6 +304,8 @@ class CheckpointRepository {
           ${Db.dateAdded},
           ${Db.isFavorite},
           ${Db.customBackdropUrl},
+          ${Db.completedAt},
+          ${Db.review},
           ${Db.games}!inner (
             ${Db.id},
             ${Db.igdbId},
@@ -284,6 +319,7 @@ class CheckpointRepository {
             ${Db.genres},
             ${Db.summary},
             ${Db.coverUrl},
+            ${Db.releaseDate},
             ${Db.createdAt}
           )
         ''';
@@ -318,25 +354,56 @@ class CheckpointRepository {
   /// server's state as it is now, so rows filled in meanwhile (by another member,
   /// or by opening a game's screen) drop out without the library being read again.
   /// Paged like [fetchUserGames]: a library just imported from Steam can be long.
+  /// Also the wishlist and To Play games not out yet whose row is due again (see
+  /// [_fetchDueUpcoming]), each id once.
   Future<List<int>> fetchUnsyncedIgdbIds(String userId) async {
-    final rows = await _readAllPages(Db.gameId, (after) {
-      final query = _client
-          .from(Db.userGames)
-          .select('${Db.gameId}, ${Db.games}!inner(${Db.igdbId})')
-          .eq(Db.userId, userId)
-          .isFilter('${Db.games}.${Db.igdbSyncedAt}', null)
-          .not('${Db.games}.${Db.igdbId}', 'is', null);
-      return (after == null ? query : query.gt(Db.gameId, after))
-          .order(Db.gameId, ascending: true)
-          .limit(_pageSize);
-    });
-    return [
-      for (final row in rows)
+    final (never, upcoming) = await (
+      _readAllPages(Db.gameId, (after) {
+        final query = _client
+            .from(Db.userGames)
+            .select('${Db.gameId}, ${Db.games}!inner(${Db.igdbId})')
+            .eq(Db.userId, userId)
+            .isFilter('${Db.games}.${Db.igdbSyncedAt}', null)
+            .not('${Db.games}.${Db.igdbId}', 'is', null);
+        return (after == null ? query : query.gt(Db.gameId, after))
+            .order(Db.gameId, ascending: true)
+            .limit(_pageSize);
+      }),
+      _fetchDueUpcoming(userId),
+    ).wait;
+    return {
+      for (final row in [...never, ...upcoming])
         if (row[Db.games] case final Map<dynamic, dynamic> game)
           if (_intOrNull(game[Db.igdbId]) case final int igdbId
               when igdbId > 0)
             igdbId,
-    ];
+    }.toList();
+  }
+
+  /// Wishlist and To Play games that aren't out yet (or have no date), whose
+  /// catalog row was filled in a week ago or more: IGDB moves release dates, and
+  /// the wishlist release alerts read them. `igdb-handler` answers a row filled
+  /// in less than a week ago as it is, so asking for these costs nothing until
+  /// they are due.
+  Future<List<Map<String, dynamic>>> _fetchDueUpcoming(String userId) {
+    final weekAgo = DateTime.now().toUtc().subtract(const Duration(days: 7)).toIso8601String();
+    final today = _day(DateTime.now());
+    return _readAllPages(Db.gameId, (after) {
+      final query = _client
+          .from(Db.userGames)
+          .select('${Db.gameId}, ${Db.games}!inner(${Db.igdbId})')
+          .eq(Db.userId, userId)
+          .inFilter(Db.status, [
+            gameStatusToDb(GameStatus.wishlist),
+            gameStatusToDb(GameStatus.toPlay),
+          ])
+          .lt('${Db.games}.${Db.igdbSyncedAt}', weekAgo)
+          .not('${Db.games}.${Db.igdbId}', 'is', null)
+          .or('${Db.releaseDate}.is.null,${Db.releaseDate}.gte.$today', referencedTable: Db.games);
+      return (after == null ? query : query.gt(Db.gameId, after))
+          .order(Db.gameId, ascending: true)
+          .limit(_pageSize);
+    });
   }
 
   /// What IGDB says about the user's library games that the library filters work
@@ -560,7 +627,7 @@ class CheckpointRepository {
   static const String _memberColumns = 'id, handle, display_name, avatar_url';
 
   /// [_memberColumns] plus the counts under each member in the Users tab; only
-  /// `public_profiles` has them (20261023120000_member_list_counts.sql).
+  /// `public_profiles` has them (20261018180000_member_list_counts.sql).
   static const String _memberWithCountsColumns =
       '$_memberColumns, ${Db.gamesCount}, ${Db.followersCount}, ${Db.viewerFollows}';
 
@@ -642,6 +709,8 @@ class CheckpointRepository {
     Db.dateAdded,
     Db.isFavorite,
     Db.customBackdropUrl,
+    Db.review,
+    Db.completedAt,
     ..._catalogColumns,
   ].join(', ');
 
@@ -794,6 +863,7 @@ class CheckpointRepository {
           status: status,
           rating: _double(row[Db.rating]),
           dateAdded: _date(row[Db.dateAdded]),
+          review: _firstText([row[Db.review]]) ?? '',
         ),
       );
     }
@@ -921,6 +991,7 @@ class CheckpointRepository {
     required bool isFavorite,
     String? customBackdropUrl,
     DateTime? dateAdded,
+    String review = '',
   }) async {
     await _client.from(Db.userGames).upsert({
       Db.userId: userId,
@@ -933,6 +1004,7 @@ class CheckpointRepository {
       Db.dateAdded: (dateAdded ?? DateTime.now()).toUtc().toIso8601String(),
       Db.isFavorite: isFavorite,
       Db.customBackdropUrl: customBackdropUrl,
+      Db.review: review.trim(),
     }, onConflict: '${Db.userId},${Db.gameId}');
   }
 
@@ -955,6 +1027,31 @@ class CheckpointRepository {
       Db.note: note.trim(),
       if (loggedAt != null) Db.loggedAt: loggedAt.toUtc().toIso8601String(),
     });
+  }
+
+  /// Saves an edited play session: its hours, platform, note and when it was
+  /// played (a session logged on the wrong day moves to the right one).
+  Future<void> updateLogEntry({
+    required String id,
+    required double hours,
+    required GamePlatform platform,
+    required String note,
+    required DateTime loggedAt,
+  }) async {
+    await _client
+        .from(Db.logEntries)
+        .update({
+          Db.hours: hours,
+          Db.platform: gamePlatformToDb(platform),
+          Db.note: note.trim(),
+          Db.loggedAt: loggedAt.toUtc().toIso8601String(),
+        })
+        .eq(Db.id, id);
+  }
+
+  /// Deletes one play session. The game's total is the store's to change.
+  Future<void> deleteLogEntry(String id) async {
+    await _client.from(Db.logEntries).delete().eq(Db.id, id);
   }
 
   /// Adds [game] to the global catalog if it isn't there yet.
@@ -988,22 +1085,130 @@ class CheckpointRepository {
       Db.genres: game.genres,
       Db.summary: game.synopsis,
       Db.coverUrl: game.coverUrl,
+      if (game.releaseDate case final released?) Db.releaseDate: _day(released),
     }, onConflict: Db.igdbId, ignoreDuplicates: true);
   }
 
+  /// Takes [gameId] out of the library together with its play sessions, in one
+  /// transaction (`remove_library_game`): both go, or neither does. The server
+  /// works on the session's own rows, which are [userId]'s.
   Future<void> deleteUserGame(String userId, String gameId) async {
-    // Delete logs first to satisfy foreign key constraints (if cascade isn't on)
-    await _client.from(Db.logEntries).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
-    // Delete the game from the user's library
-    await _client.from(Db.userGames).delete().eq(Db.userId, userId).eq(Db.gameId, gameId);
+    await _client.rpc(Db.rpcRemoveLibraryGame, params: {'target_game': gameId});
   }
 
-  /// Removes the user's whole library: every play session, then every game
-  /// (with its stored achievements). Sessions go first, as in [deleteUserGame].
-  /// Safe to run again if it stopped part way. The shared catalog is untouched.
+  /// Removes the user's whole library: every play session and every game (with
+  /// its stored achievements), in one transaction (`clear_library`). The shared
+  /// catalog is untouched.
   Future<void> clearLibrary(String userId) async {
-    await _client.from(Db.logEntries).delete().eq(Db.userId, userId);
-    await _client.from(Db.userGames).delete().eq(Db.userId, userId);
+    await _client.rpc(Db.rpcClearLibrary);
+  }
+
+  // ---- Lists ----
+
+  /// A list with its games, in their order, each with the catalog columns.
+  static final String _listColumns = '''
+          ${Db.id},
+          ${Db.userId},
+          ${Db.title},
+          ${Db.description},
+          ${Db.isPublic},
+          ${Db.updatedAt},
+          ${Db.gameListItems} (
+            ${Db.position},
+            ${Db.games} (
+              ${Db.id},
+              ${[..._catalogColumns, Db.releaseDate].join(', ')}
+            )
+          )
+        ''';
+
+  /// [userId]'s lists, the last changed first. Another member's private lists
+  /// are never returned (RLS), so for them this is their public lists.
+  Future<List<GameList>> fetchLists(String userId) async {
+    final rows = await _client
+        .from(Db.gameLists)
+        .select(_listColumns)
+        .eq(Db.userId, userId)
+        .order(Db.updatedAt, ascending: false)
+        .order(Db.position, referencedTable: Db.gameListItems);
+    return rows.map<GameList>(_listFromRow).toList(growable: false);
+  }
+
+  /// One list, or null when it doesn't exist or isn't the caller's to see (a
+  /// private list of someone else): a list opened from a link.
+  Future<GameList?> fetchList(String listId) async {
+    final row = await _client
+        .from(Db.gameLists)
+        .select(_listColumns)
+        .eq(Db.id, listId)
+        .order(Db.position, referencedTable: Db.gameListItems)
+        .maybeSingle();
+    return row == null ? null : _listFromRow(row);
+  }
+
+  /// Makes a list for the signed-in member and returns it (empty).
+  Future<GameList> createList({
+    required String title,
+    String description = '',
+    bool isPublic = false,
+  }) async {
+    final row = await _client
+        .from(Db.gameLists)
+        .insert({
+          Db.title: title.trim(),
+          Db.description: description.trim(),
+          Db.isPublic: isPublic,
+        })
+        .select(_listColumns)
+        .single();
+    return _listFromRow(row);
+  }
+
+  Future<void> updateList(
+    String listId, {
+    required String title,
+    required String description,
+    required bool isPublic,
+  }) async {
+    await _client
+        .from(Db.gameLists)
+        .update({
+          Db.title: title.trim(),
+          Db.description: description.trim(),
+          Db.isPublic: isPublic,
+        })
+        .eq(Db.id, listId);
+  }
+
+  /// Deletes a list and its entries (the games stay in the catalog and library).
+  Future<void> deleteList(String listId) async {
+    await _client.from(Db.gameLists).delete().eq(Db.id, listId);
+  }
+
+  /// Puts [gameId] in the list at [position]. The game must be in the catalog.
+  Future<void> addToList(String listId, String gameId, int position) async {
+    await _client.from(Db.gameListItems).upsert({
+      Db.listId: listId,
+      Db.gameId: gameId,
+      Db.position: position,
+    }, onConflict: '${Db.listId},${Db.gameId}');
+  }
+
+  Future<void> removeFromList(String listId, String gameId) async {
+    await _client
+        .from(Db.gameListItems)
+        .delete()
+        .eq(Db.listId, listId)
+        .eq(Db.gameId, gameId);
+  }
+
+  /// Saves the order of the list's games: [gameIds] first to last.
+  Future<void> reorderList(String listId, List<String> gameIds) async {
+    if (gameIds.isEmpty) return;
+    await _client.from(Db.gameListItems).upsert([
+      for (var i = 0; i < gameIds.length; i++)
+        {Db.listId: listId, Db.gameId: gameIds[i], Db.position: i},
+    ], onConflict: '${Db.listId},${Db.gameId}');
   }
 
   /// Emits an event whenever one of [userId]'s `user_games` rows changes.
@@ -1152,7 +1357,8 @@ Game _gameFromPublicRow(Map<String, dynamic> row) {
     playedOn: gamePlatformFromDb(row[Db.playedOn]),
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
-  ).withBackdrop(_firstText([row[Db.customBackdropUrl]]));
+    review: _firstText([row[Db.review]]) ?? '',
+  ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt]));
 }
 
 GameAttributes _attributesFromRow(Map<String, dynamic> row) => GameAttributes(
@@ -1201,6 +1407,7 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
     coverUrl: _firstText([row[Db.coverUrl]]),
     igdbId: _intOrNull(row[Db.igdbId]),
     steamAppId: steamAppId,
+    releaseDate: _releaseDay(row[Db.releaseDate]),
   );
 }
 
@@ -1219,9 +1426,29 @@ Game _gameFromUserGameRow(Map<String, dynamic> row) {
     purchasePrice: _double(row[Db.purchasePrice]),
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
+    review: _firstText([row[Db.review]]) ?? '',
     // `achievements` is intentionally not read here: fetchUserGames doesn't
     // select it. See fetchGameAchievements.
-  ).withBackdrop(_firstText([row[Db.customBackdropUrl]]));
+  ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt]));
+}
+
+GameList _listFromRow(Map<String, dynamic> row) {
+  final items = [
+    for (final item in row[Db.gameListItems] as List? ?? const [])
+      if (item is Map && item[Db.games] is Map) Map<String, dynamic>.from(item),
+  ]..sort((a, b) => _int(a[Db.position]).compareTo(_int(b[Db.position])));
+  return GameList(
+    id: '${row[Db.id]}',
+    ownerId: '${row[Db.userId]}',
+    title: _firstText([row[Db.title]]) ?? 'Untitled list',
+    description: _firstText([row[Db.description]]) ?? '',
+    isPublic: row[Db.isPublic] == true,
+    games: [
+      for (final item in items)
+        _gameFromCatalogRow(Map<String, dynamic>.from(item[Db.games] as Map)),
+    ],
+    updatedAt: _date(row[Db.updatedAt]),
+  );
 }
 
 LogEntry _logFromRow(Map<String, dynamic> row) => LogEntry(
@@ -1231,6 +1458,7 @@ LogEntry _logFromRow(Map<String, dynamic> row) => LogEntry(
   hours: _double(row[Db.hours]),
   platform: gamePlatformFromDb(row[Db.platform]) ?? GamePlatform.pc,
   note: _firstText([row[Db.note]]) ?? '',
+  fromSteam: row[Db.source] == 'steam',
 );
 
 List<String> _strings(Object? value) {
@@ -1267,6 +1495,17 @@ DateTime? _date(Object? value) {
   if (value == null) return null;
   return DateTime.tryParse('$value')?.toLocal();
 }
+
+/// A `date` column ("2026-11-14") as that calendar day, at midnight on the
+/// device: a release day is the same day everywhere, not an instant.
+DateTime? _releaseDay(Object? value) {
+  final parsed = value == null ? null : DateTime.tryParse('$value');
+  return parsed == null ? null : DateTime(parsed.year, parsed.month, parsed.day);
+}
+
+/// [d]'s calendar day as a `date` column takes it: "2026-11-14".
+String _day(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 double _double(Object? value, {double fallback = 0}) {
   if (value is num) return value.toDouble();

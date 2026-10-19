@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/screens/settings/account_section.dart';
+import 'package:checkpoint/screens/settings/data_section.dart';
 import 'package:checkpoint/screens/settings/privacy_section.dart';
 import 'package:checkpoint/screens/settings/security_section.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -10,7 +11,8 @@ import 'package:checkpoint/widgets/app_choice_chip.dart';
 enum SettingsSection {
   account('Account', Icons.person_rounded),
   security('Security', Icons.shield_rounded),
-  privacy('Privacy', Icons.lock_rounded);
+  privacy('Privacy', Icons.lock_rounded),
+  data('Your data', Icons.import_export_rounded);
 
   const SettingsSection(this.label, this.icon);
   final String label;
@@ -53,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       SettingsSection.security => const SecuritySection(),
       SettingsSection.privacy => const PrivacySection(),
+      SettingsSection.data => const DataSection(),
     };
     // A section starts at its top, whatever the one before was scrolled to.
     return KeyedSubtree(key: ValueKey(_section), child: body);

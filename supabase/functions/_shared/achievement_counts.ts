@@ -2,7 +2,7 @@
 //
 // Achievement counts for a whole Steam library, kept by `sync-steam` in
 // user_games.achievements_unlocked / achievements_total (see
-// 20261021120000_steam_achievement_counts.sql) so that a profile can list every
+// 20261018160000_steam_achievement_counts.sql) so that a profile can list every
 // game with its progress without loading any game's achievements.
 //
 // Counting a game is one ISteamUserStats/GetPlayerAchievements request (Steam has no

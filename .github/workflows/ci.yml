@@ -57,3 +57,39 @@ jobs:
       # Rate-limit backoff and the background-sync schedule (supabase/functions/_shared).
       - name: Test shared helpers
         run: deno test supabase/functions/_shared/
+
+  migrations:
+    name: Check migration names
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # `supabase db push` applies migrations in file-name order and refuses a new
+      # one that sorts before a migration the database already has. A file dated
+      # ahead makes every migration written before that date sort before it, so
+      # take the name `supabase migration new` gives (now, in UTC).
+      - name: No migration is dated in the future
+        run: |
+          limit=$(date -u -d '+1 hour' +%Y%m%d%H%M%S)
+          status=0
+          seen=""
+          for f in supabase/migrations/*.sql; do
+            name=$(basename "$f")
+            stamp=${name%%_*}
+            if ! [[ $stamp =~ ^[0-9]{14}$ ]]; then
+              echo "::error file=$f::$name must start with a 14-digit UTC timestamp (YYYYMMDDHHMMSS)"
+              status=1
+              continue
+            fi
+            if [[ $stamp > $limit ]]; then
+              echo "::error file=$f::$name is dated in the future. Rename it with the current UTC time, as \`supabase migration new\` does."
+              status=1
+            fi
+            if [[ " $seen " == *" $stamp "* ]]; then
+              echo "::error file=$f::Another migration already uses the timestamp $stamp"
+              status=1
+            fi
+            seen="$seen $stamp"
+          done
+          exit $status

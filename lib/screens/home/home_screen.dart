@@ -4,6 +4,8 @@ import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/release_alerts.dart';
+import 'package:checkpoint/sheets/pick_next_sheet.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
@@ -13,6 +15,7 @@ import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
+import 'package:checkpoint/state/release_alerts_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -115,6 +118,18 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (context.watch<AuthStore>().isLoggedIn &&
+              library.count(GameStatus.toPlay) + library.count(GameStatus.playing) >= 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: OutlinedButton.icon(
+                onPressed: () => showPickNextSheet(context),
+                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                icon: const Icon(Icons.casino_rounded, size: 18),
+                label: const Text('Can\'t decide? Pick my next game'),
+              ),
+            ),
+          const _ReleasesRow(),
           const SectionHeader('Recent Activity'),
           const _RecentActivityRow(),
           const _FriendsFeedRow(),
@@ -200,6 +215,29 @@ class _CarouselSection extends StatelessWidget {
       _GameCarousel(games: games, caption: caption, icon: icon),
     ],
   );
+}
+
+/// Wishlist release alerts: the wishlist games just out or coming out soon, each
+/// captioned "Out now · Oct 10" or "Out in 5 days · Oct 24". Hidden when there
+/// are none.
+class _ReleasesRow extends StatelessWidget {
+  const _ReleasesRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final alerts = context.watch<ReleaseAlertsStore>().alerts;
+    if (alerts.isEmpty) return const SizedBox.shrink();
+    final byId = {for (final a in alerts) a.game.id: a};
+    return _CarouselSection(
+      title: 'Wishlist Releases',
+      games: [for (final a in alerts) a.game],
+      icon: Icons.notifications_active_rounded,
+      caption: (g) {
+        final alert = byId[g.id]!;
+        return '${releaseLabel(alert.daysAway)} · ${fmtMonthDay(g.releaseDate!)}';
+      },
+    );
+  }
 }
 
 class _GameCarousel extends StatelessWidget {

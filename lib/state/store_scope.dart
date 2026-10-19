@@ -10,12 +10,16 @@ import 'package:checkpoint/state/game_friends_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/lists_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
 import 'package:checkpoint/state/public_library_store.dart';
 import 'package:checkpoint/state/public_profile_store.dart';
+import 'package:checkpoint/state/release_alerts_store.dart';
 import 'package:checkpoint/state/search_store.dart';
+import 'package:checkpoint/state/shared_link_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
 
 /// Makes one store available to the widgets below it. There is one scope per
@@ -84,7 +88,19 @@ class AppStoresScope extends StatelessWidget {
                                   store: stores.companies,
                                   child: StoreScope<FriendsFeedStore>(
                                     store: stores.friendsFeed,
-                                    child: child,
+                                    child: StoreScope<PlayTimerStore>(
+                                      store: stores.playTimer,
+                                      child: StoreScope<ListsStore>(
+                                        store: stores.lists,
+                                        child: StoreScope<ReleaseAlertsStore>(
+                                          store: stores.releaseAlerts,
+                                          child: StoreScope<SharedLinkStore>(
+                                            store: stores.links,
+                                            child: child,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),

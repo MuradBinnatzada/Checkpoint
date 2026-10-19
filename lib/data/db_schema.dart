@@ -34,6 +34,12 @@ abstract final class Db {
   /// one follows: "From people you follow" on Home.
   static const rpcFollowingRecentActivity = 'following_recent_activity';
 
+  /// Take one game out of the signed-in member's library with its play sessions,
+  /// or empty the whole library: each in one transaction, so a failure part way
+  /// can't keep the game and lose its sessions.
+  static const rpcRemoveLibraryGame = 'remove_library_game';
+  static const rpcClearLibrary = 'clear_library';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';
@@ -120,11 +126,33 @@ abstract final class Db {
   static const hours = 'hours';
   static const platform = 'platform';
   static const note = 'note';
+
+  /// `log_entries`: NULL for a session the member logged, `steam` for one the
+  /// Steam sync logged from a rise in playtime.
+  static const source = 'source';
   static const isFavorite = 'is_favorite';
 
   /// `user_games` (and `public_user_games`): the member's own backdrop for the
   /// game, an IGDB image URL; NULL: the blurred cover.
   static const customBackdropUrl = 'custom_backdrop_url';
+
+  /// `user_games`: when the member last marked the game completed (kept by a
+  /// trigger; the app never sends it), and their short review (at most
+  /// [reviewMaxLength] characters, '' = none). Both are in `public_user_games`.
+  static const completedAt = 'completed_at';
+  static const review = 'review';
+  static const reviewMaxLength = 500;
+
+  /// `games`: the day the game first came out, from IGDB; NULL when unknown.
+  static const releaseDate = 'release_date';
+
+  /// A member's lists of games and their games (20261019115300_game_lists.sql).
+  static const gameLists = 'game_lists';
+  static const gameListItems = 'game_list_items';
+  static const listId = 'list_id';
+  static const description = 'description';
+  static const isPublic = 'is_public';
+  static const position = 'position';
 
   static const followerId = 'follower_id';
   static const followeeId = 'followee_id';

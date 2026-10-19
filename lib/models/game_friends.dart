@@ -11,6 +11,7 @@ class FriendWithGame {
     required this.status,
     this.rating = 0,
     this.dateAdded,
+    this.review = '',
   });
 
   final SocialUser member;
@@ -19,6 +20,9 @@ class FriendWithGame {
   /// Out of 5, in halves; 0 when they did not rate it.
   final double rating;
   final DateTime? dateAdded;
+
+  /// Their short review; empty when they wrote none.
+  final String review;
 }
 
 /// The rows of the Friends panel on a game's screen. Dropped is left out: the
@@ -47,6 +51,10 @@ class GameFriends {
   final Map<GameStatus, int> totals;
 
   bool get isEmpty => FriendGroup.values.every((g) => countOf(g) == 0);
+
+  /// The friends who wrote a review, rated first, then the newest.
+  List<FriendWithGame> get reviews =>
+      [for (final f in friends) if (f.review.isNotEmpty) f]..sort(_ratedThenNewest);
 
   int countOf(FriendGroup group) =>
       group.statuses.fold(0, (sum, s) => sum + (totals[s] ?? 0));

@@ -1,0 +1,95 @@
+import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
+import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/sheets/edit_session_sheet.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/palette.dart';
+import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/widgets/empty_state.dart';
+
+/// Every play session of one game, newest first. Tapping one edits it.
+class SessionsScreen extends StatelessWidget {
+  const SessionsScreen({super.key, required this.gameId});
+  final String gameId;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<LibraryStore>();
+    final game = store.maybeGame(gameId);
+    final logs = store.logsFor(gameId);
+    final total = logs.fold<double>(0, (sum, l) => sum + l.hours);
+    return Scaffold(
+      appBar: AppBar(title: Text(game == null ? 'Sessions' : '${game.title} sessions')),
+      body: logs.isEmpty
+          ? const EmptyState(
+              icon: Icons.timer_outlined,
+              title: 'No sessions',
+              message: 'Sessions you log for this game show up here.',
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: Text(
+                    '${logs.length} session${logs.length == 1 ? '' : 's'} · ${fmtHours(total)} h logged',
+                    style: const TextStyle(color: Palette.muted),
+                  ),
+                ),
+                for (final l in logs) SessionTile(session: l, showDay: true),
+              ],
+            ),
+    );
+  }
+}
+
+/// One play session: platform, hours, note and when. Tapping it edits it.
+class SessionTile extends StatelessWidget {
+  const SessionTile({super.key, required this.session, this.showDay = false});
+  final LogEntry session;
+
+  /// The day and time it was played, instead of how long ago.
+  final bool showDay;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = session;
+    final when = showDay
+        ? '${fmtDay(l.timestamp)}, ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(l.timestamp))}'
+        : timeAgo(l.timestamp);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showEditSessionSheet(context, l.id),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+        child: Row(children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: l.platform.color.withValues(alpha: 0.16), shape: BoxShape.circle),
+            child: Icon(l.platform.icon, size: 18, color: l.platform.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('+${fmtHours(l.hours)} h on ${l.platform.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (l.fromSteam)
+                const Row(children: [
+                  FaIcon(FontAwesomeIcons.steam, size: 11, color: Palette.muted),
+                  SizedBox(width: 5),
+                  Text('From your Steam playtime', style: TextStyle(fontSize: 12, color: Palette.muted)),
+                ]),
+              if (l.note.isNotEmpty)
+                Text(l.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+            ]),
+          ),
+          Text(when, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right_rounded, size: 18, color: Palette.muted),
+        ]),
+      ),
+    );
+  }
+}

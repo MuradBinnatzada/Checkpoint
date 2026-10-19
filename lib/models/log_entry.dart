@@ -12,6 +12,7 @@ class LogEntry {
     required this.hours,
     required this.platform,
     this.note = '',
+    this.fromSteam = false,
   });
 
   factory LogEntry.fromJson(Map<String, dynamic> json) => LogEntry(
@@ -21,6 +22,7 @@ class LogEntry {
         hours: (json['hours'] as num).toDouble(),
         platform: gamePlatformFromDb(json['platform']) ?? GamePlatform.pc,
         note: json['note'] as String? ?? '',
+        fromSteam: json['source'] == 'steam',
       );
 
   final String id;
@@ -30,6 +32,10 @@ class LogEntry {
   final GamePlatform platform;
   final String note;
 
+  /// Logged by the Steam sync from a rise in the game's Steam playtime, not by
+  /// the member (`log_entries.source`).
+  final bool fromSteam;
+
   /// What the offline cache keeps of this session; read back by [LogEntry.fromJson].
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -38,5 +44,6 @@ class LogEntry {
         'hours': hours,
         'platform': gamePlatformToDb(platform),
         'note': note,
+        if (fromSteam) 'source': 'steam',
       };
 }

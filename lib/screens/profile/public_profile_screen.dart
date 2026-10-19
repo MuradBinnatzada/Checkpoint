@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/screens/lists/lists_screen.dart';
+import 'package:checkpoint/widgets/share_link_button.dart';
 import 'package:checkpoint/screens/profile/profile_layout.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_state.dart';
@@ -80,7 +83,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(actions: [ShareLinkButton(target: MemberLink(widget.userId))]),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -216,6 +219,15 @@ class _Loaded extends StatelessWidget {
           label: 'Top rated',
           count: library.ratedCount,
           onTap: () => openLibrary(sortBy: SortField.rating),
+        ),
+        ProfileLink(
+          icon: Icons.format_list_bulleted_rounded,
+          label: 'Lists',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ListsScreen(userId: userId, ownerName: profile.name),
+            ),
+          ),
         ),
         ProfileLink(
           icon: Icons.people_alt_rounded,

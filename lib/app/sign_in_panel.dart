@@ -8,14 +8,14 @@ import 'package:checkpoint/theme/palette.dart';
 enum _Mode { signIn, signUp }
 
 /// What a sign-in or sign-up is waiting on, to show its button as busy.
-enum _Pending { google, email, reset }
+enum _Pending { google, apple, email, reset }
 
 /// The longest display name the profile editor accepts.
 const _nameMax = 40;
 
 final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
-/// The ways to sign in: Google, or an email address and password (sign in,
+/// The ways to sign in: Google, Apple (on iOS), or an email address and password (sign in,
 /// create an account, or have a reset link sent), under a [title] and
 /// [message] saying what signing in is for.
 ///
@@ -89,6 +89,11 @@ class _SignInPanelState extends State<SignInPanel> {
   Future<void> _signInWithGoogle() async {
     if (_busy) return;
     await _run(_Pending.google, (auth) => auth.signInWithGoogle());
+  }
+
+  Future<void> _signInWithApple() async {
+    if (_busy) return;
+    await _run(_Pending.apple, (auth) => auth.signInWithApple());
   }
 
   Future<void> _submit() async {
@@ -215,6 +220,18 @@ class _SignInPanelState extends State<SignInPanel> {
                     : const FaIcon(FontAwesomeIcons.google, size: 16),
                 label: const Text('Continue with Google'),
               ),
+              if (context.read<AuthStore>().offersAppleSignIn) ...[
+                const SizedBox(height: 10),
+                // Apple's guidelines: as prominent as the other providers, with
+                // its logo and "Continue with Apple".
+                FilledButton.tonalIcon(
+                  onPressed: _busy ? null : _signInWithApple,
+                  icon: _pending == _Pending.apple
+                      ? const _Spinner()
+                      : const FaIcon(FontAwesomeIcons.apple, size: 18),
+                  label: const Text('Continue with Apple'),
+                ),
+              ],
               const SizedBox(height: 20),
               const Row(
                 children: [

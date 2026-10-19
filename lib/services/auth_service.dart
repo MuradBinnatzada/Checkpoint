@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show ContentType, HttpServer, HttpStatus, InternetAddress, SocketException;
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Google OAuth client IDs.
@@ -47,6 +49,12 @@ class AuthService {
       (defaultTargetPlatform == TargetPlatform.linux ||
           defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.macOS);
+
+  /// Sign in with Apple is offered on iOS, through Apple's own sheet: the App
+  /// Store requires it of an app that offers Google sign-in. Elsewhere Apple
+  /// would need a browser round trip the app has no way to come back from yet.
+  bool get offersAppleSignIn =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   /// The temporary localhost listener of an unfinished desktop sign-in, if any.
   HttpServer? _loopback;
@@ -132,6 +140,49 @@ class AuthService {
       idToken: idToken,
       accessToken: googleAuth.accessToken,
     );
+  }
+
+  /// Apple's sheet → ID token → Supabase session. Supabase checks the token
+  /// against the SHA-256 of a one-time nonce that only this call knows, so a
+  /// token taken from somewhere else can't be replayed. Throws
+  /// [SignInWithAppleAuthorizationException] when the sheet is cancelled.
+  ///
+  /// Apple tells an app the person's name only the first time they sign in to
+  /// it, and the ID token never carries it, so it is saved on the account as
+  /// `full_name` for CheckpointRepository.ensureProfile to use.
+  Future<void> signInWithApple() async {
+    final rawNonce = generateNonce();
+    final credential = await SignInWithApple.getAppleIDCredential(
+      scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      nonce: sha256.convert(utf8.encode(rawNonce)).toString(),
+    );
+    final idToken = credential.identityToken;
+    if (idToken == null) throw AuthException('Apple did not return an ID token.');
+
+    await _auth.signInWithIdToken(
+      provider: OAuthProvider.apple,
+      idToken: idToken,
+      nonce: rawNonce,
+    );
+
+    final name = appleFullName(credential.givenName, credential.familyName);
+    if (name == null) return;
+    try {
+      await _auth.updateUser(UserAttributes(data: {'full_name': name}));
+    } catch (e) {
+      // Signed in all the same; the name can be typed in Edit Profile.
+      debugPrint('Saving the name Apple shared failed: $e');
+    }
+  }
+
+  /// "Given Family" from the parts of a name Apple shared, or null when it
+  /// shared none (every sign-in after the first, or the person hid it).
+  @visibleForTesting
+  static String? appleFullName(String? given, String? family) {
+    final parts = [given, family]
+        .map((part) => part?.trim() ?? '')
+        .where((part) => part.isNotEmpty);
+    return parts.isEmpty ? null : parts.join(' ');
   }
 
   /// Opens Google sign-in in the system browser and catches the redirect on
@@ -313,6 +364,13 @@ class AuthService {
         _ => e.message,
       };
     }
+    if (e is SignInWithAppleAuthorizationException) {
+      return switch (e.code) {
+        AuthorizationErrorCode.canceled => 'Apple sign-in was cancelled.',
+        _ => 'Apple sign-in failed. Please try again.',
+      };
+    }
+    if (e is SignInWithAppleException) return 'Apple sign-in failed. Please try again.';
     if (e is PlatformException) {
       return switch (e.code) {
         GoogleSignIn.kSignInCanceledError => 'Google sign-in was cancelled.',

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart'
+    show AuthorizationErrorCode, SignInWithAppleAuthorizationException;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/services/auth_service.dart';
@@ -157,6 +159,13 @@ void main() {
     },
   );
 
+  test('appleFullName joins the parts Apple shared, and is null without any', () {
+    expect(AuthService.appleFullName(' Ada ', 'Lovelace'), 'Ada Lovelace');
+    expect(AuthService.appleFullName('Ada', null), 'Ada');
+    expect(AuthService.appleFullName(null, ' '), isNull);
+    expect(AuthService.appleFullName(null, null), isNull);
+  });
+
   group('messageFor', () {
     String message(String code, [String text = 'raw']) =>
         AuthService.messageFor(
@@ -200,6 +209,27 @@ void main() {
       expect(
         message('reauthentication_needed'),
         startsWith('For your security, sign out and sign in again'),
+      );
+    });
+
+    test('words Apple sign-in failures', () {
+      expect(
+        AuthService.messageFor(
+          const SignInWithAppleAuthorizationException(
+            code: AuthorizationErrorCode.canceled,
+            message: 'The user canceled the authorization attempt.',
+          ),
+        ),
+        'Apple sign-in was cancelled.',
+      );
+      expect(
+        AuthService.messageFor(
+          const SignInWithAppleAuthorizationException(
+            code: AuthorizationErrorCode.failed,
+            message: 'raw',
+          ),
+        ),
+        'Apple sign-in failed. Please try again.',
       );
     });
 

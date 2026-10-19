@@ -7,7 +7,7 @@
  *   profile: the game must be in their library, they must have a Steam ID on
  *   their profile, and they must not have turned off "Show Steam Achievements"
  *   (`profiles.show_steam_achievements`, see
- *   20261025120000_steam_achievements_privacy.sql). A `steam_id` sent in the
+ *   20261018210000_steam_achievements_privacy.sql). A `steam_id` sent in the
  *   request body is always ignored: the
  *   Steam ID is read from `profiles.steam_id` of the member whose achievements
  *   these are, so nobody can attach someone else's Steam account to a profile.
@@ -33,7 +33,7 @@
  *   5. Merge them into one array, save it to user_games.achievements (JSONB)
  *      for this user + game, and return it. The database trigger keeps
  *      `achievements_unlocked` / `achievements_total` / `achievements_synced_at`
- *      in step (20261021120000_steam_achievement_counts.sql).
+ *      in step (20261018160000_steam_achievement_counts.sql).
  *
  * Response: { success: true, achievements: [
  *   { name, description, icon_url, unlocked, unlocked_at, global_percent } ] }

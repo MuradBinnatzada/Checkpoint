@@ -4,10 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
+import 'package:checkpoint/screens/game_detail/sessions_screen.dart';
 import 'package:checkpoint/sheets/game_backdrop_sheet.dart';
+import 'package:checkpoint/sheets/list_sheets.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
+import 'package:checkpoint/sheets/review_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -22,6 +26,8 @@ import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
+import 'package:checkpoint/widgets/share_link_button.dart';
+import 'package:checkpoint/widgets/play_timer_widgets.dart';
 import 'package:checkpoint/widgets/star_rating.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
 
@@ -67,6 +73,32 @@ class GameDetailScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (canShareLinks && game.igdbId != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Center(
+                    child: _RoundIconButton(
+                      icon: Icons.share_rounded,
+                      tooltip: 'Copy link',
+                      // The link finds the game in the catalog, so it goes there first.
+                      onTap: () => copyShareLink(
+                        context,
+                        GameLink(game.igdbId!),
+                        before: () => context.read<LibraryStore>().ensureInCatalog(game),
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Center(
+                  child: _RoundIconButton(
+                    icon: Icons.playlist_add_rounded,
+                    tooltip: 'Add to list',
+                    onTap: () => showAddToListSheet(context, game),
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 10),
                 child: Center(child: _WishlistButton(game: game)),
@@ -359,6 +391,7 @@ class _ProgressPanel extends StatelessWidget {
         const SizedBox(height: 16),
         Row(children: [
           stat('${fmtHours(game.hoursPlayed)} h', 'Played'),
+          if (context.watch<AuthStore>().isLoggedIn) PlayTimerButton(game: game),
         ]),
       ]),
     );
@@ -383,6 +416,33 @@ class _RatingPanel extends StatelessWidget {
           game.rating > 0 ? '${fmtHours(game.rating)} / 5' : 'Tap or drag across the stars (half-stars supported)',
           style: TextStyle(color: game.rating > 0 ? Palette.star : Palette.muted, fontWeight: FontWeight.w600, fontSize: 13),
         ),
+        if (context.watch<AuthStore>().isLoggedIn) ...[
+          const SizedBox(height: 12),
+          if (game.review.isEmpty)
+            TextButton.icon(
+              onPressed: () => showReviewSheet(context, game.id),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              icon: const Icon(Icons.rate_review_outlined, size: 18),
+              label: const Text('Add a short review'),
+            )
+          else
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => showReviewSheet(context, game.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(Icons.format_quote_rounded, size: 18, color: Palette.muted),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(game.review, style: const TextStyle(height: 1.4))),
+                  const Icon(Icons.edit_rounded, size: 16, color: Palette.muted),
+                ]),
+              ),
+            ),
+        ],
       ]),
     );
   }
@@ -485,6 +545,8 @@ class _SessionsPanel extends StatelessWidget {
   const _SessionsPanel({required this.gameId});
   final String gameId;
 
+  static const _shown = 5;
+
   @override
   Widget build(BuildContext context) {
     final logs = context.watch<LibraryStore>().logsFor(gameId);
@@ -493,27 +555,16 @@ class _SessionsPanel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: Panel(
         title: 'Recent sessions',
+        trailing: logs.length > _shown
+            ? TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => SessionsScreen(gameId: gameId)),
+                ),
+                child: Text('See all ${logs.length}'),
+              )
+            : null,
         child: Column(children: [
-          for (final l in logs.take(5))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(color: l.platform.color.withValues(alpha: 0.16), shape: BoxShape.circle),
-                  child: Icon(l.platform.icon, size: 18, color: l.platform.color),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('+${fmtHours(l.hours)} h on ${l.platform.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (l.note.isNotEmpty) Text(l.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Palette.muted)),
-                  ]),
-                ),
-                Text(timeAgo(l.timestamp), style: const TextStyle(fontSize: 12, color: Palette.muted)),
-              ]),
-            ),
+          for (final l in logs.take(_shown)) SessionTile(session: l),
         ]),
       ),
     );

@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/library_stats.dart';
+import 'package:checkpoint/models/share_link.dart';
+import 'package:checkpoint/screens/lists/lists_screen.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
 import 'package:checkpoint/screens/profile/profile_layout.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
+import 'package:checkpoint/screens/stats/year_review_screen.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_state.dart';
@@ -17,6 +20,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/favorite_games_row.dart';
 import 'package:checkpoint/widgets/profile_link_rows.dart';
+import 'package:checkpoint/widgets/share_link_button.dart';
 
 /// The Profile tab: your own page, laid out exactly like another member's
 /// ([ProfileLayout]) but from your live library, with Edit Profile and Settings
@@ -65,11 +69,14 @@ class ProfileScreen extends StatelessWidget {
               handle: p.handle,
               avatarUrl: p.avatarUrl,
               joined: p.joined,
-              trailing: IconButton(
-                tooltip: 'Sign out',
-                onPressed: () => context.read<AuthStore>().logOut(),
-                icon: const Icon(Icons.logout_rounded),
-              ),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                ShareLinkButton(target: MemberLink(userId)),
+                IconButton(
+                  tooltip: 'Sign out',
+                  onPressed: () => context.read<AuthStore>().logOut(),
+                  icon: const Icon(Icons.logout_rounded),
+                ),
+              ]),
             ),
             services: profileStore.connectedServices,
             accountNames: profileStore.accountNames,
@@ -135,6 +142,20 @@ class ProfileScreen extends StatelessWidget {
                 label: 'Top rated',
                 count: stats.ratedCount,
                 onTap: () => viewStore.openTab(null, sortBy: SortField.rating),
+              ),
+              ProfileLink(
+                icon: Icons.format_list_bulleted_rounded,
+                label: 'Lists',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const ListsScreen()),
+                ),
+              ),
+              ProfileLink(
+                icon: Icons.insights_rounded,
+                label: 'Year in Review',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const YearReviewScreen()),
+                ),
               ),
               ProfileLink(
                 icon: Icons.people_alt_rounded,

@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/data/db_schema.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/library_stats.dart';
+import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connection_failure.dart';
@@ -440,10 +442,11 @@ class LibraryStore extends ChangeNotifier {
       _auth.requireSession();
       await _repository.deleteUserGame(current.id, id);
       _pending.removed.remove(id);
-      final queuedLogs = _pending.logs.length;
+      final queuedLogs = _pending.logs.length + _pending.logEdits.length;
       _pending.logs.removeWhere((l) => l.gameId == id);
+      _pending.logEdits.removeWhere((_, l) => l.gameId == id);
       if (_pending.games.remove(id) != null ||
-          _pending.logs.length != queuedLogs) {
+          _pending.logs.length + _pending.logEdits.length != queuedLogs) {
         _savePending();
       }
       // Realtime doesn't announce deletes, so the saved copy is told directly.
@@ -497,6 +500,8 @@ class LibraryStore extends ChangeNotifier {
     _pending.games.clear();
     _pending.removed.clear();
     _pending.logs.clear();
+    _pending.logEdits.clear();
+    _pending.logDeletes.clear();
     _savePending();
     _syncStatus = SyncStatus.idle;
     _syncFailure = null;
@@ -890,6 +895,9 @@ class LibraryStore extends ChangeNotifier {
     return null;
   }
 
+  /// Every play session, newest first.
+  List<LogEntry> get sessions => _logs;
+
   List<LogEntry> logsFor(String gameId) =>
       _logs.where((l) => l.gameId == gameId).toList();
 
@@ -943,8 +951,63 @@ class LibraryStore extends ChangeNotifier {
 
   Future<void> setStatus(String id, GameStatus status) async {
     final game = gameById(id);
-    final next = game.copyWith(
+    var next = game.copyWith(
       status: status,
+      dateAdded: game.dateAdded ?? DateTime.now(),
+    );
+    // As the database keeps it (user_games_track_completion), so the Year in
+    // Review counts it right away.
+    if (status != GameStatus.completed) {
+      next = next.withCompletedAt(null);
+    } else if (game.status != GameStatus.completed) {
+      next = next.withCompletedAt(DateTime.now());
+    }
+    _replaceGame(next);
+    await _saveUserGame(next);
+  }
+
+  /// Puts [game] in the library as an imported file has it: [status], and the
+  /// [rating], [hours], [playedOn] and [review] the file gives (what it leaves
+  /// out keeps what the library has; hours never go down). No session is logged:
+  /// imported hours are the game's history, not something played now.
+  Future<void> importGame(
+    Game game, {
+    required GameStatus status,
+    double? rating,
+    double? hours,
+    GamePlatform? playedOn,
+    String? review,
+  }) async {
+    final existing = maybeGame(game.id) ?? game;
+    final importedHours = hours?.clamp(0, maxTotalHours).toDouble();
+    var next = existing.copyWith(
+      status: status,
+      rating: rating?.clamp(0, 5).toDouble(),
+      hoursPlayed: importedHours != null && importedHours > existing.hoursPlayed ? importedHours : null,
+      playedOn: playedOn,
+      review: review == null || review.length <= Db.reviewMaxLength ? review : review.substring(0, Db.reviewMaxLength),
+      dateAdded: existing.dateAdded ?? DateTime.now(),
+    );
+    if (status != GameStatus.completed) {
+      next = next.withCompletedAt(null);
+    } else if (existing.status != GameStatus.completed) {
+      next = next.withCompletedAt(DateTime.now());
+    }
+    _replaceGame(next);
+    await _saveUserGame(next);
+  }
+
+  /// Saves the member's short review of [id] next to their rating (at most
+  /// [Db.reviewMaxLength] characters; empty removes it). Like a rating, a game
+  /// that is not in the library comes in with it.
+  Future<void> setReview(String id, String review) async {
+    final game = gameById(id);
+    var text = review.trim();
+    if (text.length > Db.reviewMaxLength) text = text.substring(0, Db.reviewMaxLength);
+    if (text == game.review && game.inLibrary) return;
+    final next = game.copyWith(
+      status: game.status ?? GameStatus.playing,
+      review: text,
       dateAdded: game.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);
@@ -955,7 +1018,7 @@ class LibraryStore extends ChangeNotifier {
     final game = gameById(id);
     final next = game.copyWith(
       status: game.status ?? GameStatus.playing,
-      rating: rating,
+      rating: rating.clamp(0, 5).toDouble(),
       dateAdded: game.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);
@@ -987,48 +1050,81 @@ class LibraryStore extends ChangeNotifier {
   GameStatus _statusAfterLogging(GameStatus? s) =>
       s == GameStatus.completed ? GameStatus.completed : GameStatus.playing;
 
+  /// Logs a play session of [hours] (more than 0, at most [maxSessionHours])
+  /// and adds it to the game's total. [at] backdates it: a session played
+  /// earlier, logged now. A time in the future is taken as now.
   Future<void> logSession({
     required String gameId,
     required double hours,
     GamePlatform? platform,
     String note = '',
+    DateTime? at,
+  }) => _logNewSession(
+    gameId: gameId,
+    hours: hours,
+    maxHours: maxSessionHours,
+    platform: platform,
+    note: note,
+    at: at,
+  );
+
+  /// Logs [session] again after [deleteSession] took it away (its Undo), as it
+  /// was: same hours, platform, note and time.
+  Future<void> restoreSession(LogEntry session) => _logNewSession(
+    gameId: session.gameId,
+    hours: session.hours,
+    maxHours: maxTotalHours,
+    platform: session.platform,
+    note: session.note,
+    at: session.timestamp,
+  );
+
+  Future<void> _logNewSession({
+    required String gameId,
+    required double hours,
+    required double maxHours,
+    GamePlatform? platform,
+    String note = '',
+    DateTime? at,
   }) async {
-    if (hours <= 0) return;
+    if (hours <= 0 || hours > maxHours) return;
     final current = _user;
     if (current == null) return;
     final g = gameById(gameId);
     final p = platform ?? g.playedOn ?? (g.platforms.isNotEmpty ? g.platforms.first : GamePlatform.pc);
     final next = g.copyWith(
-      hoursPlayed: g.hoursPlayed + hours,
+      hoursPlayed: (g.hoursPlayed + hours).clamp(0, maxTotalHours).toDouble(),
       playedOn: p,
       status: _statusAfterLogging(g.status),
       dateAdded: g.dateAdded ?? DateTime.now(),
     );
     _replaceGame(next);
     final now = DateTime.now();
+    final when = at == null || at.isAfter(now) ? now : at;
+    final cleanNote = _cleanNote(note);
     final logId = 'local-${now.microsecondsSinceEpoch}';
-    _logs = [
+    _logs = _newestFirst([
       LogEntry(
         id: logId,
         gameId: gameId,
-        timestamp: now,
+        timestamp: when,
         hours: hours,
         platform: p,
-        note: note.trim(),
+        note: cleanNote,
       ),
       ..._logs,
-    ];
+    ]);
     notifyListeners();
 
     await _saveUserGame(next);
     final inserted = await _insertLog(
       userId: current.id,
       localId: logId,
-      loggedAt: now,
+      loggedAt: when,
       gameId: gameId,
       hours: hours,
       platform: p,
-      note: note,
+      note: cleanNote,
     );
     if (inserted) await _refreshLogs(current.id);
   }
@@ -1041,6 +1137,7 @@ class LibraryStore extends ChangeNotifier {
   }) async {
     final current = _user;
     if (current == null) return;
+    totalHours = totalHours.clamp(0, maxTotalHours).toDouble();
     final now = DateTime.now();
     final g = gameById(gameId);
     final delta = totalHours - g.hoursPlayed;
@@ -1064,11 +1161,178 @@ class LibraryStore extends ChangeNotifier {
         gameId: gameId,
         hours: delta,
         platform: p,
-        note: note,
+        note: _cleanNote(note),
       );
       if (inserted) await _refreshLogs(current.id);
     }
   }
+
+  // ---- Editing play sessions ----
+
+  /// The session [id], or null.
+  LogEntry? sessionById(String id) {
+    for (final l in _logs) {
+      if (l.id == id) return l;
+    }
+    return null;
+  }
+
+  /// Changes the play session [id]: its [hours] (more than 0, at most
+  /// [maxTotalHours]), [platform], [note] and when it was played ([at]; a time
+  /// in the future is taken as now). The game's total moves by the difference in
+  /// hours. Kept on the device when the server can't be reached, like any edit;
+  /// when the server refuses it, the session and the total are put back.
+  Future<void> editSession(
+    String id, {
+    required double hours,
+    required GamePlatform platform,
+    required DateTime at,
+    String note = '',
+  }) async {
+    final current = _user;
+    final old = sessionById(id);
+    if (current == null || old == null || hours <= 0 || hours > maxTotalHours) {
+      return;
+    }
+    if (_isUnconfirmed(id)) return;
+    final now = DateTime.now();
+    final edited = LogEntry(
+      id: id,
+      gameId: old.gameId,
+      timestamp: at.isAfter(now) ? now : at,
+      hours: hours,
+      platform: platform,
+      note: _cleanNote(note),
+      fromSteam: old.fromSteam,
+    );
+    _logs = _newestFirst([for (final l in _logs) l.id == id ? edited : l]);
+    final gameBefore = maybeGame(old.gameId);
+    final gameAfter = _withHoursMoved(gameBefore, hours - old.hours);
+    if (gameAfter != null) _replaceGame(gameAfter);
+    notifyListeners();
+
+    final saved = await _sendSessionChange(
+      current,
+      PendingLog(
+        localId: id,
+        gameId: edited.gameId,
+        hours: edited.hours,
+        platform: edited.platform,
+        note: edited.note,
+        timestamp: edited.timestamp,
+      ),
+    );
+    if (!saved) {
+      if (gameBefore != null && gameAfter != null) _replaceGame(gameBefore);
+      return;
+    }
+    if (gameAfter != null) await _saveUserGame(gameAfter);
+  }
+
+  /// Deletes the play session [id] and takes its hours off the game's total.
+  /// Returns the session, for an Undo ([restoreSession]), or null when there was
+  /// nothing to delete.
+  Future<LogEntry?> deleteSession(String id) async {
+    final current = _user;
+    final old = sessionById(id);
+    if (current == null || old == null) return null;
+    if (_isUnconfirmed(id)) return null;
+    _logs = List.unmodifiable(_logs.where((l) => l.id != id));
+    final gameBefore = maybeGame(old.gameId);
+    final gameAfter = _withHoursMoved(gameBefore, -old.hours);
+    if (gameAfter != null) _replaceGame(gameAfter);
+    notifyListeners();
+
+    final saved = await _sendSessionChange(current, null, deletedId: id);
+    if (!saved) {
+      if (gameBefore != null && gameAfter != null) _replaceGame(gameBefore);
+      return null;
+    }
+    if (gameAfter != null) await _saveUserGame(gameAfter);
+    return old;
+  }
+
+  /// A session logged here that reached the server but whose server id hasn't
+  /// come back yet: it can't be found there to change. Says so.
+  bool _isUnconfirmed(String id) {
+    if (!id.startsWith('local-') || _pending.logs.any((l) => l.localId == id)) {
+      return false;
+    }
+    _setNotice('That session is still being saved. Try again in a moment.');
+    return true;
+  }
+
+  /// [game] with [delta] hours added to its total (never below 0), or null when
+  /// it isn't in the library.
+  Game? _withHoursMoved(Game? game, double delta) {
+    if (game == null || !game.inLibrary || delta.abs() < 0.001) return null;
+    return game.copyWith(
+      hoursPlayed: (game.hoursPlayed + delta).clamp(0, maxTotalHours).toDouble(),
+    );
+  }
+
+  /// Sends an edited session ([edited]) or a deleted one ([deletedId]), or
+  /// queues it when the server can't be reached. Returns false when the server
+  /// refused it: the sessions are read again then, with a notice.
+  Future<bool> _sendSessionChange(
+    User current,
+    PendingLog? edited, {
+    String? deletedId,
+  }) async {
+    final id = edited?.localId ?? deletedId!;
+    if (_pending.logs.any((l) => l.localId == id)) {
+      // Not inserted yet: the insert that is queued is changed instead.
+      if (edited != null) {
+        _pending.editLog(edited);
+      } else {
+        _pending.removeLog(id);
+      }
+      _savePending();
+      return true;
+    }
+    try {
+      _auth.requireSession();
+      if (edited != null) {
+        await _repository.updateLogEntry(
+          id: id,
+          hours: edited.hours,
+          platform: edited.platform,
+          note: edited.note,
+          loggedAt: edited.timestamp,
+        );
+        if (_pending.logEdits.remove(id) != null) _savePending();
+      } else {
+        await _repository.deleteLogEntry(id);
+        if (_pending.logEdits.remove(id) != null) _savePending();
+      }
+      return true;
+    } catch (e, st) {
+      debugPrint('Saving a session change failed: $e\n$st');
+      if (isConnectionFailure(e)) {
+        if (edited != null) {
+          _pending.editLog(edited);
+        } else {
+          _pending.removeLog(id);
+        }
+        _savePending();
+        _queuedNotice();
+        return true;
+      }
+      _setNotice('Could not save that change to the session.');
+      unawaited(_refreshLogs(current.id));
+      return false;
+    }
+  }
+
+  static String _cleanNote(String note) {
+    final text = note.trim();
+    return text.length <= maxNoteLength ? text : text.substring(0, maxNoteLength);
+  }
+
+  /// [logs] newest first, the order every reader of [_logs] relies on.
+  static List<LogEntry> _newestFirst(List<LogEntry> logs) => List.unmodifiable(
+    [...logs]..sort((a, b) => b.timestamp.compareTo(a.timestamp)),
+  );
 
   void _replaceGame(Game next) {
     // Unconditionally update or add to the library list
@@ -1090,6 +1354,15 @@ class LibraryStore extends ChangeNotifier {
     );
 
     notifyListeners();
+  }
+
+  /// Makes sure [game] has its row in the shared catalog (a search result put
+  /// on a list). Throws when that can't be done.
+  Future<void> ensureInCatalog(Game game) async {
+    if (_gamesInDb.contains(game.id)) return;
+    _auth.requireSession();
+    await _repository.upsertBaseGame(game);
+    _gamesInDb.add(game.id);
   }
 
   /// Writes [game] to the server: its catalog row first if needed, then the
@@ -1115,6 +1388,7 @@ class LibraryStore extends ChangeNotifier {
       dateAdded: game.dateAdded,
       isFavorite: game.isFavorite,
       customBackdropUrl: game.customBackdropUrl,
+      review: game.review,
     );
   }
 
@@ -1181,6 +1455,8 @@ class LibraryStore extends ChangeNotifier {
         hours: hours,
         platform: platform,
         note: note,
+        // The time on screen, which is not now for a backdated session.
+        loggedAt: loggedAt,
       );
       return true;
     } catch (e, st) {
@@ -1197,7 +1473,7 @@ class LibraryStore extends ChangeNotifier {
         _pending.logs.add(log);
         _savePending();
         if (!_logs.any((l) => l.id == localId)) {
-          _logs = [log.toEntry(), ..._logs];
+          _logs = _newestFirst([log.toEntry(), ..._logs]);
         }
         _queuedNotice();
       } else {
@@ -1219,19 +1495,28 @@ class LibraryStore extends ChangeNotifier {
     return byId.values.toList();
   }
 
-  /// [logs] with the queued sessions on top, and without the sessions of games
-  /// whose delete is queued (the delete takes them too, see [removeFromLibrary]).
-  List<LogEntry> _withPendingLogs(List<LogEntry> logs) =>
-      _pending.logs.isEmpty && _pending.removed.isEmpty
-      ? logs
-      : [
-          for (final l in _pending.logs.reversed) l.toEntry(),
-          for (final l in logs)
-            if (!_pending.removed.contains(l.gameId)) l,
-        ];
+  /// [logs] as the user last left them: with the queued sessions, the queued
+  /// changes to sessions applied, and without the sessions of games whose delete
+  /// is queued (the delete takes them too, see [removeFromLibrary]). Newest first.
+  List<LogEntry> _withPendingLogs(List<LogEntry> logs) {
+    if (_pending.logs.isEmpty &&
+        _pending.removed.isEmpty &&
+        _pending.logEdits.isEmpty &&
+        _pending.logDeletes.isEmpty) {
+      return logs;
+    }
+    return _newestFirst([
+      for (final l in _pending.logs) l.toEntry(),
+      for (final l in logs)
+        if (!_pending.removed.contains(l.gameId) &&
+            !_pending.logDeletes.contains(l.id))
+          _pending.logEdits[l.id]?.toEntry(fromSteam: l.fromSteam) ?? l,
+    ]);
+  }
 
   /// Sends the queued edits to the server, deletes first, then games, then
-  /// sessions. Stops at the first one the server can't be reached for (the rest
+  /// sessions (new ones, then changed and deleted ones). Stops at the first one
+  /// the server can't be reached for (the rest
   /// stay queued); one it refuses is dropped, with a notice. Safe to call any
   /// time: it does nothing without a live session or while already running.
   Future<void> flushPending() async {
@@ -1294,6 +1579,26 @@ class LibraryStore extends ChangeNotifier {
             loggedAt: log.timestamp,
           ),
           () => _pending.logs.remove(log),
+        );
+        if (!ok) return;
+      }
+      for (final log in [..._pending.logEdits.values]) {
+        final ok = await attempt(
+          () => _repository.updateLogEntry(
+            id: log.localId,
+            hours: log.hours,
+            platform: log.platform,
+            note: log.note,
+            loggedAt: log.timestamp,
+          ),
+          () => _pending.logEdits.remove(log.localId),
+        );
+        if (!ok) return;
+      }
+      for (final id in [..._pending.logDeletes]) {
+        final ok = await attempt(
+          () => _repository.deleteLogEntry(id),
+          () => _pending.logDeletes.remove(id),
         );
         if (!ok) return;
       }

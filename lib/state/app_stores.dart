@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
@@ -16,12 +18,16 @@ import 'package:checkpoint/state/game_friends_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/lists_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
 import 'package:checkpoint/state/public_library_store.dart';
 import 'package:checkpoint/state/public_profile_store.dart';
+import 'package:checkpoint/state/release_alerts_store.dart';
 import 'package:checkpoint/state/search_store.dart';
+import 'package:checkpoint/state/shared_link_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
 
 /// The app's stores and how they depend on each other. Dependencies point one
@@ -57,7 +63,14 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    [PublicAchievementsStore] when the library was cleared (your own
 ///    achievements go with it) or synced with Steam (which counts them again).
 ///    [PublicAchievementsStore] hands the lists of your own games it fetches
-///    from Steam back to [LibraryStore].
+///    from Steam back to [LibraryStore];
+///  * [PlayTimerStore] follows [AuthStore] only: the timer is the device's, per
+///    account, and becomes a session through [LibraryStore] from the UI;
+///  * [ListsStore] follows [AuthStore] and asks [LibraryStore] to put a game in
+///    the catalog before it goes on a list; [LibraryStore] finds the games of
+///    lists through it (a game tapped on a list);
+///  * [ReleaseAlertsStore] reads [LibraryStore]'s wishlist and follows
+///    [AuthStore] for whose releases were announced.
 class AppStores {
   AppStores({
     required CheckpointRepository repository,
@@ -65,8 +78,10 @@ class AppStores {
     LocalCache? cache,
     GameApiService? apiService,
     ConnectivityService? connectivity,
+    LinkTarget? initialLink,
   }) {
     final localCache = cache ?? LocalCache();
+    links = SharedLinkStore(repository: repository, initial: initialLink);
     final network = connectivity ?? ConnectivityService();
     auth = AuthStore(authService);
     nav = NavStore();
@@ -115,7 +130,9 @@ class AppStores {
           companies.gameById(id) ??
           publicProfiles.gameById(id) ??
           publicLibraries.gameById(id) ??
-          friendsFeed.gameById(id),
+          friendsFeed.gameById(id) ??
+          lists.gameById(id) ??
+          links.gameById(id),
       onCleared: publicAchievements.markCleared,
       onCatalogFilled: () => libraryAttributes.markStale(),
       onSteamSynced: publicAchievements.refreshAfterSync,
@@ -126,13 +143,23 @@ class AppStores {
       auth: auth,
     );
     libraryView = LibraryViewStore(nav: nav, attributes: libraryAttributes);
+    playTimer = PlayTimerStore(auth: auth);
+    lists = ListsStore(
+      repository: repository,
+      auth: auth,
+      ensureInCatalog: library.ensureInCatalog,
+    );
+    releaseAlerts = ReleaseAlertsStore(auth: auth, library: library);
   }
 
   factory AppStores.supabase(SupabaseClient client) => AppStores(
     repository: CheckpointRepository(client),
     authService: AuthService(client),
+    // The web app opened from a shared link: .../#/game/1942.
+    initialLink: kIsWeb ? LinkTarget.parse(Uri.base.fragment) : null,
   );
 
+  late final SharedLinkStore links;
   late final AuthStore auth;
   late final NavStore nav;
   late final ProfileStore profile;
@@ -149,6 +176,9 @@ class AppStores {
   late final LibraryStore library;
   late final LibraryAttributesStore libraryAttributes;
   late final LibraryViewStore libraryView;
+  late final PlayTimerStore playTimer;
+  late final ListsStore lists;
+  late final ReleaseAlertsStore releaseAlerts;
 
   /// Starts following the session and loads each store. [AuthStore] goes first:
   /// the others read the signed-in user from it.
@@ -161,14 +191,21 @@ class AppStores {
     friendsFeed.initialize();
     publicAchievements.initialize();
     libraryAttributes.initialize();
+    lists.initialize();
     await Future.wait([
       profile.initialize(),
       library.initialize(),
       search.initialize(),
+      playTimer.initialize(),
+      releaseAlerts.initialize(),
     ]);
   }
 
   void dispose() {
+    links.dispose();
+    releaseAlerts.dispose();
+    lists.dispose();
+    playTimer.dispose();
     publicAchievements.dispose();
     friendsFeed.dispose();
     gameFriends.dispose();

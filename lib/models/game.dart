@@ -286,6 +286,9 @@ class Game {
     this.isFavorite = false,
     this.achievements,
     this.customBackdropUrl,
+    this.releaseDate,
+    this.completedAt,
+    this.review = '',
   });
 
   final String id;
@@ -327,6 +330,19 @@ class Game {
   /// an empty list = loaded, but the game has none.
   final List<Achievement>? achievements;
 
+  /// The day the game first came out (`games.release_date`, from IGDB), for
+  /// wishlist release alerts; null when IGDB has no exact date (yet).
+  final DateTime? releaseDate;
+
+  /// When the member last marked it completed (`user_games.completed_at`, kept
+  /// by the database); null for a game that isn't completed, or one completed
+  /// before the date was recorded.
+  final DateTime? completedAt;
+
+  /// The member's short review next to their rating (`user_games.review`);
+  /// empty: none.
+  final String review;
+
   /// Rebuilds a game from [toJson]'s output (the offline cache). The cover
   /// colours and icon are derived from the other fields, as when a game is read
   /// from the database, so they are not stored.
@@ -358,8 +374,14 @@ class Game {
       dateAdded: dateAdded == null ? null : DateTime.tryParse('$dateAdded')?.toLocal(),
       isFavorite: json['isFavorite'] == true,
       customBackdropUrl: json['customBackdropUrl'] as String?,
+      releaseDate: _dateOrNull(json['releaseDate']),
+      completedAt: _dateOrNull(json['completedAt']),
+      review: json['review'] as String? ?? '',
     );
   }
+
+  static DateTime? _dateOrNull(Object? value) =>
+      value == null ? null : DateTime.tryParse('$value')?.toLocal();
 
   /// What the offline cache keeps of this game. [achievements] are left out on
   /// purpose: the library queries don't load them either (they are fetched per
@@ -385,6 +407,9 @@ class Game {
         'dateAdded': dateAdded?.toUtc().toIso8601String(),
         'isFavorite': isFavorite,
         'customBackdropUrl': customBackdropUrl,
+        'releaseDate': releaseDate?.toUtc().toIso8601String(),
+        'completedAt': completedAt?.toUtc().toIso8601String(),
+        'review': review,
       };
 
   bool get inLibrary => status != null;
@@ -424,6 +449,8 @@ class Game {
     List<Achievement>? achievements,
     List<GamePlatform>? platforms,
     List<String>? genres,
+    DateTime? releaseDate,
+    String? review,
   }) =>
       Game(
         id: id,
@@ -451,6 +478,40 @@ class Game {
         isFavorite: isFavorite ?? this.isFavorite,
         achievements: achievements ?? this.achievements,
         customBackdropUrl: customBackdropUrl,
+        releaseDate: releaseDate ?? this.releaseDate,
+        completedAt: completedAt,
+        review: review ?? this.review,
+      );
+
+  /// This game with [completedAt] set to exactly [at] (null: not completed).
+  /// [copyWith] can't clear it: a null argument there means "keep the current
+  /// value".
+  Game withCompletedAt(DateTime? at) => Game(
+        id: id,
+        title: title,
+        publisher: publisher,
+        developer: developer,
+        releaseYear: releaseYear,
+        platforms: platforms,
+        genres: genres,
+        synopsis: synopsis,
+        coverColors: coverColors,
+        coverIcon: coverIcon,
+        coverUrl: coverUrl,
+        igdbId: igdbId,
+        steamAppId: steamAppId,
+        status: status,
+        rating: rating,
+        hoursPlayed: hoursPlayed,
+        playedOn: playedOn,
+        purchasePrice: purchasePrice,
+        dateAdded: dateAdded,
+        isFavorite: isFavorite,
+        achievements: achievements,
+        customBackdropUrl: customBackdropUrl,
+        releaseDate: releaseDate,
+        completedAt: at,
+        review: review,
       );
 
   /// This game with the member's own backdrop set to exactly [url] (null: the
@@ -479,6 +540,9 @@ class Game {
         isFavorite: isFavorite,
         achievements: achievements,
         customBackdropUrl: url,
+        releaseDate: releaseDate,
+        completedAt: completedAt,
+        review: review,
       );
 
   /// This game as the catalog knows it, with all of the user's tracking state
@@ -498,5 +562,6 @@ class Game {
         coverUrl: coverUrl,
         igdbId: igdbId,
         steamAppId: steamAppId,
+        releaseDate: releaseDate,
       );
 }

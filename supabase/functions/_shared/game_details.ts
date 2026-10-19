@@ -12,6 +12,7 @@ import { igdbPlatformsToDb, steamGamePlatformsToDb } from './platforms.ts'
 
 /** What the catalog keeps of a game ([catalogPatch] reads exactly these). */
 export const CATALOG_FIELDS = [
+  'first_release_date',
   'platforms.id',
   'genres.name',
   'themes.name',
@@ -28,7 +29,6 @@ export const CATALOG_FIELDS = [
 export const DETAIL_FIELDS = [
   'name',
   'cover.url',
-  'first_release_date',
   'total_rating',
   'total_rating_count',
   'summary',
@@ -154,6 +154,9 @@ export function catalogPatch(
   ]
   for (const [column, values] of lists) if (values.length > 0) patch[column] = capped(values)
 
+  const released = releaseDate(game.first_release_date)
+  if (released !== null) patch.release_date = released
+
   const { developers, publishers } = companiesByRole(game.involved_companies)
   if (developers.length > 0) {
     patch.developers = capped(developers)
@@ -164,6 +167,19 @@ export function catalogPatch(
     patch.publisher = publishers[0]
   }
   return patch
+}
+
+/**
+ * `games.release_date` (YYYY-MM-DD, the UTC day IGDB gives) from IGDB's
+ * `first_release_date` (UNIX seconds), or null when there is none or it is not a
+ * date the column can hold.
+ */
+export function releaseDate(seconds: unknown): string | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null
+  const day = new Date(seconds * 1000)
+  const year = day.getUTCFullYear()
+  if (year < 1950 || year > 2100) return null
+  return day.toISOString().slice(0, 10)
 }
 
 /** A game whose catalog row was filled in less than this long ago is left alone. */

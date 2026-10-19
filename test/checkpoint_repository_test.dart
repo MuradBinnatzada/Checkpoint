@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/sync_failure.dart';
 
@@ -336,7 +337,7 @@ void main() {
       final ids = await repo.fetchUnsyncedIgdbIds('u1');
 
       expect(ids, [472, 1942]);
-      final query = api.last.url.queryParameters;
+      final query = api.requests.first.url.queryParameters;
       expect(api.last.url.path, endsWith('/user_games'));
       expect(query['user_id'], 'eq.u1');
       expect(query['games.igdb_synced_at'], 'is.null');
@@ -360,8 +361,27 @@ void main() {
 
       expect(ids, hasLength(700));
       expect(ids.toSet(), hasLength(700));
-      expect(api.requests, hasLength(2));
-      expect(api.requests[1].url.queryParameters['game_id'], 'gt.g0499');
+      // Two pages for each of the two reads (the table here answers both).
+      expect(api.requests, hasLength(4));
+      expect(
+        api.requests.where((r) => r.url.queryParameters['game_id'] == 'gt.g0499'),
+        hasLength(2),
+      );
+    });
+
+    test('also asks for wishlist and To Play games not out yet whose row is a week old', () async {
+      api.reply(const <Object?>[]);
+      api.reply([
+        {'game_id': 'g5', 'games': {'igdb_id': 99}},
+      ]);
+
+      final ids = await repo.fetchUnsyncedIgdbIds('u1');
+
+      expect(ids, [99]);
+      final query = api.requests[1].url.queryParameters;
+      expect(query['status'], 'in.("wishlist","to_play")');
+      expect(query['games.igdb_synced_at'], startsWith('lt.'));
+      expect(query['games.or'], matches(RegExp(r'^\(release_date\.is\.null,release_date\.gte\.\d{4}-\d{2}-\d{2}\)$')));
     });
   });
 
@@ -483,6 +503,44 @@ void main() {
 
       expect(logs.map((l) => l.id).toSet(), hasLength(1100));
       expect(logs, hasLength(1100));
+    });
+
+    test('a session the Steam sync logged says so, in the saved copy too', () async {
+      api.reply([
+        {'id': 'l1', 'game_id': 'g1', 'logged_at': '2026-02-01T08:00:00+00:00', 'hours': 1.5, 'platform': 'pc', 'note': '', 'source': 'steam'},
+        {'id': 'l2', 'game_id': 'g1', 'logged_at': '2026-01-01T08:00:00+00:00', 'hours': 1, 'platform': 'pc', 'note': '', 'source': null},
+      ]);
+
+      final logs = await repo.fetchLogEntries('u1');
+
+      expect(logs.map((l) => l.fromSteam), [true, false]);
+      final saved = LogEntry.fromJson(logs.first.toJson());
+      expect(saved.fromSteam, isTrue);
+      expect(LogEntry.fromJson(logs.last.toJson()).fromSteam, isFalse);
+    });
+
+    test('an edited session is saved with its new hours, platform, note and time', () async {
+      await repo.updateLogEntry(
+        id: 'l1',
+        hours: 2.5,
+        platform: GamePlatform.steamDeck,
+        note: '  on the bus ',
+        loggedAt: DateTime.utc(2026, 9, 30, 18),
+      );
+
+      expect(api.last.method, 'PATCH');
+      expect(api.last.url.path, '/rest/v1/log_entries');
+      expect(api.last.url.queryParameters['id'], 'eq.l1');
+      expect(api.bodyOf(api.last), {
+        'hours': 2.5,
+        'platform': 'steamDeck',
+        'note': 'on the bus',
+        'logged_at': '2026-09-30T18:00:00.000Z',
+      });
+
+      await repo.deleteLogEntry('l1');
+      expect(api.last.method, 'DELETE');
+      expect(api.last.url.queryParameters['id'], 'eq.l1');
     });
 
     test('parses sessions and returns the newest first', () async {
@@ -671,6 +729,32 @@ void main() {
       api.reply({'id': 'u2'});
       final anonymous = await repo.ensureProfile(testUser('u2'));
       expect(anonymous.name, 'Player');
+    });
+
+    test('a stand-in profile takes the name Apple shared after it was made', () async {
+      User apple(Map<String, dynamic> metadata) => User(
+        id: 'abcdef12',
+        appMetadata: const {'provider': 'apple'},
+        userMetadata: metadata,
+        aud: 'authenticated',
+        createdAt: '2026-01-01T00:00:00Z',
+      );
+      api.reply({'id': 'abcdef12', 'display_name': 'Player', 'handle': 'player_abcdef'});
+      api.reply({'id': 'abcdef12', 'display_name': 'Ada Lovelace', 'handle': 'ada_lovelace_abcdef'});
+
+      final profile = await repo.ensureProfile(apple({'full_name': 'Ada Lovelace'}));
+
+      final update = api.requests[1];
+      expect(update.method, 'PATCH');
+      expect(update.url.queryParameters['id'], 'eq.abcdef12');
+      expect(api.bodyOf(update), {'display_name': 'Ada Lovelace', 'handle': 'ada_lovelace_abcdef'});
+      expect(profile.name, 'Ada Lovelace');
+
+      // A name the member chose is kept, even one that is "Player".
+      api.requests.clear();
+      api.reply({'id': 'abcdef12', 'display_name': 'Player', 'handle': 'the_player'});
+      await repo.ensureProfile(apple({'full_name': 'Ada Lovelace'}));
+      expect(api.requests, hasLength(1));
     });
 
     test('a new email sign-up gets the name it typed in, and no part of the address', () async {
@@ -1304,6 +1388,23 @@ void main() {
       expect(row['igdb_id'], 7);
       expect(row['release_year'], isNull);
       expect(row['platforms'], ['pc', 'ps5']);
+    });
+
+    test('a game and its sessions are removed in one request', () async {
+      await repo.deleteUserGame('u1', 'g1');
+
+      expect(api.requests, hasLength(1));
+      expect(api.last.method, 'POST');
+      expect(api.last.url.path, '/rest/v1/rpc/remove_library_game');
+      expect(api.bodyOf(api.last), {'target_game': 'g1'});
+    });
+
+    test('the whole library is cleared in one request', () async {
+      await repo.clearLibrary('u1');
+
+      expect(api.requests, hasLength(1));
+      expect(api.last.method, 'POST');
+      expect(api.last.url.path, '/rest/v1/rpc/clear_library');
     });
 
     test('upsertBaseGame refuses a game without an IGDB id', () async {
