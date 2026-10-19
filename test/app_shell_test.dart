@@ -197,25 +197,25 @@ void main() {
     }
   });
 
-  testWidgets('a sign-in that fails says why instead of doing nothing', (tester) async {
+  testWidgets('a Google sign-in that fails says why instead of doing nothing', (tester) async {
     authService.signInError = AuthException('Google sign-in was cancelled.');
     await start(tester);
     stores.nav.select(NavTab.library);
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.text('Continue with Google'));
     await tester.pump();
 
     expect(find.text('Google sign-in was cancelled.'), findsOneWidget);
     expect(stores.auth.isLoggedIn, isFalse);
   });
 
-  testWidgets('a sign-in that works lifts the log-in overlay', (tester) async {
+  testWidgets('a Google sign-in that works lifts the log-in overlay', (tester) async {
     await start(tester);
     stores.nav.select(NavTab.library);
     await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.text('Continue with Google'));
     // The stores load the account that signed in.
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump(const Duration(milliseconds: 400));

@@ -112,9 +112,11 @@ class AuthStore extends ChangeNotifier {
     String? displayName,
   }) => _service.signUpWithEmail(email, password, displayName: displayName);
 
-  Future<void> signInWithGoogle() => _service.signInWithGoogle();
+  /// Emails a link for choosing a new password.
+  Future<void> sendPasswordReset(String email) =>
+      _service.sendPasswordReset(email);
 
-  Future<void> logIn() => signInWithGoogle();
+  Future<void> signInWithGoogle() => _service.signInWithGoogle();
 
   Future<void> logOut() async {
     if (_sessionPending) {

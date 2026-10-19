@@ -787,6 +787,47 @@ class FakeAuthService implements AuthService {
     emit(testUser('u1'));
   }
 
+  /// What the email calls ([signInWithEmail], [signUpWithEmail],
+  /// [sendPasswordReset]) throw, when set.
+  Object? emailError;
+
+  /// Whether [signUpWithEmail] leaves the new account waiting for its email
+  /// address to be confirmed (no session), as with "Confirm email" on.
+  bool signUpNeedsConfirmation = false;
+
+  /// Every email call, as `signIn:<email>:<password>`,
+  /// `signUp:<email>:<password>:<name>` and `reset:<email>`.
+  final List<String> emailCalls = [];
+
+  @override
+  Future<void> signInWithEmail(String email, String password) async {
+    emailCalls.add('signIn:$email:$password');
+    final error = emailError;
+    if (error != null) throw error;
+    emit(testUser('u1'));
+  }
+
+  @override
+  Future<bool> signUpWithEmail(
+    String email,
+    String password, {
+    String? displayName,
+  }) async {
+    emailCalls.add('signUp:$email:$password:$displayName');
+    final error = emailError;
+    if (error != null) throw error;
+    if (signUpNeedsConfirmation) return false;
+    emit(testUser('u1'));
+    return true;
+  }
+
+  @override
+  Future<void> sendPasswordReset(String email) async {
+    emailCalls.add('reset:$email');
+    final error = emailError;
+    if (error != null) throw error;
+  }
+
   /// What [signOutOtherDevices] throws, when set.
   Object? signOutOthersError;
   int signOutOthersCalls = 0;

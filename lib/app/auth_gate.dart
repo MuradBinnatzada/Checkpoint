@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/app/sign_in_panel.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
-import 'package:checkpoint/widgets/empty_state.dart';
 
-/// Read-only overlay. The child stays mounted underneath, so the Library's
+/// Sign-in overlay. The child stays mounted underneath, so the Library's
 /// TabController and scroll state survive logging in and out.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key, required this.child});
@@ -20,13 +20,11 @@ class AuthGate extends StatelessWidget {
         Positioned.fill(
           child: ColoredBox(
             color: Palette.background.withValues(alpha: 0.94),
-            child: SafeArea(
-              child: EmptyState(
+            child: const SafeArea(
+              child: SignInPanel(
                 icon: Icons.lock_outline_rounded,
                 title: 'Log in to track games',
                 message: 'Log in to build your library, log your hours and search every game on IGDB.',
-                actionLabel: 'Log in',
-                onAction: () => logIn(context),
               ),
             ),
           ),
@@ -35,18 +33,9 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-/// What the "Log in" buttons call: starts Google sign-in and, when it didn't
-/// work (cancelled, no browser, a misconfigured client), says why. [AuthStore]
-/// only throws, so without this a failed sign-in looks like a dead button.
-Future<void> logIn(BuildContext context) async {
-  final auth = context.read<AuthStore>();
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    await auth.logIn();
-  } catch (e) {
-    debugPrint('Sign-in failed: $e');
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(auth.messageFor(e))));
-  }
-}
+/// What the "Log in" buttons call: opens the sign-in screen (Google, or an
+/// email and password), which closes itself once someone is signed in. A
+/// failed attempt says why there, so a sign-in never looks like a dead button.
+Future<void> logIn(BuildContext context) => Navigator.of(context).push(
+      MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const SignInScreen()),
+    );

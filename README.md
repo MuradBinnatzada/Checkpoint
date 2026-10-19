@@ -9,7 +9,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 - Import your Steam library; achievement progress for every Steam game, on your profile and other members'
 - Follow other players and browse their libraries
 - Offline support: the library is cached locally and edits made offline sync when you reconnect
-- Google sign-in
+- Sign in with Google, or with an email and password
 
 ## Tech stack
 
@@ -110,6 +110,7 @@ The app ships pointing at the project's Supabase instance with a public anon key
 2. Deploy the functions in `supabase/functions` and set their secrets (Twitch client ID/secret for IGDB, Steam API key, and `CRON_SECRET` if you want the background sync).
 3. Update the Supabase URL and key in `lib/main.dart`.
 4. Create Google OAuth client IDs and update `lib/services/auth_service.dart`. For iOS, pass `--dart-define=GOOGLE_IOS_CLIENT_ID=...`.
+5. For email sign-in, enable Authentication > Providers > Email, and choose whether new accounts must confirm their address first (the app handles both). The links in the confirmation and password reset emails go to the Site URL, or on web to the address that served the app, which must be listed under Authentication > URL Configuration > Redirect URLs.
 
 ## Privacy
 

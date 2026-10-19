@@ -43,13 +43,14 @@ class CheckpointRepository {
     if (existing != null) return _profileFromRow(existing, fallbackUser: user);
 
     final metadata = user.userMetadata ?? const <String, dynamic>{};
-    final emailName = _emailLocalPart(user.email);
+    // Google sends a name; an email sign-up sends the one typed in
+    // (AuthService.signUpWithEmail). The name and handle are public, so they
+    // are never made from the email address.
     final displayName =
         _firstText([
           metadata['full_name'],
           metadata['name'],
           metadata['display_name'],
-          emailName,
         ]) ??
         'Player';
 
@@ -1061,13 +1062,11 @@ class CheckpointRepository {
 
 UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
   final metadata = fallbackUser?.userMetadata ?? const <String, dynamic>{};
-  final emailName = _emailLocalPart(fallbackUser?.email);
   final name =
       _firstText([
         row[Db.displayName],
         metadata['full_name'],
         metadata['name'],
-        emailName,
       ]) ??
       'Player';
 
@@ -1248,12 +1247,6 @@ String? _firstText(List<Object?> values) {
     if (text != null && text.isNotEmpty) return text;
   }
   return null;
-}
-
-String? _emailLocalPart(String? email) {
-  final text = email?.trim();
-  if (text == null || text.isEmpty) return null;
-  return text.split('@').first;
 }
 
 String _withAt(String handle) => handle.startsWith('@') ? handle : '@$handle';

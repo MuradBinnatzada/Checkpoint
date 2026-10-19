@@ -64,20 +64,39 @@ class AuthService {
   /// Emits on sign-in, sign-out, token refresh and profile updates.
   Stream<AuthState> get changes => _auth.onAuthStateChange;
 
+  /// Where the links in Supabase's emails (confirm address, reset password)
+  /// send the browser. Web returns to whichever host served the app, as Google
+  /// sign-in does; elsewhere null leaves it to the project's Site URL.
+  String? get _emailRedirectUrl => kIsWeb ? Uri.base.origin : null;
+
   Future<void> signInWithEmail(String email, String password) =>
       _auth.signInWithPassword(email: email.trim(), password: password);
 
   /// Returns true when a session exists immediately, false when the project
-  /// requires the user to confirm their email address first.
+  /// requires the user to confirm their email address first. [displayName]
+  /// becomes the new profile's name (see CheckpointRepository.ensureProfile).
   Future<bool> signUpWithEmail(String email, String password, {String? displayName}) async {
     final name = displayName?.trim() ?? '';
     final res = await _auth.signUp(
       email: email.trim(),
       password: password,
       data: {if (name.isNotEmpty) 'full_name': name},
+      emailRedirectTo: _emailRedirectUrl,
     );
+    // While email confirmation is required, Supabase answers a sign-up for an
+    // address that already has an account as if it were new, so the request
+    // sends nothing; only the user it returns has no identities.
+    final identities = res.user?.identities;
+    if (res.session == null && identities != null && identities.isEmpty) {
+      throw const AuthException('User already registered', code: 'user_already_exists');
+    }
     return res.session != null;
   }
+
+  /// Emails a password reset link. Supabase answers the same whether or not an
+  /// account uses [email], so this can't tell who has one.
+  Future<void> sendPasswordReset(String email) =>
+      _auth.resetPasswordForEmail(email.trim(), redirectTo: _emailRedirectUrl);
 
   Future<void> signInWithGoogle() async {
     if (_usesLoopbackRedirect) {
@@ -266,7 +285,24 @@ class AuthService {
 
   /// Text for the UI. Raw exceptions never reach the screen.
   static String messageFor(Object e) {
-    if (e is AuthException) return e.message;
+    if (e is AuthRetryableFetchException) return "Can't reach Checkpoint. Check your connection and try again.";
+    if (e is AuthException) {
+      // The codes Supabase sends for email sign-in and sign-up; anything else
+      // (the Google flow's own messages included) is shown as it comes.
+      return switch (e.code) {
+        'invalid_credentials' => 'Wrong email or password. If you joined with Google, use Continue with Google.',
+        'user_already_exists' || 'email_exists' =>
+          'That email is already registered. Sign in instead, or use Forgot password? to choose a new password.',
+        'weak_password' => 'That password is too weak. ${e.message}'.trim(),
+        'email_not_confirmed' => 'Confirm your email first: open the link we sent you, then sign in.',
+        'email_address_invalid' => 'Enter a valid email address.',
+        'over_email_send_rate_limit' => 'Too many emails were sent. Wait a few minutes and try again.',
+        'over_request_rate_limit' => 'Too many attempts. Wait a few minutes and try again.',
+        'email_provider_disabled' => "Email sign-in isn't available right now. Use Continue with Google.",
+        'signup_disabled' => "New accounts can't be created right now.",
+        _ => e.message,
+      };
+    }
     if (e is PlatformException) {
       return switch (e.code) {
         GoogleSignIn.kSignInCanceledError => 'Google sign-in was cancelled.',

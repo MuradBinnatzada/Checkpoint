@@ -652,7 +652,7 @@ void main() {
       expect(profile.name, 'Grace Hopper');
     });
 
-    test('the display name falls back to the email name, then to "Player"', () async {
+    test('the display name falls back to "Player", never to the email address', () async {
       api.reply({'id': 'u1', 'display_name': null, 'handle': null});
 
       final fromEmail = await repo.ensureProfile(
@@ -665,12 +665,35 @@ void main() {
           email: 'ada.l@example.com',
         ),
       );
-      expect(fromEmail.name, 'ada.l');
-      expect(fromEmail.handle, '@ada_l_abcdef');
+      expect(fromEmail.name, 'Player');
+      expect(fromEmail.handle, '@player_abcdef');
 
       api.reply({'id': 'u2'});
       final anonymous = await repo.ensureProfile(testUser('u2'));
       expect(anonymous.name, 'Player');
+    });
+
+    test('a new email sign-up gets the name it typed in, and no part of the address', () async {
+      api.reply(null); // maybeSingle: no row yet
+      api.reply(null); // the upsert
+      api.reply({'id': 'e1', 'display_name': 'Ada Lovelace', 'handle': 'ada_lovelace_e1abcd'});
+      final user = User(
+        id: 'e1abcdef-0000',
+        appMetadata: const {'provider': 'email'},
+        // What AuthService.signUpWithEmail sends as the sign-up's data.
+        userMetadata: const {'full_name': 'Ada Lovelace'},
+        aud: 'authenticated',
+        createdAt: '2026-01-01T00:00:00Z',
+        email: 'countess.1815@example.com',
+      );
+
+      await repo.ensureProfile(user);
+
+      final row = api.bodyOf(api.requests[1]) as Map<String, dynamic>;
+      expect(row['email'], 'countess.1815@example.com'); // own-row only
+      expect(row['display_name'], 'Ada Lovelace');
+      expect(row['handle'], 'ada_lovelace_e1abcd');
+      expect(row['avatar_url'], isNull);
     });
 
     test('isHandleAvailable ignores the @ and the case, and excludes the caller', () async {
