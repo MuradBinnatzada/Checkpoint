@@ -30,6 +30,17 @@ Deno.test('a limiter that fails never blocks the call', async () => {
   assertEquals(await rateLimitWait(client({ data: null, error: { message: 'boom' } }), 'u1', RATE_LIMITS.igdb), 0)
 })
 
+Deno.test('a fail-closed limit refuses while the limiter fails', async () => {
+  const failing: RpcClient = { rpc: () => Promise.reject(new Error('down')) }
+  assertEquals(await rateLimitWait(failing, 'u1', RATE_LIMITS.backupCodeRedeem), 3600)
+  assertEquals(
+    await rateLimitWait(client({ data: null, error: { message: 'boom' } }), 'u1', RATE_LIMITS.backupCodeRedeem),
+    3600,
+  )
+  // A limiter that answers decides as usual.
+  assertEquals(await rateLimitWait(client({ data: 0, error: null }), 'u1', RATE_LIMITS.backupCodeRedeem), 0)
+})
+
 Deno.test('odd answers read as "go ahead" or whole seconds', () => {
   assertEquals(waitSeconds(null), 0)
   assertEquals(waitSeconds('x'), 0)

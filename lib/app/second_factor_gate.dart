@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -46,6 +48,9 @@ class SecondFactorGate extends StatelessWidget {
 
 /// Asks for the code from the authenticator app after a sign-in, or signs out.
 /// A wrong code says why under the field, worded by [AuthStore.messageFor].
+/// "Use a backup code" takes one of the account's backup codes instead, which
+/// signs in and turns two-factor authentication off
+/// ([AuthStore.redeemBackupCode]); a snack bar says so once the app shows.
 class SecondFactorScreen extends StatefulWidget {
   const SecondFactorScreen({super.key});
 
@@ -55,6 +60,8 @@ class SecondFactorScreen extends StatefulWidget {
 
 class _SecondFactorScreenState extends State<SecondFactorScreen> {
   final _code = TextEditingController();
+  final _backupCode = TextEditingController();
+  bool _usingBackupCode = false;
   bool _verifying = false;
   bool _signingOut = false;
   String? _error;
@@ -64,10 +71,22 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
   @override
   void dispose() {
     _code.dispose();
+    _backupCode.dispose();
     super.dispose();
   }
 
+  void _switchField() {
+    if (_busy) return;
+    _code.clear();
+    _backupCode.clear();
+    setState(() {
+      _usingBackupCode = !_usingBackupCode;
+      _error = null;
+    });
+  }
+
   Future<void> _verify() async {
+    if (_usingBackupCode) return _redeem();
     if (_busy) return;
     if (_code.text.length != OneTimeCodeField.length) {
       setState(
@@ -88,6 +107,45 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
       if (!mounted) return;
       _code.clear();
       setState(() => _error = _messageFor(auth, e));
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _redeem() async {
+    if (_busy) return;
+    // Read as the server reads it (supabase/functions/_shared/recovery_codes.ts),
+    // so a typo is caught here without using up one of the few tries an hour.
+    final typed = _backupCode.text.replaceAll(RegExp(r'[\s-]'), '');
+    if (typed.length != _BackupCodeField.length) {
+      setState(
+        () => _error = 'Enter one of your backup codes: 10 letters and digits.',
+      );
+      return;
+    }
+    final auth = context.read<AuthStore>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _verifying = true;
+      _error = null;
+    });
+    try {
+      // Once it is used, the gate takes this screen away.
+      await auth.redeemBackupCode(_backupCode.text);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            duration: Duration(seconds: 10),
+            content: Text(
+              'Signed in with a backup code. Two-factor authentication is off '
+              'now: turn it on again in Settings > Security.',
+            ),
+          ),
+        );
+    } catch (e) {
+      debugPrint('The backup code was not accepted: $e');
+      if (mounted) setState(() => _error = backupCodeMessage(e));
     } finally {
       if (mounted) setState(() => _verifying = false);
     }
@@ -152,25 +210,50 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Open your authenticator app and enter the code it shows '
-                    'for Checkpoint${email == null ? '' : ' ($email)'}.',
+                    _usingBackupCode
+                        ? 'Enter one of the backup codes you saved when you '
+                              'turned on two-factor authentication'
+                              '${email == null ? '' : ' for $email'}. Using '
+                              'one signs you in and turns two-factor '
+                              'authentication off, so you can set it up again.'
+                        : 'Open your authenticator app and enter the code it '
+                              'shows for Checkpoint'
+                              '${email == null ? '' : ' ($email)'}.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Palette.muted, height: 1.35),
                   ),
                   const SizedBox(height: 20),
-                  OneTimeCodeField(
-                    controller: _code,
-                    enabled: !_busy,
-                    autofocus: true,
-                    errorText: _error,
-                    onSubmit: _verify,
-                  ),
+                  if (_usingBackupCode)
+                    _BackupCodeField(
+                      key: const ValueKey('backup-code'),
+                      controller: _backupCode,
+                      enabled: !_busy,
+                      errorText: _error,
+                      onSubmit: _verify,
+                    )
+                  else
+                    OneTimeCodeField(
+                      key: const ValueKey('app-code'),
+                      controller: _code,
+                      enabled: !_busy,
+                      autofocus: true,
+                      errorText: _error,
+                      onSubmit: _verify,
+                    ),
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _busy ? null : _verify,
                     child: _verifying ? const _Spinner() : const Text('Verify'),
                   ),
                   const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _busy ? null : _switchField,
+                    child: Text(
+                      _usingBackupCode
+                          ? 'Use your authenticator app'
+                          : 'Use a backup code',
+                    ),
+                  ),
                   TextButton(
                     onPressed: _busy ? null : _signOut,
                     child: _signingOut
@@ -183,6 +266,59 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One of the account's backup codes, `7K3QD-M9XHT` (letters and digits,
+/// with or without the dash). [onSubmit] runs on the keyboard's done key.
+class _BackupCodeField extends StatelessWidget {
+  const _BackupCodeField({
+    super.key,
+    required this.controller,
+    required this.onSubmit,
+    required this.enabled,
+    this.errorText,
+  });
+
+  /// Characters in a code, without the dash.
+  static const length = 10;
+
+  final TextEditingController controller;
+  final VoidCallback onSubmit;
+  final bool enabled;
+  final String? errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      autofocus: true,
+      // No suggestions or autocorrect on Android's keyboard.
+      keyboardType: TextInputType.visiblePassword,
+      textCapitalization: TextCapitalization.characters,
+      textInputAction: TextInputAction.done,
+      autocorrect: false,
+      enableSuggestions: false,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 2,
+      ),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 -]')),
+        LengthLimitingTextInputFormatter(20),
+      ],
+      decoration: InputDecoration(
+        labelText: 'Backup code',
+        hintText: 'XXXXX-XXXXX',
+        errorText: errorText,
+        errorMaxLines: 3,
+      ),
+      onSubmitted: (_) => onSubmit(),
     );
   }
 }

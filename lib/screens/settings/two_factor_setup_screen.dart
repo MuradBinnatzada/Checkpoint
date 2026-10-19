@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/screens/settings/backup_codes_screen.dart';
 import 'package:checkpoint/services/auth_service.dart' show TotpSetup;
 import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -28,7 +30,9 @@ Future<bool> setUpTwoFactor(BuildContext context) async =>
 /// Turns two-factor authentication on: adds the account to an authenticator
 /// app (a QR code, or the setup key typed in) and checks the first code it
 /// shows. Leaving before that drops the unfinished setup, and nothing changes
-/// for the account. Closes itself when the account it was opened for signs out.
+/// for the account. Once it is on, it makes the account's backup codes and
+/// shows them; leaving then keeps two-factor on, with or without codes.
+/// Closes itself when the account it was opened for signs out.
 class TwoFactorSetupScreen extends StatefulWidget {
   const TwoFactorSetupScreen({super.key});
 
@@ -47,6 +51,11 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
   bool _confirming = false;
   bool _turnedOn = false;
   bool _closed = false;
+
+  /// The backup codes made once it is on, or why they could not be.
+  List<String>? _codes;
+  String? _codesError;
+  bool _makingCodes = false;
 
   /// An authenticator app on this device can take the otpauth link itself.
   static bool get _opensAuthenticatorLinks =>
@@ -106,7 +115,6 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       setState(() => _codeError = 'Enter the 6-digit code the app shows.');
       return;
     }
-    final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _confirming = true;
       _codeError = null;
@@ -114,12 +122,9 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
     try {
       await _auth.confirmTwoFactor(setup.factorId, _code.text);
       _turnedOn = true;
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Two-factor authentication is on')),
-        );
-      _close(true);
+      if (!mounted) return;
+      setState(() => _confirming = false);
+      await _makeCodes();
     } catch (e) {
       debugPrint('Confirming two-factor setup failed: $e');
       if (!mounted) return;
@@ -129,6 +134,43 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         _codeError = _messageFor(e);
       });
     }
+  }
+
+  /// Makes the backup codes for the account that just turned it on.
+  Future<void> _makeCodes() async {
+    setState(() {
+      _makingCodes = true;
+      _codesError = null;
+    });
+    try {
+      final codes = await _auth.generateBackupCodes();
+      if (mounted) setState(() => _codes = codes);
+    } catch (e) {
+      debugPrint('Making backup codes failed: $e');
+      if (mounted) setState(() => _codesError = backupCodesMessage(e));
+    } finally {
+      if (mounted) setState(() => _makingCodes = false);
+    }
+  }
+
+  void _showTurnedOn(ScaffoldMessengerState messenger) => messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          _codes == null
+              ? 'Two-factor authentication is on. Make backup codes under '
+                    'Settings > Security.'
+              : 'Two-factor authentication is on',
+        ),
+      ),
+    );
+
+  /// Leaves once it is on: "I saved them", skipping the codes, or closing.
+  void _finish() {
+    if (_makingCodes) return;
+    _showTurnedOn(ScaffoldMessenger.of(context));
+    _close(true);
   }
 
   String _messageFor(Object e) => e is! AuthException && isConnectionFailure(e)
@@ -175,7 +217,11 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_confirming,
+      canPop: !_confirming && !_turnedOn,
+      // Once it is on, closing is "done", and says so.
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _turnedOn) _finish();
+      },
       child: Scaffold(
         appBar: AppBar(title: const Text('Two-factor authentication')),
         body: SafeArea(
@@ -193,7 +239,48 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
     );
   }
 
+  /// The last step: two-factor is on, and these are the backup codes.
+  Widget _codesBody() {
+    final codes = _codes;
+    final error = _codesError;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Palette.success),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Two-factor authentication is on',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const _Step(number: 3, text: 'Save your backup codes.'),
+        const SizedBox(height: 12),
+        if (codes != null)
+          BackupCodesList(codes: codes, onDone: _finish)
+        else if (error != null) ...[
+          Text(error, style: const TextStyle(height: 1.4)),
+          const SizedBox(height: 16),
+          OutlinedButton(onPressed: _makeCodes, child: const Text('Try again')),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _finish, child: const Text('Skip for now')),
+        ] else
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+      ],
+    );
+  }
+
   Widget _body() {
+    if (_turnedOn) return _codesBody();
     final setup = _setup;
     final startError = _startError;
     if (startError != null) {

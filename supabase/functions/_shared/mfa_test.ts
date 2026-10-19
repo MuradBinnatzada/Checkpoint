@@ -1,5 +1,5 @@
 import { assertEquals } from 'jsr:@std/assert@1'
-import { secondFactorMissing, tokenAal } from './mfa.ts'
+import { secondFactorMissing, tokenAal, twoFactorOn } from './mfa.ts'
 
 /** A JWT with [claims] as its payload (base64url, unpadded) and no real signature. */
 function token(claims: Record<string, unknown>): string {
@@ -42,4 +42,12 @@ Deno.test('a member with two-factor needs an aal2 token', () => {
     secondFactorMissing({ factors: [{ status: 'unverified' }, { status: 'verified' }] }, token({ aal: 'aal1' })),
     true,
   )
+})
+
+Deno.test('two-factor is on with a verified factor only', () => {
+  assertEquals(twoFactorOn(verified), true)
+  assertEquals(twoFactorOn({ factors: [{ status: 'unverified' }, { status: 'verified' }] }), true)
+  assertEquals(twoFactorOn({ factors: [{ status: 'unverified' }] }), false)
+  assertEquals(twoFactorOn({ factors: null }), false)
+  assertEquals(twoFactorOn({}), false)
 })

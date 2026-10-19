@@ -5,8 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/app/new_password_screen.dart';
+import 'package:checkpoint/screens/settings/backup_codes_screen.dart';
 import 'package:checkpoint/screens/settings/two_factor_setup_screen.dart';
 import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -113,9 +115,14 @@ class _SecuritySectionState extends State<SecuritySection> {
           ),
         ],
         const SizedBox(height: 14),
-        const Panel(
+        Panel(
           title: 'Two-factor authentication',
-          child: _TwoFactorSwitch(),
+          child: Column(
+            children: [
+              const _TwoFactorSwitch(),
+              if (auth.hasTwoFactor) const _NewBackupCodesTile(),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         Panel(
@@ -238,6 +245,86 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
         ),
         value: on,
         onChanged: _busy ? null : (value) => unawaited(_toggle(value)),
+      ),
+    );
+  }
+}
+
+/// Makes new backup codes while two-factor authentication is on, after asking
+/// (the codes the account has stop working), and shows them.
+class _NewBackupCodesTile extends StatefulWidget {
+  const _NewBackupCodesTile();
+
+  @override
+  State<_NewBackupCodesTile> createState() => _NewBackupCodesTileState();
+}
+
+class _NewBackupCodesTileState extends State<_NewBackupCodesTile> {
+  bool _busy = false;
+
+  Future<void> _makeNew() async {
+    final auth = context.read<AuthStore>();
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Make new backup codes?'),
+        content: const Text(
+          'You get 10 new codes, each good for one sign-in without your '
+          'authenticator app. The backup codes you have now stop working.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Make new codes'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final codes = await auth.generateBackupCodes();
+      if (mounted) await showBackupCodes(context, codes);
+    } catch (e) {
+      debugPrint('Making new backup codes failed: $e');
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(backupCodesMessage(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Its own Material, so the tap splash shows over the panel's background.
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.key_rounded, color: Palette.accent),
+        title: const Text(
+          'New backup codes',
+          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text(
+          'One-time codes that sign you in without your authenticator app. '
+          'New ones replace the ones you have.',
+          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+        ),
+        trailing: _busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+        onTap: _busy ? null : _makeNew,
       ),
     );
   }

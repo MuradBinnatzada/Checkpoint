@@ -6,16 +6,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
-    show AuthChangeEvent, AuthException, User;
+    show
+        AuthChangeEvent,
+        AuthException,
+        AuthRetryableFetchException,
+        FunctionException,
+        User;
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/app/new_password_screen.dart';
 import 'package:checkpoint/app/second_factor_gate.dart';
 import 'package:checkpoint/app/sign_in_panel.dart';
+import 'package:checkpoint/screens/settings/backup_codes_screen.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/screens/settings/two_factor_setup_screen.dart';
 import 'package:checkpoint/services/auth_service.dart';
+import 'package:checkpoint/services/connection_failure.dart';
+import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -25,7 +33,8 @@ import 'package:checkpoint/widgets/qr_code_view.dart';
 import 'support/fakes.dart';
 
 /// Two-factor authentication (an authenticator app): the code a sign-in still
-/// owes, the prompt over the whole app, and turning it on and off in Settings.
+/// owes, the prompt over the whole app, turning it on and off in Settings, and
+/// the backup codes that get in without the app.
 void main() {
   User emailUser([String id = 'u1']) => User(
     id: id,
@@ -168,6 +177,63 @@ void main() {
       ]);
     });
 
+    test(
+      'a backup code gets the waiting account in and turns two-factor off',
+      () async {
+        await auth.signInWithEmail('ada@example.com', 'pw');
+        await events();
+        expect(auth.needsSecondFactor, isTrue);
+
+        await expectLater(
+          auth.redeemBackupCode('ZZZZZ-ZZZZZ'),
+          throwsA(
+            isA<FunctionException>().having(
+              mfaRecoveryErrorCode,
+              'code',
+              'INVALID_CODE',
+            ),
+          ),
+        );
+        await events();
+        expect(auth.isLoggedIn, isFalse);
+
+        // Typed any way.
+        await auth.redeemBackupCode('aaaaa bbbbb');
+        await events();
+
+        expect(auth.needsSecondFactor, isFalse);
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.user?.id, 'u1');
+        expect(auth.hasTwoFactor, isFalse);
+        expect(announced, [null, 'u1']);
+        expect(service.twoFactorCalls, [
+          'redeem:ZZZZZ-ZZZZZ',
+          'redeem:aaaaa bbbbb',
+        ]);
+      },
+    );
+
+    test('a backup code is only taken while a code is owed', () async {
+      await expectLater(auth.redeemBackupCode('AAAAA-BBBBB'), throwsStateError);
+
+      await auth.signInWithEmail('ada@example.com', 'pw');
+      await auth.verifySecondFactor('123456');
+      await events();
+      await expectLater(auth.redeemBackupCode('AAAAA-BBBBB'), throwsStateError);
+      expect(service.twoFactorCalls, ['verify:123456']);
+    });
+
+    test('new backup codes are made for a signed-in account', () async {
+      await expectLater(auth.generateBackupCodes(), throwsStateError);
+
+      await auth.signInWithEmail('ada@example.com', 'pw');
+      await auth.verifySecondFactor('123456');
+      await events();
+
+      expect(await auth.generateBackupCodes(), FakeAuthService.newBackupCodes);
+      expect(service.twoFactorCalls, ['verify:123456', 'generate']);
+    });
+
     test('a session restored at aal1 waits for its code', () async {
       final restored = FakeAuthService(emailUser())..twoFactorOn = true;
       final store = AuthStore(restored);
@@ -178,6 +244,105 @@ void main() {
       expect(store.waitingEmail, 'ada@example.com');
       expect(store.isLoggedIn, isFalse);
       expect(store.isSessionPending, isFalse);
+    });
+  });
+
+  group('Backup code messages', () {
+    FunctionException failure(int status, [Map<String, Object?>? body]) =>
+        FunctionException(status: status, details: body);
+
+    test('using one says what went wrong', () {
+      expect(
+        backupCodeMessage(failure(400, {'code': 'INVALID_CODE'})),
+        startsWith("That backup code didn't work."),
+      );
+      expect(
+        backupCodeMessage(
+          failure(429, {'code': 'RATE_LIMITED', 'retry_after': 1500}),
+        ),
+        'Too many tries. Try again in 25 minutes.',
+      );
+      expect(
+        backupCodeMessage(
+          failure(429, {'code': 'RATE_LIMITED', 'retry_after': 40}),
+        ),
+        'Too many tries. Try again in a minute.',
+      );
+      expect(
+        backupCodeMessage(failure(429)),
+        'Too many tries. Try again later.',
+      );
+      expect(
+        backupCodeMessage(failure(401, {'code': 'UNAUTHENTICATED'})),
+        'Your sign-in expired. Sign out and sign in again.',
+      );
+      expect(
+        backupCodeMessage(failure(503)),
+        'The server is busy right now. Try again in a moment.',
+      );
+      expect(
+        backupCodeMessage(failure(0)),
+        startsWith('Could not reach the server.'),
+      );
+      // The code was used, but the session could not be refreshed.
+      expect(
+        backupCodeMessage(AuthRetryableFetchException()),
+        startsWith('Could not reach the server.'),
+      );
+      expect(
+        backupCodeMessage(const AuthException('Invalid Refresh Token')),
+        'Your sign-in expired. Sign out and sign in again.',
+      );
+      expect(
+        backupCodeMessage(const FormatException('odd answer')),
+        'Could not check that backup code. Please try again.',
+      );
+    });
+
+    test('making them says what went wrong', () {
+      expect(
+        backupCodesMessage(failure(403, {'code': 'MFA_REQUIRED'})),
+        startsWith('Sign in again with the code from your authenticator app'),
+      );
+      expect(
+        backupCodesMessage(failure(409, {'code': 'TWO_FACTOR_OFF'})),
+        'Turn on two-factor authentication first.',
+      );
+      expect(
+        backupCodesMessage(
+          failure(429, {'code': 'RATE_LIMITED', 'retry_after': 3600}),
+        ),
+        'You made new backup codes too many times. Try again in 60 minutes.',
+      );
+      expect(
+        backupCodesMessage(failure(401)),
+        startsWith('Your session expired.'),
+      );
+      expect(
+        backupCodesMessage(const SessionPending()),
+        startsWith('Could not reach the server.'),
+      );
+      expect(
+        backupCodesMessage(StateError('Not signed in.')),
+        'Sign in to make backup codes.',
+      );
+      expect(
+        backupCodesMessage(const FormatException('no codes')),
+        'Could not make backup codes. Please try again.',
+      );
+    });
+
+    test('the code is read from the function only', () {
+      expect(
+        mfaRecoveryErrorCode(failure(400, {'code': 'INVALID_CODE'})),
+        'INVALID_CODE',
+      );
+      expect(mfaRecoveryErrorCode(failure(500, {'error': 'boom'})), isNull);
+      expect(mfaRecoveryErrorCode(failure(500)), isNull);
+      expect(
+        mfaRecoveryErrorCode(const AuthException('x', code: 'INVALID_CODE')),
+        isNull,
+      );
     });
   });
 
@@ -397,6 +562,113 @@ void main() {
       expect(find.byType(SecondFactorScreen), findsNothing);
       expect(find.byType(NewPasswordScreen), findsOneWidget);
     });
+
+    Finder backupField() => find.widgetWithText(TextField, 'Backup code');
+
+    Future<void> useBackupCode(WidgetTester tester, String code) async {
+      await tester.enterText(backupField(), code);
+      await tester.tap(find.widgetWithText(FilledButton, 'Verify'));
+      await settle(tester);
+    }
+
+    testWidgets(
+      'a backup code gets in without the app, and two-factor is off then',
+      (tester) async {
+        await start(tester);
+        authService.emit(emailUser());
+        await settle(tester);
+
+        await tester.tap(find.widgetWithText(TextButton, 'Use a backup code'));
+        await settle(tester);
+        expect(backupField(), findsOneWidget);
+        expect(find.widgetWithText(TextField, '6-digit code'), findsNothing);
+        expect(
+          find.textContaining('turns two-factor authentication off'),
+          findsOneWidget,
+        );
+
+        await useBackupCode(tester, 'ZZZZZ-ZZZZZ');
+        expect(
+          find.textContaining("That backup code didn't work"),
+          findsOneWidget,
+        );
+        expect(find.byType(SecondFactorScreen), findsOneWidget);
+        expect(stores.auth.isLoggedIn, isFalse);
+
+        await useBackupCode(tester, 'aaaaa bbbbb');
+
+        expect(authService.twoFactorCalls, [
+          'redeem:ZZZZZ-ZZZZZ',
+          'redeem:aaaaa bbbbb',
+        ]);
+        expect(find.byType(SecondFactorScreen), findsNothing);
+        expect(find.byType(NavigationBar), findsOneWidget);
+        expect(stores.auth.isLoggedIn, isTrue);
+        expect(stores.auth.hasTwoFactor, isFalse);
+        expect(
+          find.textContaining('Signed in with a backup code.'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('turn it on again in Settings > Security'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'a backup code is checked for length before sending, and the app code '
+      'comes back',
+      (tester) async {
+        await start(tester);
+        authService.emit(emailUser());
+        await settle(tester);
+
+        await tester.tap(find.widgetWithText(TextButton, 'Use a backup code'));
+        await settle(tester);
+        await useBackupCode(tester, 'ABC-DE');
+
+        expect(
+          find.text('Enter one of your backup codes: 10 letters and digits.'),
+          findsOneWidget,
+        );
+        expect(authService.twoFactorCalls, isEmpty);
+
+        await tester.tap(
+          find.widgetWithText(TextButton, 'Use your authenticator app'),
+        );
+        await settle(tester);
+        expect(backupField(), findsNothing);
+        expect(
+          find.text('Enter one of your backup codes: 10 letters and digits.'),
+          findsNothing,
+        );
+
+        await enterCode(tester, '123456');
+        expect(stores.auth.isLoggedIn, isTrue);
+        expect(stores.auth.hasTwoFactor, isTrue);
+      },
+    );
+
+    testWidgets('too many backup codes say when to try again', (tester) async {
+      authService.backupCodeError = const FunctionException(
+        status: 429,
+        details: {'code': 'RATE_LIMITED', 'retry_after': 1500},
+      );
+      await start(tester);
+      authService.emit(emailUser());
+      await settle(tester);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Use a backup code'));
+      await settle(tester);
+      await useBackupCode(tester, 'AAAAA-BBBBB');
+
+      expect(
+        find.text('Too many tries. Try again in 25 minutes.'),
+        findsOneWidget,
+      );
+      expect(find.byType(SecondFactorScreen), findsOneWidget);
+    });
   });
 
   group('Settings > Security', () {
@@ -503,17 +775,172 @@ void main() {
         );
         await settle(tester);
 
+        // On, and then the backup codes, shown once.
+        expect(stores.auth.hasTwoFactor, isTrue);
+        expect(find.byType(TwoFactorSetupScreen), findsOneWidget);
+        expect(find.text('Two-factor authentication is on'), findsOneWidget);
+        expect(find.textContaining('Each code works once'), findsOneWidget);
+        for (final code in FakeAuthService.newBackupCodes) {
+          expect(find.text(code), findsOneWidget);
+        }
+
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Copy'));
+        await settle(tester);
+        expect(clipboard.last.arguments, {
+          'text': FakeAuthService.newBackupCodes.join('\n'),
+        });
+        expect(find.text('Backup codes copied'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'I saved them'));
+        await settle(tester);
+
         expect(find.byType(TwoFactorSetupScreen), findsNothing);
         expect(find.text('Two-factor authentication is on'), findsOneWidget);
-        expect(stores.auth.hasTwoFactor, isTrue);
         expect(switchedOn(tester), isTrue);
         expect(authService.twoFactorCalls, [
           'enroll',
           'confirm:factor-1:111111',
           'confirm:factor-1:123456',
+          'generate',
         ]);
       },
     );
+
+    Future<void> turnOn(WidgetTester tester) async {
+      await tester.tap(twoFactorSwitch());
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, '6-digit code'),
+        '123456',
+      );
+      await settle(tester);
+    }
+
+    testWidgets('backup codes that cannot be made can be tried again', (
+      tester,
+    ) async {
+      authService.backupCodeError = const FunctionException(
+        status: 503,
+        details: {'code': 'INTERNAL'},
+      );
+      await open(tester);
+      await turnOn(tester);
+
+      expect(stores.auth.hasTwoFactor, isTrue);
+      expect(
+        find.text('The server is busy right now. Try again in a moment.'),
+        findsOneWidget,
+      );
+
+      authService.backupCodeError = null;
+      await tester.tap(find.text('Try again'));
+      await settle(tester);
+      expect(find.text(FakeAuthService.newBackupCodes.first), findsOneWidget);
+
+      // Closing is done as well.
+      await tester.tap(find.byTooltip('Close'));
+      await settle(tester);
+      expect(find.byType(TwoFactorSetupScreen), findsNothing);
+      expect(find.text('Two-factor authentication is on'), findsOneWidget);
+      expect(authService.twoFactorCalls, [
+        'enroll',
+        'confirm:factor-1:123456',
+        'generate',
+        'generate',
+      ]);
+    });
+
+    testWidgets('backup codes can be skipped, and two-factor stays on', (
+      tester,
+    ) async {
+      authService.backupCodeError = const FunctionException(status: 0);
+      await open(tester);
+      await turnOn(tester);
+
+      expect(
+        find.text(
+          'Could not reach the server. Check your connection and try again.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Skip for now'));
+      await settle(tester);
+
+      expect(find.byType(TwoFactorSetupScreen), findsNothing);
+      expect(
+        find.text(
+          'Two-factor authentication is on. Make backup codes under '
+          'Settings > Security.',
+        ),
+        findsOneWidget,
+      );
+      expect(switchedOn(tester), isTrue);
+      expect(find.text('New backup codes'), findsOneWidget);
+    });
+
+    testWidgets('new backup codes are only offered while it is on', (
+      tester,
+    ) async {
+      await open(tester);
+      expect(find.text('New backup codes'), findsNothing);
+    });
+
+    testWidgets('new backup codes ask first, then show the codes', (
+      tester,
+    ) async {
+      authService
+        ..twoFactorOn = true
+        ..aal2 = true;
+      await open(tester);
+
+      await tester.tap(find.text('New backup codes'));
+      await settle(tester);
+      expect(find.text('Make new backup codes?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await settle(tester);
+      expect(authService.twoFactorCalls, isEmpty);
+
+      await tester.tap(find.text('New backup codes'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Make new codes'));
+      await settle(tester);
+
+      expect(find.byType(BackupCodesScreen), findsOneWidget);
+      for (final code in FakeAuthService.newBackupCodes) {
+        expect(find.text(code), findsOneWidget);
+      }
+      await tester.tap(find.widgetWithText(FilledButton, 'I saved them'));
+      await settle(tester);
+
+      expect(find.byType(BackupCodesScreen), findsNothing);
+      expect(authService.twoFactorCalls, ['generate']);
+      expect(switchedOn(tester), isTrue);
+    });
+
+    testWidgets('new backup codes that cannot be made say why', (tester) async {
+      authService
+        ..twoFactorOn = true
+        ..aal2 = true
+        ..backupCodeError = const FunctionException(
+          status: 403,
+          details: {'code': 'MFA_REQUIRED'},
+        );
+      await open(tester);
+
+      await tester.tap(find.text('New backup codes'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Make new codes'));
+      await settle(tester);
+
+      expect(find.byType(BackupCodesScreen), findsNothing);
+      expect(
+        find.text(
+          'Sign in again with the code from your authenticator app, then '
+          'make new backup codes.',
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('leaving the setup drops the unfinished factor', (
       tester,

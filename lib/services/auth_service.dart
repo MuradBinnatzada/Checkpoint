@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/services/session_storage.dart';
 
 /// Google OAuth client IDs.
@@ -425,6 +426,45 @@ class AuthService {
         // Removed by an earlier attempt whose refresh failed.
         if (e.code != ErrorCode.mfaFactorNotFound.code) rethrow;
       }
+    }
+    await _auth.refreshSession();
+  }
+
+  /// Makes new backup codes for the signed-in account through the
+  /// `mfa-recovery` Edge Function and returns them as they are shown
+  /// (`7K3QD-M9XHT`). This is the only time they are sent: the server keeps
+  /// their hashes, and the account's earlier codes stop working. Needs
+  /// two-factor authentication on and an aal2 session. Throws the
+  /// [FunctionException] of a failed call (see `backupCodesMessage`).
+  Future<List<String>> generateBackupCodes() async {
+    final res = await _client.functions.invoke(
+      'mfa-recovery',
+      body: const {'mode': 'generate'},
+    );
+    final data = res.data;
+    final codes = data is Map ? data['codes'] : null;
+    if (codes is! List || codes.isEmpty || codes.any((c) => c is! String)) {
+      throw const FormatException('mfa-recovery answered no codes');
+    }
+    return List<String>.unmodifiable(codes);
+  }
+
+  /// Gets the session that owes its two-factor code ([needsSecondFactor]) past
+  /// it with a backup [code] instead (`mfa-recovery`, mode `redeem`): the server
+  /// uses the code up and removes the account's authenticator apps, which turns
+  /// two-factor authentication off. The session is refreshed afterwards, so its
+  /// user lists no factor, no code is owed, and [changes] announces it. Throws
+  /// the [FunctionException] of a failed call (`INVALID_CODE`: no unused code
+  /// of the account matches; see `backupCodeMessage`).
+  Future<void> redeemBackupCode(String code) async {
+    try {
+      await _client.functions.invoke(
+        'mfa-recovery',
+        body: {'mode': 'redeem', 'code': code.trim()},
+      );
+    } on FunctionException catch (e) {
+      // Already off: an earlier attempt whose refresh failed.
+      if (mfaRecoveryErrorCode(e) != 'TWO_FACTOR_OFF') rethrow;
     }
     await _auth.refreshSession();
   }

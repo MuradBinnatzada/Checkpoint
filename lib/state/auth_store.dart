@@ -265,6 +265,27 @@ class AuthStore extends ChangeNotifier {
     await _service.disableTwoFactor();
   }
 
+  /// Makes new backup codes for the signed-in account (two-factor
+  /// authentication is on, and this session entered its code) and returns
+  /// them, to show once. The codes it had stop working. Throws when there is no
+  /// live session to ask with ([SessionPending]) or the server refused; see
+  /// `backupCodesMessage` for text to show.
+  Future<List<String>> generateBackupCodes() async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    return _service.generateBackupCodes();
+  }
+
+  /// Gets the account that [needsSecondFactor] in with a backup [code] in place
+  /// of the authenticator app's. That uses the code up and turns two-factor
+  /// authentication off: [userChanges] announces the account, and
+  /// [hasTwoFactor] is false. A wrong or used code throws (`INVALID_CODE`); see
+  /// `backupCodeMessage` for text to show.
+  Future<void> redeemBackupCode(String code) async {
+    if (_waitingUser == null) throw StateError('No code is needed.');
+    await _service.redeemBackupCode(code);
+  }
+
   /// Permanently deletes the signed-in account and everything stored for it on
   /// the server, then signs out ([userChanges] announces it like any sign-out).
   /// Throws when there is no live session to ask with ([SessionPending]) or the

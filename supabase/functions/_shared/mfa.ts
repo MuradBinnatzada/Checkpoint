@@ -12,7 +12,12 @@
 // MFA_REQUIRED (403).
 
 /** What the check needs of the user getUser() returns. */
-export type FactorsOf = { factors?: ReadonlyArray<{ status?: string }> | null }
+export type FactorsOf = { factors?: ReadonlyArray<{ status?: string; created_at?: string }> | null }
+
+/** Whether [user] has two-factor authentication on: a verified factor. */
+export function twoFactorOn(user: FactorsOf): boolean {
+  return (user.factors ?? []).some((factor) => factor.status === 'verified')
+}
 
 /**
  * The `aal` claim of [token], or null. The signature is not checked here: only
@@ -34,6 +39,5 @@ export function tokenAal(token: string): string | null {
 
 /** Whether [user] has two-factor authentication on and [token] has not passed it. */
 export function secondFactorMissing(user: FactorsOf, token: string): boolean {
-  const enrolled = (user.factors ?? []).some((factor) => factor.status === 'verified')
-  return enrolled && tokenAal(token) !== 'aal2'
+  return twoFactorOn(user) && tokenAal(token) !== 'aal2'
 }

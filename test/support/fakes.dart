@@ -908,8 +908,21 @@ class FakeAuthService implements AuthService {
   Object? twoFactorError;
 
   /// Every two-factor call, as `verify:<code>`, `enroll`,
-  /// `confirm:<factor>:<code>`, `cancel:<factor>` and `disable`.
+  /// `confirm:<factor>:<code>`, `cancel:<factor>`, `disable`, `generate` and
+  /// `redeem:<code>`.
   final List<String> twoFactorCalls = [];
+
+  /// The account's unused backup codes, as they are shown. [generateBackupCodes]
+  /// replaces them with [newBackupCodes]; [redeemBackupCode] takes one.
+  List<String> backupCodes = const ['AAAAA-BBBBB'];
+
+  static const newBackupCodes = [
+    '7K3QD-M9XHT', 'P2W8N-4RJ6C', 'HX5ZT-0QG7M', 'B9VKE-31SYD', 'N6C2R-WF8JA',
+    'T4MQX-7HZ05', 'G1DPS-K9VE3', 'Y8RJ2-C6TNW', 'E5HZB-Q0XM4', 'S3WAF-8PKG7',
+  ];
+
+  /// What [generateBackupCodes] and [redeemBackupCode] throw, when set.
+  Object? backupCodeError;
 
   static const setup = TotpSetup(
     factorId: 'factor-1',
@@ -962,6 +975,34 @@ class FakeAuthService implements AuthService {
     twoFactorCalls.add('disable');
     final error = twoFactorError;
     if (error != null) throw error;
+    twoFactorOn = false;
+    emit(user, event: AuthChangeEvent.tokenRefreshed);
+  }
+
+  @override
+  Future<List<String>> generateBackupCodes() async {
+    twoFactorCalls.add('generate');
+    final error = backupCodeError;
+    if (error != null) throw error;
+    return backupCodes = newBackupCodes;
+  }
+
+  /// Like the real one: a code of the account's (typed any way) turns
+  /// two-factor off, then the refreshed session says so; any other is refused
+  /// with the function's INVALID_CODE.
+  @override
+  Future<void> redeemBackupCode(String code) async {
+    twoFactorCalls.add('redeem:$code');
+    final error = backupCodeError;
+    if (error != null) throw error;
+    String plain(String c) => c.toUpperCase().replaceAll(RegExp(r'[\s-]'), '');
+    if (!twoFactorOn || !backupCodes.any((c) => plain(c) == plain(code))) {
+      throw const FunctionException(
+        status: 400,
+        details: {'error': 'That backup code is not valid', 'code': 'INVALID_CODE'},
+      );
+    }
+    backupCodes = const [];
     twoFactorOn = false;
     emit(user, event: AuthChangeEvent.tokenRefreshed);
   }

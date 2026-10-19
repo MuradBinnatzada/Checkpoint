@@ -10,8 +10,11 @@
 // the Discover tab and opening games makes a few IGDB requests a minute; a
 // library import (a search and an add per game) up to about two a second.
 
-/** At most [maxHits] calls in [windowSeconds], per member. */
-export type RateLimit = { bucket: string; maxHits: number; windowSeconds: number }
+/**
+ * At most [maxHits] calls in [windowSeconds], per member. [failClosed]: when
+ * the limiter can't be reached, refuse the call instead of letting it through.
+ */
+export type RateLimit = { bucket: string; maxHits: number; windowSeconds: number; failClosed?: boolean }
 
 export const RATE_LIMITS = {
   igdb: { bucket: 'igdb-handler', maxHits: 200, windowSeconds: 60 },
@@ -21,6 +24,12 @@ export const RATE_LIMITS = {
   // Counted when a link starts and again when Steam sends the browser back:
   // ten Steam sign-ins an hour.
   steamLink: { bucket: 'steam-link', maxHits: 20, windowSeconds: 3600 },
+  // Two-factor backup codes (mfa-recovery). Using one is a guess at a secret
+  // from a session that only knows the password, so it is kept tight and
+  // refused while the limiter can't count it. Making new ones has its own
+  // bucket, so it never uses up the tries.
+  backupCodeRedeem: { bucket: 'mfa-recovery-redeem', maxHits: 5, windowSeconds: 3600, failClosed: true },
+  backupCodeGenerate: { bucket: 'mfa-recovery-generate', maxHits: 10, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimit>
 
 /** What a function needs of its service-role client: one RPC. */
@@ -32,7 +41,8 @@ export type RpcClient = {
 /**
  * Counts one call of [userId] against [limit]. Answers 0 to go ahead, or the
  * seconds until the member may call again. A limiter that can't be reached never
- * blocks anyone: the failure is logged and the call goes ahead.
+ * blocks anyone: the failure is logged and the call goes ahead. Unless the limit
+ * is [RateLimit.failClosed]: then the member waits its whole window.
  */
 export async function rateLimitWait(client: RpcClient, userId: string, limit: RateLimit): Promise<number> {
   try {
@@ -46,7 +56,7 @@ export async function rateLimitWait(client: RpcClient, userId: string, limit: Ra
     return waitSeconds(data)
   } catch (err) {
     console.error(`rate limit check for ${limit.bucket} failed:`, err)
-    return 0
+    return limit.failClosed ? limit.windowSeconds : 0
   }
 }
 
