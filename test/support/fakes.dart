@@ -26,6 +26,7 @@ import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
+import 'package:checkpoint/services/steam_link_service.dart';
 import 'package:checkpoint/state/company_store.dart';
 
 User testUser(String id) => User(
@@ -324,11 +325,22 @@ class FakeRepository implements CheckpointRepository {
     writes.add('services:${connectedServicesToDb(accounts.services).join(',')}');
   }
 
+  /// Where each `steam-link` start asked to come back to (null: nowhere).
+  final List<Uri?> steamLinkStarts = [];
+
+  /// What `steam-link` throws instead of answering, when set.
+  Object? steamLinkError;
+
+  /// Like the function: answers Steam's sign-in page. The Steam ID is saved by
+  /// the server once the member signs in there (see [FakeSteamLink]).
   @override
-  Future<void> setSteamId(String id) async {
-    _checkWrite();
-    steamId = id.trim();
-    writes.add('steam:$steamId');
+  Future<Uri> startSteamLink({Uri? returnTo}) async {
+    steamLinkStarts.add(returnTo);
+    final error = steamLinkError;
+    if (error != null) throw error;
+    return Uri.parse(
+      'https://steamcommunity.com/openid/login?openid.mode=checkid_setup',
+    );
   }
 
   @override
@@ -402,7 +414,7 @@ class FakeRepository implements CheckpointRepository {
   }
 
   @override
-  Future<void> upsertBaseGame(Game game) async {
+  Future<void> addToCatalog(Game game) async {
     _checkWrite();
     writes.add('base:${game.id}');
   }
@@ -882,6 +894,78 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> signOut() async => emit(null);
 
+  /// The account has a verified authenticator app (two-factor is on).
+  bool twoFactorOn = false;
+
+  /// This session entered its code (aal2). A sign-out ends it, so the next
+  /// sign-in starts at aal1, as with Supabase.
+  bool aal2 = false;
+
+  /// The code the authenticator app shows; any other is refused.
+  String validCode = '123456';
+
+  /// What [enrollTwoFactor] and [disableTwoFactor] throw, when set.
+  Object? twoFactorError;
+
+  /// Every two-factor call, as `verify:<code>`, `enroll`,
+  /// `confirm:<factor>:<code>`, `cancel:<factor>` and `disable`.
+  final List<String> twoFactorCalls = [];
+
+  static const setup = TotpSetup(
+    factorId: 'factor-1',
+    secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+    uri: 'otpauth://totp/Checkpoint:u1%40example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Checkpoint',
+  );
+
+  static const _wrongCode = AuthException('Invalid TOTP code entered', code: 'mfa_verification_failed');
+
+  @override
+  bool get hasTwoFactor => user != null && twoFactorOn;
+
+  @override
+  bool get needsSecondFactor => user != null && twoFactorOn && !aal2;
+
+  /// Like the real one: a right code makes the session aal2 and Supabase
+  /// announces it.
+  @override
+  Future<void> verifySecondFactor(String code) async {
+    twoFactorCalls.add('verify:$code');
+    if (code != validCode) throw _wrongCode;
+    aal2 = true;
+    emit(user, event: AuthChangeEvent.mfaChallengeVerified);
+  }
+
+  @override
+  Future<TotpSetup> enrollTwoFactor() async {
+    twoFactorCalls.add('enroll');
+    final error = twoFactorError;
+    if (error != null) throw error;
+    return setup;
+  }
+
+  @override
+  Future<void> confirmTwoFactor(String factorId, String code) async {
+    twoFactorCalls.add('confirm:$factorId:$code');
+    if (code != validCode) throw _wrongCode;
+    twoFactorOn = true;
+    aal2 = true;
+    emit(user, event: AuthChangeEvent.mfaChallengeVerified);
+  }
+
+  @override
+  Future<void> cancelTwoFactor(String factorId) async =>
+      twoFactorCalls.add('cancel:$factorId');
+
+  /// Like the real one: the factor goes, then the refreshed session says so.
+  @override
+  Future<void> disableTwoFactor() async {
+    twoFactorCalls.add('disable');
+    final error = twoFactorError;
+    if (error != null) throw error;
+    twoFactorOn = false;
+    emit(user, event: AuthChangeEvent.tokenRefreshed);
+  }
+
   /// What [signInWithGoogle] throws, when set; otherwise it signs `u1` in.
   Object? signInError;
 
@@ -992,6 +1076,7 @@ class FakeAuthService implements AuthService {
   /// is an event another browser tab passed on.
   void emit(User? next, {AuthChangeEvent? event, bool fromBroadcast = false}) {
     user = next;
+    if (next == null) aal2 = false;
     _changes.add(
       AuthState(
         event ??
@@ -1177,3 +1262,41 @@ GameDetails testDetails({
   similarGames: similarGames ?? [testGame('similar-1', title: 'Oblivion', status: null, cover: false, igdbId: 306)],
   timeToBeat: timeToBeat,
 );
+
+/// The browser and Steam, for "Sign in through Steam": [open] asks the server to
+/// start (through [repository]), waits for [gate] when it is set (the member is
+/// still on Steam's page), then, when [signsIn], has the server save [steamId]
+/// on the profile, and answers [outcome] (by default the desktop return: `ok`).
+class FakeSteamLink implements SteamLinkFlow {
+  FakeSteamLink(this.repository);
+
+  final FakeRepository repository;
+  String steamId = '76561198000000000';
+  bool signsIn = true;
+  SteamLinkOutcome outcome = const SteamLinkReturned('ok');
+
+  /// Thrown by [open] after the start, when set (no browser, say).
+  Object? openError;
+  Completer<void>? gate;
+
+  /// Steam's pages that were opened.
+  final List<Uri> opened = [];
+  int cancels = 0;
+  int browserCloses = 0;
+
+  @override
+  Future<SteamLinkOutcome> open(StartSteamLink start) async {
+    opened.add(await start(null));
+    final error = openError;
+    if (error != null) throw error;
+    await gate?.future;
+    if (signsIn) repository.steamId = steamId;
+    return outcome;
+  }
+
+  @override
+  Future<void> cancel() async => cancels++;
+
+  @override
+  Future<void> closeBrowser() async => browserCloses++;
+}

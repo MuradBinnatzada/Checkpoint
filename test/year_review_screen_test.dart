@@ -37,8 +37,8 @@ void main() {
     );
   });
 
-  Future<void> open(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(800, 3200);
+  Future<void> open(WidgetTester tester, {double width = 800}) async {
+    tester.view.physicalSize = Size(width, 3200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.runAsync(stores.initialize);
@@ -70,6 +70,16 @@ void main() {
     expect(find.text('8 h'), findsWidgets);
     expect(find.textContaining('over 1 session of 1 game'), findsOneWidget);
     expect(find.text('Completed in ${year - 1}'), findsNothing);
+  });
+
+  testWidgets('the stat tiles fit a phone at the largest text size', (tester) async {
+    // A Pixel 8a is 412 wide; the app lets text grow to 1.3 (CheckpointApp).
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await open(tester, width: 412);
+
+    expect(find.text('Longest streak (days)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the months chart can be read as a table', (tester) async {

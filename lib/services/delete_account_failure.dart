@@ -15,6 +15,9 @@ String deleteAccountMessage(Object error) {
     if (code == 'UNAUTHENTICATED' || error.status == 401) {
       return 'Your session expired. Sign in again, then delete your account.';
     }
+    if (code == 'MFA_REQUIRED') {
+      return 'Sign in again with your two-factor code, then delete your account.';
+    }
     // Status 0: the request never got an answer (FunctionsFetchException).
     if (error.status == 0) return _unreachable;
     if (error.status == 408 || error.status == 429 || error.status >= 500) {

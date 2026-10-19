@@ -95,20 +95,19 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
   List<Widget> _sections(BuildContext context, YearReview r) => [
     _Headline(review: r),
     const SizedBox(height: 14),
-    GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.9,
-      children: [
-        StatTile(icon: Icons.calendar_month_rounded, value: '${r.daysPlayed}', label: r.daysPlayed == 1 ? 'Day played' : 'Days played'),
-        StatTile(icon: Icons.local_fire_department_rounded, value: '${r.longestStreak}', label: 'Longest streak (days)'),
-        StatTile(icon: Icons.verified_rounded, value: '${r.completed.length}', label: 'Games completed'),
-        StatTile(icon: Icons.library_add_rounded, value: '${r.addedCount}', label: 'Games added'),
-      ],
-    ),
+    // Rows rather than a fixed-ratio grid: the tiles take the height their
+    // content needs, at any screen width and text size.
+    Row(children: [
+      Expanded(child: StatTile(icon: Icons.calendar_month_rounded, value: '${r.daysPlayed}', label: r.daysPlayed == 1 ? 'Day played' : 'Days played')),
+      const SizedBox(width: 10),
+      Expanded(child: StatTile(icon: Icons.local_fire_department_rounded, value: '${r.longestStreak}', label: 'Longest streak (days)')),
+    ]),
+    const SizedBox(height: 10),
+    Row(children: [
+      Expanded(child: StatTile(icon: Icons.verified_rounded, value: '${r.completed.length}', label: 'Games completed')),
+      const SizedBox(width: 10),
+      Expanded(child: StatTile(icon: Icons.library_add_rounded, value: '${r.addedCount}', label: 'Games added')),
+    ]),
     const SizedBox(height: 14),
     if (r.sessionCount > 0) ...[
       _MonthsPanel(review: r),
@@ -388,7 +387,8 @@ class _CompletedPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => openGame(context, game.id),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SizedBox(height: 108, child: CoverArt(game: game, radius: 10, showTitle: false)),
+                  // What the title leaves: a taller title (larger text) can't push it out.
+                  Expanded(child: CoverArt(game: game, radius: 10, showTitle: false)),
                   const SizedBox(height: 4),
                   Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
                 ]),

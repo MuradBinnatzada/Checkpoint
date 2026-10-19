@@ -1,0 +1,21 @@
+# Security headers for the web app, read by Netlify (`flutter build web` copies
+# this file into build/web). Nothing here limits where the app loads scripts,
+# images or data from; it keeps other sites from framing the app (clickjacking)
+# and turns off browser features the app never uses.
+/*
+  Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000
+
+# The confirm page of "Connect Steam" (steam-link.html). Its token rides after
+# `#`, which browsers never send. Still, no copy of the page is kept, and no
+# Referer leaves it. Netlify also serves it at /steam-link.
+/steam-link.html
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+/steam-link
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer

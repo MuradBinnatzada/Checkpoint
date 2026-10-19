@@ -116,11 +116,9 @@ import {
   steamLinksByApp,
   steamLinksQuery,
 } from '../_shared/steam_links.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { withCors } from '../_shared/cors.ts'
+import { secondFactorMissing } from '../_shared/mfa.ts'
+import { RATE_LIMITS, rateLimitWait } from '../_shared/rate_limit.ts'
 
 // ---- Tuning ----------------------------------------------------------------
 const STEAM_UUID_PREFIX = '57e40000-0000-0000-0000-'
@@ -213,12 +211,15 @@ const NOT_RESENT_COLUMNS = [
  *
  *   Retry later (`retry_after` seconds when known):
  *     STEAM_RATE_LIMITED, STEAM_UNAVAILABLE, IGDB_RATE_LIMITED, IGDB_UNAVAILABLE,
- *     SYNC_PARTIAL (success response only: some games wait for the next sync)
- *   Needs the user:  UNAUTHENTICATED, NO_STEAM_ID, STEAM_PROFILE_PRIVATE
+ *     SYNC_PARTIAL (success response only: some games wait for the next sync),
+ *     RATE_LIMITED (this member synced too often by hand, _shared/rate_limit.ts)
+ *   Needs the user:  UNAUTHENTICATED, MFA_REQUIRED (_shared/mfa.ts), NO_STEAM_ID,
+ *                    STEAM_PROFILE_PRIVATE
  *   Needs the owner: NOT_CONFIGURED, STEAM_ERROR, IGDB_ERROR, INTERNAL
  */
 type ErrorCode =
   | 'UNAUTHENTICATED'
+  | 'MFA_REQUIRED'
   | 'NO_STEAM_ID'
   | 'STEAM_PROFILE_PRIVATE'
   | 'STEAM_RATE_LIMITED'
@@ -227,6 +228,7 @@ type ErrorCode =
   | 'IGDB_RATE_LIMITED'
   | 'IGDB_UNAVAILABLE'
   | 'IGDB_ERROR'
+  | 'RATE_LIMITED'
   | 'NOT_CONFIGURED'
   | 'INTERNAL'
 
@@ -1201,6 +1203,9 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
   if (!token) throw new HttpError(401, 'UNAUTHENTICATED', 'Missing authorization')
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data.user) throw new HttpError(401, 'UNAUTHENTICATED', 'Invalid or expired session')
+  if (secondFactorMissing(data.user, token)) {
+    throw new HttpError(403, 'MFA_REQUIRED', 'Enter your two-factor code to finish signing in')
+  }
   return data.user.id
 }
 
@@ -1897,7 +1902,7 @@ async function requireCronSecret(provided: string): Promise<void> {
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json', ...headers },
   })
 
 /**
@@ -1917,11 +1922,7 @@ function errorResponse(error: unknown): Response {
   return json({ error: 'Something went wrong on our side. Try again later.', code: 'INTERNAL' }, 500)
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
+serve(withCors(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -1945,6 +1946,8 @@ serve(async (req) => {
     }
 
     const userId = await authenticate(req, admin)
+    const wait = await rateLimitWait(admin, userId, RATE_LIMITS.steamSync)
+    if (wait > 0) throw new HttpError(429, 'RATE_LIMITED', 'Too many syncs, try again later', wait)
 
     // The request body is ignored on purpose: the Steam ID is looked up on the
     // caller's own profile, so it can't be swapped for someone else's.
@@ -1959,4 +1962,4 @@ serve(async (req) => {
     console.error('sync-steam failed:', error)
     return errorResponse(error)
   }
-})
+}))

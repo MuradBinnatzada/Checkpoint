@@ -48,6 +48,8 @@ dependencies:
   crypto: ^3.0.7
   file_selector: ^1.1.0
   share_plus: ^13.3.1
+  flutter_secure_storage: ^11.2.0
+  qr: ^4.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

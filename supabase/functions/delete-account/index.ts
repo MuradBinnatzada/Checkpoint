@@ -30,11 +30,9 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { withCors } from '../_shared/cors.ts'
+import { secondFactorMissing } from '../_shared/mfa.ts'
+import { RATE_LIMITS, rateLimitWait } from '../_shared/rate_limit.ts'
 
 const AVATAR_BUCKET = 'avatars'
 const AVATAR_PAGE = 100          // files listed and removed per round trip
@@ -44,10 +42,13 @@ const AVATAR_MAX_ROUNDS = 100    // 10 000 files: far more than any user uploads
  * Machine-readable failure codes. Keep in sync with `deleteAccountMessage` in
  * lib/services/delete_account_failure.dart.
  *
- *   Needs the user:  UNAUTHENTICATED (the session expired: sign in again)
+ *   Needs the user:  UNAUTHENTICATED (the session expired: sign in again),
+ *                    MFA_REQUIRED (two-factor is on and this session has not
+ *                    entered its code, _shared/mfa.ts),
+ *                    RATE_LIMITED (too many attempts: try again later)
  *   Needs the owner: NOT_CONFIGURED, INTERNAL
  */
-type ErrorCode = 'UNAUTHENTICATED' | 'NOT_CONFIGURED' | 'INTERNAL'
+type ErrorCode = 'UNAUTHENTICATED' | 'MFA_REQUIRED' | 'RATE_LIMITED' | 'NOT_CONFIGURED' | 'INTERNAL'
 
 class HttpError extends Error {
   status: number
@@ -62,7 +63,7 @@ class HttpError extends Error {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
   })
 
 /** The verified id of the user the request's JWT belongs to. */
@@ -71,6 +72,9 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
   if (!token) throw new HttpError(401, 'UNAUTHENTICATED', 'Missing authorization')
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data.user) throw new HttpError(401, 'UNAUTHENTICATED', 'Invalid or expired session')
+  if (secondFactorMissing(data.user, token)) {
+    throw new HttpError(403, 'MFA_REQUIRED', 'Enter your two-factor code to finish signing in')
+  }
   return data.user.id
 }
 
@@ -126,11 +130,7 @@ function errorResponse(error: unknown): Response {
   return json({ error: 'Something went wrong on our side. Try again later.', code: 'INTERNAL' }, 500)
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
+serve(withCors(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -146,10 +146,13 @@ serve(async (req) => {
     })
 
     const userId = await authenticate(req, admin)
+    if (await rateLimitWait(admin, userId, RATE_LIMITS.deleteAccount) > 0) {
+      throw new HttpError(429, 'RATE_LIMITED', 'Too many attempts, try again later')
+    }
     await deleteAccount(admin, userId)
     return json({ success: true })
   } catch (error) {
     console.error('delete-account failed:', error)
     return errorResponse(error)
   }
-})
+}))

@@ -1378,16 +1378,28 @@ void main() {
   });
 
   group('writes', () {
-    test('upsertBaseGame stores a missing release year as NULL and never overwrites a row', () async {
-      await repo.upsertBaseGame(catalogGame(releaseYear: 0));
+    test('addToCatalog sends only the IGDB id: the server builds the row from IGDB', () async {
+      api.reply({'added': [7], 'existing': [], 'unknown': []});
+      await repo.addToCatalog(catalogGame());
 
+      expect(api.requests, hasLength(1));
       expect(api.last.method, 'POST');
-      expect(api.last.url.queryParameters['on_conflict'], 'igdb_id');
-      expect(api.last.headers['Prefer'], contains('resolution=ignore-duplicates'));
-      final row = api.bodyOf(api.last) as Map<String, dynamic>;
-      expect(row['igdb_id'], 7);
-      expect(row['release_year'], isNull);
-      expect(row['platforms'], ['pc', 'ps5']);
+      expect(api.last.url.path, '/functions/v1/igdb-handler');
+      expect(api.bodyOf(api.last), {
+        'mode': 'add',
+        'igdb_ids': [7],
+      });
+    });
+
+    test('addToCatalog is done when the game is already in the catalog', () async {
+      api.reply({'added': [], 'existing': [7], 'unknown': []});
+      await repo.addToCatalog(catalogGame());
+      expect(api.requests, hasLength(1));
+    });
+
+    test('addToCatalog fails when IGDB has no such game', () async {
+      api.reply({'added': [], 'existing': [], 'unknown': [7]});
+      await expectLater(repo.addToCatalog(catalogGame()), throwsStateError);
     });
 
     test('a game and its sessions are removed in one request', () async {
@@ -1407,8 +1419,8 @@ void main() {
       expect(api.last.url.path, '/rest/v1/rpc/clear_library');
     });
 
-    test('upsertBaseGame refuses a game without an IGDB id', () async {
-      await expectLater(repo.upsertBaseGame(catalogGame(igdbId: null)), throwsStateError);
+    test('addToCatalog refuses a game without an IGDB id', () async {
+      await expectLater(repo.addToCatalog(catalogGame(igdbId: null)), throwsStateError);
       expect(api.requests, isEmpty);
     });
 
@@ -1606,6 +1618,55 @@ void main() {
 
       expect(api.last.url.path, '/functions/v1/sync-achievements');
       expect(api.bodyOf(api.last), {'game_id': 'g1'});
+    });
+
+    test(
+      'startSteamLink asks steam-link for Steam sign-in, and where to come back',
+      () async {
+        const page =
+            'https://steamcommunity.com/openid/login?openid.mode=checkid_setup';
+        api
+          ..reply({'url': page})
+          ..reply({'url': page});
+
+        final opened = await repo.startSteamLink(
+          returnTo: Uri.parse('http://127.0.0.1:5000/steam-link'),
+        );
+        expect(api.last.method, 'POST');
+        expect(api.last.url.path, '/functions/v1/steam-link');
+        expect(api.bodyOf(api.last), {
+          'return_to': 'http://127.0.0.1:5000/steam-link',
+        });
+        expect(opened, Uri.parse(page));
+
+        // A phone has nowhere to come back to. The Steam ID is never sent.
+        await repo.startSteamLink();
+        expect(api.bodyOf(api.last), <String, Object?>{});
+      },
+    );
+
+    test('startSteamLink opens nothing but Steam\'s own page', () async {
+      for (final url in [
+        'https://evil.example/openid/login',
+        'http://steamcommunity.com/openid/login',
+        null,
+      ]) {
+        api.reply({'url': url});
+        await expectLater(repo.startSteamLink(), throwsFormatException);
+      }
+    });
+
+    test('a refused steam-link start reaches the app as a SyncFailure', () async {
+      api.reply(
+        {'error': 'Too many Steam sign-ins, try again later', 'code': 'RATE_LIMITED', 'retry_after': 1200},
+        status: 429,
+      );
+
+      final error = await repo.startSteamLink().then<Object?>((_) => null, onError: (Object e) => e);
+
+      final failure = SyncFailure.from(error!);
+      expect(failure.code, SyncFailureCode.rateLimited);
+      expect(failure.retryAfter, const Duration(minutes: 20));
     });
   });
 }

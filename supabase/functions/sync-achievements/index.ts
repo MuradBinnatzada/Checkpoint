@@ -55,11 +55,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shared/backoff.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { withCors } from '../_shared/cors.ts'
+import { secondFactorMissing } from '../_shared/mfa.ts'
+import { RATE_LIMITS, rateLimitWait } from '../_shared/rate_limit.ts'
 
 const STEAM_API = 'https://api.steampowered.com'
 
@@ -69,17 +67,20 @@ const OTHERS_REFRESH_MS = 10 * 60 * 1000
 /**
  * Machine-readable failure codes; the app keys off `code`, not the `error` text.
  * Same scheme as `sync-steam` (see `SyncFailureCode` in lib/services/sync_failure.dart).
- *   Retry later: STEAM_RATE_LIMITED, STEAM_UNAVAILABLE
- *   Needs the user: UNAUTHENTICATED, NO_STEAM_ID, STEAM_PROFILE_PRIVATE,
+ *   Retry later: STEAM_RATE_LIMITED, STEAM_UNAVAILABLE, RATE_LIMITED (this member
+ *                made too many requests, _shared/rate_limit.ts)
+ *   Needs the user: UNAUTHENTICATED, MFA_REQUIRED (_shared/mfa.ts), NO_STEAM_ID, STEAM_PROFILE_PRIVATE,
  *                   GAME_NOT_LINKED, NOT_IN_LIBRARY, ACHIEVEMENTS_HIDDEN, BAD_REQUEST
  *   Needs the owner: NOT_CONFIGURED, STEAM_ERROR, INTERNAL
  */
 type ErrorCode =
   | 'UNAUTHENTICATED'
+  | 'MFA_REQUIRED'
   | 'NO_STEAM_ID'
   | 'STEAM_PROFILE_PRIVATE'
   | 'STEAM_RATE_LIMITED'
   | 'STEAM_UNAVAILABLE'
+  | 'RATE_LIMITED'
   | 'STEAM_ERROR'
   | 'GAME_NOT_LINKED'
   | 'NOT_IN_LIBRARY'
@@ -292,6 +293,9 @@ async function authenticate(req: Request, admin: SupabaseClient): Promise<string
   if (!token) throw new HttpError(401, 'UNAUTHENTICATED', 'Missing authorization')
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data.user) throw new HttpError(401, 'UNAUTHENTICATED', 'Invalid or expired session')
+  if (secondFactorMissing(data.user, token)) {
+    throw new HttpError(403, 'MFA_REQUIRED', 'Enter your two-factor code to finish signing in')
+  }
   return data.user.id
 }
 
@@ -449,7 +453,7 @@ async function syncAchievements(
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json', ...headers },
   })
 
 /**
@@ -469,11 +473,7 @@ function errorResponse(error: unknown): Response {
   return json({ error: 'Something went wrong on our side. Try again later.', code: 'INTERNAL' }, 500)
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
+serve(withCors(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -489,6 +489,8 @@ serve(async (req) => {
     })
 
     const callerId = await authenticate(req, admin)
+    const wait = await rateLimitWait(admin, callerId, RATE_LIMITS.achievements)
+    if (wait > 0) throw new HttpError(429, 'RATE_LIMITED', 'Too many requests, try again shortly', wait)
 
     // Only `game_id` and `user_id` are read from the body. Any `steam_id` in it is
     // ignored on purpose: the Steam ID comes from the member's own profile, so it
@@ -528,4 +530,4 @@ serve(async (req) => {
     console.error('sync-achievements failed:', error)
     return errorResponse(error)
   }
-})
+}))

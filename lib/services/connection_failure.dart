@@ -20,7 +20,12 @@ bool isConnectionFailure(Object e) {
     final status = code.length == 3 ? int.tryParse(code) : null;
     return status != null && (status >= 500 || status == 408 || status == 429);
   }
-  return e is! AuthException &&
-      e is! StorageException &&
-      e is! FunctionException;
+  if (e is FunctionException) {
+    // An Edge Function (adding a game to the catalog goes through igdb-handler):
+    // no answer at all (status 0, FunctionsFetchException), 5xx and "try again"
+    // statuses, a member's rate limit included.
+    final status = e.status;
+    return status == 0 || status >= 500 || status == 408 || status == 429;
+  }
+  return e is! AuthException && e is! StorageException;
 }

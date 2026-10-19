@@ -1361,7 +1361,7 @@ class LibraryStore extends ChangeNotifier {
   Future<void> ensureInCatalog(Game game) async {
     if (_gamesInDb.contains(game.id)) return;
     _auth.requireSession();
-    await _repository.upsertBaseGame(game);
+    await _repository.addToCatalog(game);
     _gamesInDb.add(game.id);
   }
 
@@ -1370,10 +1370,10 @@ class LibraryStore extends ChangeNotifier {
   Future<void> _persistGame(String userId, Game game) async {
     _auth.requireSession();
     // Only touch the global catalog for a game the server hasn't confirmed yet
-    // (typically a fresh search result). The insert is ON CONFLICT DO NOTHING,
-    // so if another user added it first this is a harmless no-op.
+    // (typically a fresh search result). The server adds it from IGDB unless it
+    // is there already, so if another user added it first this is a no-op.
     if (!_gamesInDb.contains(game.id)) {
-      await _repository.upsertBaseGame(game);
+      await _repository.addToCatalog(game);
       _gamesInDb.add(game.id);
     }
 

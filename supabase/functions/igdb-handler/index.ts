@@ -77,6 +77,17 @@
 //                          app asks again later. Errors as for any request: on
 //                          IGDB_RATE_LIMITED / IGDB_UNAVAILABLE the app waits
 //                          `retry_after` seconds and goes on where it stopped.
+//                        or, to add games to the shared catalog (a search result
+//                        added to the library or to a list; members can't write
+//                        the catalog themselves):
+//                        { "mode": "add", "igdb_ids": [472, 1942, ...] }
+//                          1 to 50 ids, as for `backfill`. Makes ONE IGDB /games
+//                          request for the ids with no catalog row yet (none
+//                          missing, no IGDB request) and inserts each row built
+//                          from IGDB's answer alone (_shared/catalog_add.ts):
+//                          title, cover, summary and everything `details` keeps.
+//                          Answers { "added": [ids], "existing": [ids already
+//                          there], "unknown": [ids IGDB has no game for] }.
 //                        or, for a company's page (a publisher or developer
 //                        tapped on a game's screen, or found by the studio search):
 //                        { "mode": "company", "company_id": 56 }
@@ -115,6 +126,10 @@
 //                          IGDB_UNAVAILABLE  (503)  IGDB / Twitch is down or unreachable
 //                          IGDB_ERROR        (502)  IGDB / Twitch refused our request
 //                          UNAUTHENTICATED   (401)  no valid user session
+//                          MFA_REQUIRED      (403)  two-factor is on and this session has
+//                                                   not entered its code (_shared/mfa.ts)
+//                          RATE_LIMITED      (429)  this member made too many requests
+//                                                   (_shared/rate_limit.ts); `retry_after`
 //                          NOT_FOUND         (404)  `details` / `media` for an IGDB id with no game,
 //                                                   `company` for one with no company
 //                          BAD_REQUEST       (400 / 405)
@@ -124,10 +139,15 @@
 // Secrets (set with `supabase secrets set`):
 //   TWITCH_CLIENT_ID
 //   TWITCH_CLIENT_SECRET
+//   ALLOWED_ORIGINS  optional, the web app's origins (_shared/cors.ts)
 // SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are injected
 // automatically by Supabase.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { addQuery, newCatalogRow } from "../_shared/catalog_add.ts";
+import { withCors } from "../_shared/cors.ts";
+import { secondFactorMissing } from "../_shared/mfa.ts";
+import { RATE_LIMITS, rateLimitWait } from "../_shared/rate_limit.ts";
 import {
   companyGamesQuery,
   companyInfo,
@@ -226,18 +246,13 @@ const MAX_QUERY_LENGTH = 100;
 // Twitch/IGDB quota.
 const MAX_RESULTS = 200;
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
 type ErrorCode =
   | "IGDB_RATE_LIMITED"
   | "IGDB_UNAVAILABLE"
   | "IGDB_ERROR"
   | "UNAUTHENTICATED"
+  | "MFA_REQUIRED"
+  | "RATE_LIMITED"
   | "NOT_FOUND"
   | "BAD_REQUEST"
   | "NOT_CONFIGURED"
@@ -319,7 +334,7 @@ function jsonResponse(
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
@@ -755,6 +770,68 @@ async function backfillGames(
 }
 
 // ---------------------------------------------------------------------------
+// Add: catalog rows for games nobody has added yet
+// ---------------------------------------------------------------------------
+
+// Inserts the `games` rows [igdbIds] don't have yet, each built from IGDB's own
+// answer (never from the caller), and says which ids were added, which were
+// already there and which IGDB has no game for. A row another request inserts at
+// the same time is left as it is (ON CONFLICT DO NOTHING).
+async function addGames(
+  igdbIds: number[],
+  userId: string,
+): Promise<{ added: number[]; existing: number[]; unknown: number[] }> {
+  // Every statement below is scoped to the requested IGDB ids, and inserts only
+  // rows made from IGDB's answer.
+  const admin = serviceClient();
+  if (!admin) {
+    console.error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set");
+    throw new HttpError(500, "NOT_CONFIGURED", "Server is not configured");
+  }
+
+  const { data: rows, error } = await admin
+    .from("games")
+    .select("igdb_id")
+    .in("igdb_id", igdbIds);
+  if (error) {
+    console.error("could not read the catalog rows:", error);
+    throw new HttpError(500, "INTERNAL", "Internal error");
+  }
+  const existing = new Set((rows ?? []).map((row) => Number(row.igdb_id)));
+  const missing = igdbIds.filter((id) => !existing.has(id));
+  if (missing.length === 0) return { added: [], existing: [...existing], unknown: [] };
+
+  // A malformed answer must not read as "IGDB has none of these".
+  const answer = gamesById(await queryIgdb(IGDB_GAMES_URL, addQuery(missing)));
+  if (!answer) {
+    throw new HttpError(502, "IGDB_ERROR", "Unexpected response from IGDB");
+  }
+
+  const nowIso = new Date().toISOString();
+  const newRows: Record<string, unknown>[] = [];
+  const unknown: number[] = [];
+  for (const id of missing) {
+    const row = newCatalogRow(id, answer.get(id) ?? {}, nowIso, userId);
+    if (row) newRows.push(row);
+    else unknown.push(id);
+  }
+  if (newRows.length > 0) {
+    const { error: insertError } = await admin
+      .from("games")
+      .upsert(newRows, { onConflict: "igdb_id", ignoreDuplicates: true });
+    if (insertError) {
+      console.error("could not add the games:", insertError);
+      throw new HttpError(500, "INTERNAL", "Internal error");
+    }
+  }
+  return {
+    added: newRows.map((row) => row.igdb_id as number),
+    existing: [...existing],
+    unknown,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Companies: a publisher's or developer's page, its games, the studio search
 // ---------------------------------------------------------------------------
 
@@ -798,10 +875,10 @@ async function searchCompanies(term: string, limit: number): Promise<unknown> {
 // Authentication
 // ---------------------------------------------------------------------------
 
-// Throws a 401 unless the request carries a valid *user* access token. The anon
-// key (what logged-out clients send) is a valid JWT but has no user behind it,
-// so getUser() rejects it.
-async function requireUser(req: Request): Promise<void> {
+// The caller's user id. Throws a 401 unless the request carries a valid *user*
+// access token. The anon key (what logged-out clients send) is a valid JWT but
+// has no user behind it, so getUser() rejects it.
+async function requireUser(req: Request): Promise<string> {
   const authHeader = req.headers.get("Authorization");
   const token = authHeader ? /^Bearer\s+(.+)$/i.exec(authHeader)?.[1] : undefined;
   if (!authHeader || !token) {
@@ -826,22 +903,34 @@ async function requireUser(req: Request): Promise<void> {
   if (error || !data?.user) {
     throw new HttpError(401, "UNAUTHENTICATED", "Unauthorized");
   }
+  if (secondFactorMissing(data.user, token)) {
+    throw new HttpError(403, "MFA_REQUIRED", "Enter your two-factor code to finish signing in");
+  }
+  return data.user.id;
+}
+
+// Throws a 429 when [userId] has made more requests than RATE_LIMITS.igdb allows.
+async function requireUnderRateLimit(userId: string): Promise<void> {
+  const admin = serviceClient();
+  if (!admin) return; // requests that need the service role fail on their own
+  const wait = await rateLimitWait(admin, userId, RATE_LIMITS.igdb);
+  if (wait > 0) {
+    throw new HttpError(429, "RATE_LIMITED", "Too many requests, try again shortly", wait);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+Deno.serve(withCors(async (req: Request) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed", code: "BAD_REQUEST" }, 405);
   }
 
   try {
-    await requireUser(req);
+    const userId = await requireUser(req);
+    await requireUnderRateLimit(userId);
 
     const payload = await req.json().catch(() => null);
 
@@ -889,6 +978,22 @@ Deno.serve(async (req: Request) => {
         );
       }
       return jsonResponse(await backfillGames(igdbIds));
+    }
+
+    // `add`: catalog rows for up to MAX_BACKFILL_IDS games, by IGDB id.
+    if (payload?.mode === "add") {
+      const igdbIds = parseIgdbIds(payload?.igdb_ids);
+      if (igdbIds === null) {
+        return jsonResponse(
+          {
+            error:
+              `\`igdb_ids\` must be a list of 1 to ${MAX_BACKFILL_IDS} positive whole numbers`,
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      return jsonResponse(await addGames(igdbIds, userId));
     }
 
     // `company`: one company's page, by IGDB id.
@@ -956,7 +1061,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(
         {
           error:
-            "`mode` must be one of: popular, top_rated, new_releases, details, media, backfill, " +
+            "`mode` must be one of: popular, top_rated, new_releases, details, media, backfill, add, " +
             "company, company_games, companies",
           code: "BAD_REQUEST",
         },
@@ -1015,4 +1120,4 @@ Deno.serve(async (req: Request) => {
     console.error("Unhandled error in igdb-handler:", err);
     return jsonResponse({ error: "Internal error", code: "INTERNAL" }, 500);
   }
-});
+}));

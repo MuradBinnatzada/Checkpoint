@@ -13,6 +13,8 @@ import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/delete_account_failure.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/pending_edits.dart';
+import 'package:checkpoint/services/steam_link_service.dart';
+import 'package:checkpoint/services/sync_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 
 /// The signed-in user as a person: their profile, who they follow, and the
@@ -37,9 +39,14 @@ class ProfileStore extends ChangeNotifier {
     this._connectivity,
     LocalCache? cache,
     PendingEditsStorage? pendingStorage,
+    SteamLinkFlow? steamLink,
+    this._steamLinkResult,
+    this._steamLinkPoll = const Duration(seconds: 3),
+    this._steamLinkWait = const Duration(minutes: 10),
   }) : _cache = cache ?? LocalCache(),
        _pendingStorage =
            pendingStorage ?? PendingEditsStorage(PendingScope.follows),
+       _steamLink = steamLink ?? SteamLinkFlow(),
        _profile = _guestProfile();
 
   final CheckpointRepository _repository;
@@ -47,6 +54,18 @@ class ProfileStore extends ChangeNotifier {
   final LocalCache _cache;
   final PendingEditsStorage _pendingStorage;
   final ConnectivityService? _connectivity;
+
+  /// Opens "Sign in through Steam" for [connectSteam].
+  final SteamLinkFlow _steamLink;
+
+  /// How often, and for how long, [connectSteam] reads the profile while Steam's
+  /// page is open on a phone (see [SteamLinkOpened]).
+  final Duration _steamLinkPoll;
+  final Duration _steamLinkWait;
+
+  /// What Steam's return brought the web app back with (`ok` or an error code),
+  /// told once the signed-in user is known.
+  String? _steamLinkResult;
 
   User? _user;
 
@@ -145,6 +164,8 @@ class ProfileStore extends ChangeNotifier {
     unawaited(_authSubscription?.cancel());
     unawaited(_connectivitySubscription?.cancel());
     unawaited(_cancelDataSubscriptions());
+    _steamLinkSeq++;
+    unawaited(_steamLink.cancel());
     super.dispose();
   }
 
@@ -169,6 +190,8 @@ class ProfileStore extends ChangeNotifier {
       _followersCount = 0;
       _pending = PendingEdits();
       _pendingFor = null;
+      // A Steam sign-in the previous account started is not waited for.
+      if (_linkingSteam) cancelSteamLink();
       // The previous account's saved copy goes too (it stays valid only while
       // that account stays signed in).
       if (previous != null) unawaited(_cache.clearAccount(previous.id));
@@ -177,6 +200,13 @@ class ProfileStore extends ChangeNotifier {
 
     await _cancelDataSubscriptions();
     if (user == null || seq != _loadSeq) return;
+
+    // Steam's return reloaded the web app: say how it went.
+    final linkResult = _steamLinkResult;
+    if (linkResult != null) {
+      _steamLinkResult = null;
+      _setNotice(_steamLinkMessage(linkResult));
+    }
 
     if (_localDataFor != user.id) {
       await _loadAccountLocalData(user.id);
@@ -548,6 +578,121 @@ class ProfileStore extends ChangeNotifier {
   /// the rest of their profile. `null` when signed out or not set yet.
   String? get steamId => _profile.steamId;
 
+  /// Bumped by every [connectSteam] and [cancelSteamLink], so a sign-in that was
+  /// given up on stops waiting and says nothing.
+  int _steamLinkSeq = 0;
+  bool _linkingSteam = false;
+
+  /// A [connectSteam] is waiting for the member to sign in through Steam.
+  bool get linkingSteam => _linkingSteam;
+
+  static const _steamConnected = 'Steam connected.';
+  static const _steamNotConfirmed =
+      "Steam isn't connected yet. If you finished signing in on Steam's page, "
+      'it shows here in a moment; otherwise connect Steam again.';
+  static const _steamLinkFailed = 'Could not connect Steam. Please try again.';
+
+  /// Connects Steam the only way the server accepts: the member signs in
+  /// through Steam, and the `steam-link` Edge Function saves the Steam ID Steam
+  /// confirms (members can't write it themselves). How Steam's page opens and
+  /// comes back depends on the platform ([SteamLinkFlow]); on a phone the
+  /// profile is read every few seconds until the Steam ID is on it.
+  ///
+  /// Returns what to tell the member: that Steam is connected, or why not. Null
+  /// when there is nothing to say: [cancelSteamLink] was called, or the web app
+  /// is leaving for Steam (it comes back reloaded, see [ProfileStore.new]'s
+  /// `steamLinkResult`).
+  Future<String?> connectSteam() async {
+    final user = _user;
+    if (user == null) return 'Sign in to connect your Steam account.';
+    final seq = ++_steamLinkSeq;
+    final before = _profile.steamId;
+    _linkingSteam = true;
+    notifyListeners();
+    try {
+      final outcome = await _steamLink.open(
+        (returnTo) => _repository.startSteamLink(returnTo: returnTo),
+      );
+      if (seq != _steamLinkSeq) return null;
+      switch (outcome) {
+        case SteamLinkLeftApp():
+          return null;
+        case SteamLinkReturned(:final result):
+          if (result != 'ok') return _steamLinkMessage(result);
+          await _refreshProfile(user);
+          if (seq != _steamLinkSeq) return null;
+          return _isNewSteamId(before) ? _steamConnected : _steamNotConfirmed;
+        case SteamLinkOpened():
+          final linked = await _waitForSteamId(user, before, seq);
+          if (seq != _steamLinkSeq) return null;
+          if (!linked) return _steamNotConfirmed;
+          unawaited(_steamLink.closeBrowser());
+          return _steamConnected;
+      }
+    } on SteamLinkException catch (e) {
+      return seq == _steamLinkSeq ? e.message : null;
+    } catch (e, st) {
+      debugPrint('Connecting Steam failed: $e\n$st');
+      if (seq != _steamLinkSeq) return null;
+      // A FormatException is an answer that made no sense, which SyncFailure
+      // would take for a dropped connection.
+      final failure = e is FormatException ? null : SyncFailure.from(e);
+      return failure == null || failure.code == SyncFailureCode.unknown
+          ? _steamLinkFailed
+          : failure.message;
+    } finally {
+      if (seq == _steamLinkSeq && _linkingSteam) {
+        _linkingSteam = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Stops waiting for the Steam sign-in [connectSteam] started. (If the member
+  /// finishes it anyway, the Steam ID shows up with the next profile read.)
+  void cancelSteamLink() {
+    _steamLinkSeq++;
+    unawaited(_steamLink.cancel());
+    if (!_linkingSteam) return;
+    _linkingSteam = false;
+    notifyListeners();
+  }
+
+  /// The profile now holds a Steam ID, and not the one it had at [before].
+  bool _isNewSteamId(String? before) {
+    final id = _profile.steamId?.trim() ?? '';
+    return id.isNotEmpty && id != before?.trim();
+  }
+
+  /// Reads [user]'s profile every [_steamLinkPoll] until it has a new Steam ID
+  /// (true), [_steamLinkWait] has passed, or the sign-in was given up on.
+  Future<bool> _waitForSteamId(User user, String? before, int seq) async {
+    for (
+      var waited = Duration.zero;
+      waited < _steamLinkWait;
+      waited += _steamLinkPoll
+    ) {
+      await Future<void>.delayed(_steamLinkPoll);
+      if (seq != _steamLinkSeq || _user?.id != user.id) return false;
+      // The profile's realtime updates may have brought it already.
+      if (_isNewSteamId(before)) return true;
+      await _refreshProfile(user);
+      if (seq != _steamLinkSeq || _user?.id != user.id) return false;
+      if (_isNewSteamId(before)) return true;
+    }
+    return false;
+  }
+
+  /// What to say about a `steam_link` result from the server: `ok` or an error
+  /// code.
+  static String _steamLinkMessage(String result) {
+    if (result == 'ok') return _steamConnected;
+    final code = SyncFailureCode.fromWire(result);
+    return code == null || code == SyncFailureCode.unknown
+        ? _steamLinkFailed
+        : code.message;
+  }
+
   /// Clears the Steam ID on the profile, which is what disconnects Steam.
   /// Returns null on success, or a message that is safe to show.
   Future<String?> disconnectSteam() async {
@@ -566,7 +711,7 @@ class ProfileStore extends ChangeNotifier {
 
   void toggleService(ConnectedService s) async {
     if (s == ConnectedService.steam) {
-      // Toggling Steam off clears its ID. Connecting goes through [setSteamId].
+      // Toggling Steam off clears its ID. Connecting goes through [connectSteam].
       unawaited(disconnectSteam());
       return;
     }
@@ -725,28 +870,6 @@ class ProfileStore extends ChangeNotifier {
     }
   }
 
-  /// Saves [id] to the signed-in user's `profiles` row (not to the device).
-  /// The local copy is updated only after the save succeeds. Returns null on
-  /// success, or a user-facing error message.
-  Future<String?> setSteamId(String id) async {
-    final current = _user;
-    if (current == null) return 'Sign in to connect your Steam account.';
-
-    final trimmed = id.trim();
-    if (trimmed.isEmpty) return 'Enter your Steam ID.';
-
-    try {
-      await _repository.setSteamId(trimmed);
-      _profile = _profile.copyWith(steamId: trimmed);
-      notifyListeners();
-      unawaited(_writeProfileCache());
-      return null;
-    } catch (e, st) {
-      debugPrint('Saving Steam ID failed: $e\n$st');
-      return 'Could not save your Steam ID. Please try again.';
-    }
-  }
-
   String? _psnId;
   String? _xboxId;
   String? _discordId;
@@ -778,8 +901,8 @@ class ProfileStore extends ChangeNotifier {
 
   /// Saves the username for PSN, Xbox, Discord, Instagram or Twitch, marks that
   /// service as connected, and persists both the ID and the connected-services
-  /// list. Steam uses [setSteamId] (stored on the profile); Nintendo has no stored
-  /// ID.
+  /// list. Steam uses [connectSteam] (the server stores it on the profile);
+  /// Nintendo has no stored ID.
   void setServiceId(ConnectedService service, String id) async {
     final String prefKey;
     switch (service) {

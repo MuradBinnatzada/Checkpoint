@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/app_shell.dart';
+import 'package:checkpoint/app/second_factor_gate.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
@@ -42,7 +43,8 @@ class _CheckpointAppState extends State<CheckpointApp> {
         builder: (context, child) => MediaQuery.withClampedTextScaling(
           minScaleFactor: 0.9,
           maxScaleFactor: 1.3,
-          child: child!,
+          // Over every route: a sign-in that still owes its two-factor code.
+          child: SecondFactorGate(child: child!),
         ),
         home: const AppShell(),
       ),

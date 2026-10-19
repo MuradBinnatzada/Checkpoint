@@ -16,6 +16,8 @@ class AuthStore extends ChangeNotifier {
   final AuthService _service;
 
   User? _user;
+  User? _waitingUser;
+  bool _twoFactorOn = false;
   bool _sessionPending = false;
   bool _recoveringPassword = false;
   StreamSubscription<AuthState>? _subscription;
@@ -48,8 +50,26 @@ class AuthStore extends ChangeNotifier {
   /// The user opened a password reset link, which signed them in, and has not
   /// chosen a new password yet: the app shell asks for one until
   /// [updatePassword] saves it or [dismissPasswordRecovery] puts it off. Only
-  /// the browser tab that opened the link asks, not the other open tabs.
-  bool get isRecoveringPassword => _recoveringPassword;
+  /// the browser tab that opened the link asks, not the other open tabs. An
+  /// account with two-factor authentication is asked after its code.
+  bool get isRecoveringPassword => _recoveringPassword && _user != null;
+
+  /// Signed in (password, Google, Apple, a reset link...), but the account has
+  /// two-factor authentication on and this session has not entered a code
+  /// from the authenticator app yet. Until [verifySecondFactor] takes one the
+  /// app treats it as signed out: [user] is null and [userChanges] says null,
+  /// as the server refuses such a session the account's data anyway.
+  /// SecondFactorGate asks for the code over the whole app.
+  bool get needsSecondFactor => _waitingUser != null;
+
+  /// The email address of the account waiting for its code, if it has one.
+  String? get waitingEmail {
+    final text = _waitingUser?.email?.trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  /// Whether the signed-in account has two-factor authentication on.
+  bool get hasTwoFactor => _twoFactorOn;
 
   /// Emits the current user (`null` = signed out) on every auth event: sign-in,
   /// sign-out, token refresh, profile update. Unlike [addListener], this includes
@@ -60,29 +80,50 @@ class AuthStore extends ChangeNotifier {
   /// Reads the session Supabase restored from disk and starts following changes.
   /// Call once, before the stores that listen to [userChanges] call theirs.
   Future<void> initialize() async {
-    _user = _service.currentUser;
-    if (_user != null) notifyListeners();
+    final restored = _service.currentUser;
+    if (restored != null) {
+      if (_service.needsSecondFactor) {
+        _waitingUser = restored;
+      } else {
+        _user = restored;
+        _twoFactorOn = _service.hasTwoFactor;
+      }
+      notifyListeners();
+    }
     _subscription = _service.changes.listen((state) {
-      final next = state.session?.user;
+      final signedIn = state.session?.user;
+      // A session that still owes its two-factor code is no one yet.
+      final waiting =
+          signedIn != null && _service.needsSecondFactor ? signedIn : null;
+      final next = waiting == null ? signedIn : null;
       final accountChanged = next?.id != _user?.id;
+      final waitingChanged = waiting?.id != _waitingUser?.id;
       final opensReset =
           state.event == AuthChangeEvent.passwordRecovery &&
           !state.fromBroadcast;
+      final sameAccount =
+          signedIn != null && signedIn.id == (_user ?? _waitingUser)?.id;
       final recovering =
-          next != null &&
-          (opensReset || (_recoveringPassword && !accountChanged));
+          signedIn != null &&
+          (opensReset || (_recoveringPassword && sameAccount));
       final recoveryChanged = recovering != _recoveringPassword;
+      final twoFactor = next != null && _service.hasTwoFactor;
+      final twoFactorChanged = twoFactor != _twoFactorOn;
       _sessionPending = false;
       _user = next;
+      _waitingUser = waiting;
       _recoveringPassword = recovering;
+      _twoFactorOn = twoFactor;
       // Widgets watching this store care who is signed in, not about the hourly
       // token refresh, so they are told only when the account changes (or a
-      // reset link wants a new password).
-      if (accountChanged || recoveryChanged) notifyListeners();
+      // reset link wants a new password, or two-factor is turned on or off).
+      if (accountChanged || waitingChanged || recoveryChanged || twoFactorChanged) {
+        notifyListeners();
+      }
       _changes.add(next);
     }, onError: (Object e) => debugPrint('Auth stream error: $e'));
 
-    if (_user == null) {
+    if (_user == null && _waitingUser == null) {
       final savedId = await _service.persistedUserId();
       if (savedId != null && _user == null) {
         _user = User(
@@ -177,6 +218,51 @@ class AuthStore extends ChangeNotifier {
     if (_user == null) throw StateError('Not signed in.');
     requireSession();
     await _service.signOutOtherDevices();
+  }
+
+  /// Checks [code] from the authenticator app of the account that
+  /// [needsSecondFactor]. A right one signs it in ([userChanges] announces
+  /// it); a wrong or expired one throws its [AuthException].
+  Future<void> verifySecondFactor(String code) async {
+    if (_waitingUser == null) throw StateError('No code is needed.');
+    await _service.verifySecondFactor(code);
+  }
+
+  /// Starts turning two-factor authentication on: what to show for adding the
+  /// account to an authenticator app. Nothing changes until
+  /// [confirmTwoFactor] gets the first code. Throws when there is no live
+  /// session to ask with ([SessionPending]) or the server refused.
+  Future<TotpSetup> enrollTwoFactor() async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    return _service.enrollTwoFactor();
+  }
+
+  /// Turns two-factor authentication on with the first [code] the app shows
+  /// for the [enrollTwoFactor] setup [factorId]; [hasTwoFactor] follows.
+  Future<void> confirmTwoFactor(String factorId, String code) async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    await _service.confirmTwoFactor(factorId, code);
+  }
+
+  /// Drops an [enrollTwoFactor] setup that was left unfinished. Best effort:
+  /// Supabase drops unverified ones by itself after a few minutes.
+  Future<void> cancelTwoFactor(String factorId) async {
+    try {
+      await _service.cancelTwoFactor(factorId);
+    } catch (e) {
+      debugPrint('Dropping the unfinished two-factor setup failed: $e');
+    }
+  }
+
+  /// Turns two-factor authentication off; [hasTwoFactor] follows. Throws when
+  /// there is no live session to ask with ([SessionPending]) or the server
+  /// refused.
+  Future<void> disableTwoFactor() async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    await _service.disableTwoFactor();
   }
 
   /// Permanently deletes the signed-in account and everything stored for it on

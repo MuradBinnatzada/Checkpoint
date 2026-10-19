@@ -5,7 +5,9 @@ import 'package:checkpoint/services/connection_failure.dart';
 /// What went wrong with a Steam sync, as named by the Edge Functions in the
 /// `code` field of a failed response (and in `delayed.code` of a sync that only
 /// got part of the way). Keep the wire names in sync with `ErrorCode` in
-/// supabase/functions/sync-steam, sync-achievements and igdb-handler.
+/// supabase/functions/sync-steam, sync-achievements, igdb-handler and
+/// steam-link (which also sends them back as `steam_link` on its return
+/// address).
 ///
 /// [delayed] marks the codes that fix themselves: the sync is worth trying
 /// again shortly, and nothing the user does will change the outcome. The others
@@ -18,10 +20,12 @@ enum SyncFailureCode {
   igdbUnavailable('IGDB_UNAVAILABLE', 'The game database is not responding right now.', delayed: true),
   syncPartial('SYNC_PARTIAL', 'Some games will be matched on your next sync.', delayed: true),
   serverBusy('SERVER_BUSY', 'The sync service is busy right now.', delayed: true),
+  rateLimited('RATE_LIMITED', 'Too many requests from your account.', delayed: true),
   offline('OFFLINE', 'Could not reach the server. Check your connection.', delayed: true),
 
   // Needs the user.
   unauthenticated('UNAUTHENTICATED', 'Your session expired. Sign in again to sync.'),
+  mfaRequired('MFA_REQUIRED', 'Enter your two-factor code to finish signing in, then sync again.'),
   noSteamId('NO_STEAM_ID', 'Connect your Steam account first to sync your library.'),
   steamProfilePrivate(
     'STEAM_PROFILE_PRIVATE',
@@ -31,6 +35,9 @@ enum SyncFailureCode {
   gameNotLinked('GAME_NOT_LINKED', 'This game is not linked to a Steam app yet. Sync your Steam library first.'),
   notInLibrary('NOT_IN_LIBRARY', 'That game is not in your library.'),
   achievementsHidden('ACHIEVEMENTS_HIDDEN', 'This member keeps their achievements private.'),
+  steamLinkCancelled('STEAM_LINK_CANCELLED', 'Steam sign-in was cancelled, so Steam is not connected.'),
+  steamLinkExpired('STEAM_LINK_EXPIRED', 'The Steam sign-in took too long. Connect Steam again.'),
+  steamLinkInvalid('STEAM_LINK_INVALID', 'Steam could not confirm the sign-in. Connect Steam again.'),
 
   // Needs the owner, or a bug.
   notConfigured('NOT_CONFIGURED', 'Syncing is not available right now.'),

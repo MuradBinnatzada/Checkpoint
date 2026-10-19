@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/services/session_storage.dart';
+
 /// Google OAuth client IDs.
 ///
 /// The WEB client ID (the same one configured under Supabase Authentication >
@@ -26,6 +28,21 @@ const _googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
 /// or add this address to the Redirect URLs list.
 const _desktopRedirectPort = 3000;
 const _desktopRedirectUrl = 'http://localhost:$_desktopRedirectPort';
+
+/// What an authenticator app needs to add the account, while two-factor
+/// authentication is being turned on ([AuthService.enrollTwoFactor]).
+class TotpSetup {
+  const TotpSetup({required this.factorId, required this.secret, required this.uri});
+
+  /// The factor the first code confirms.
+  final String factorId;
+
+  /// The shared key (base32), typed in when the QR code can't be scanned.
+  final String secret;
+
+  /// The `otpauth://totp/...` link the QR code holds.
+  final String uri;
+}
 
 /// All network/auth calls live here so screens and the store stay SDK-light.
 ///
@@ -257,11 +274,14 @@ class AuthService {
         '<body><div><h2>$title</h2><p>$body</p></div></body></html>';
   }
 
-  /// Where supabase_flutter keeps the session on disk (see its `Supabase.initialize`).
-  String get _persistedSessionKey =>
-      'sb-${Uri.parse(_client.rest.url).host.split('.').first}-auth-token';
+  /// Where supabase_flutter keeps the session on disk (see `Supabase.initialize`
+  /// in main.dart): encrypted on Android and iOS, SharedPreferences elsewhere.
+  String get _persistedSessionKey => sessionKeyFor(_client.rest.url);
 
   Future<String?> _persistedSession() async {
+    if (EncryptedSessionStorage.supported) {
+      return EncryptedSessionStorage(_persistedSessionKey).accessToken();
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_persistedSessionKey);
@@ -277,15 +297,37 @@ class AuthService {
   /// when the refresh fails because the network is down, and the saved session
   /// stays on disk. A real sign-out, or a refresh token the server rejected,
   /// removes it.
+  ///
+  /// A saved session that never got its two-factor code ([owesSecondFactor])
+  /// counts as none: the code can only be checked online.
   Future<String?> persistedUserId() async {
     final raw = await _persistedSession();
     if (raw == null) return null;
     try {
-      final user = (jsonDecode(raw) as Map)['user'];
+      final session = jsonDecode(raw) as Map;
+      if (owesSecondFactor(session)) return null;
+      final user = session['user'];
       final id = user is Map ? user['id'] : null;
       return id is String && id.isNotEmpty ? id : null;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Whether a saved [session] (as JSON) is [needsSecondFactor]'s case: its
+  /// account has a verified authenticator app and its token is not aal2.
+  @visibleForTesting
+  static bool owesSecondFactor(Map session) {
+    final user = session['user'];
+    final factors = user is Map ? user['factors'] : null;
+    final enrolled = factors is List &&
+        factors.any((f) => f is Map && f['status'] == FactorStatus.verified.name);
+    if (!enrolled) return false;
+    final token = session['access_token'];
+    try {
+      return token is! String || decodeJwt(token).payload.claims['aal'] != 'aal2';
+    } catch (_) {
+      return true;
     }
   }
 
@@ -305,12 +347,86 @@ class AuthService {
 
   /// Forgets a saved session that never became live (signing out in that state).
   Future<void> discardPersistedSession() async {
+    if (EncryptedSessionStorage.supported) {
+      await EncryptedSessionStorage(_persistedSessionKey).removePersistedSession();
+      return;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_persistedSessionKey);
     } catch (e) {
       debugPrint('Discarding the saved session failed: $e');
     }
+  }
+
+  // Two-factor authentication: a code from an authenticator app (TOTP) after
+  // the password, Google or Apple. Supabase Auth MFA keeps the factor; the
+  // database and the Edge Functions refuse an account that has one until its
+  // session is aal2 (20261019135155_require_mfa.sql).
+
+  /// The signed-in account's verified authenticator apps. Supabase keeps the
+  /// list on the session's user and updates it on sign-in, on a verified code
+  /// and on every refresh.
+  Iterable<Factor> get _verifiedTotp =>
+      (_auth.currentUser?.factors ?? const <Factor>[]).where(
+        (f) => f.factorType == FactorType.totp && f.status == FactorStatus.verified,
+      );
+
+  /// Whether the signed-in account has two-factor authentication on.
+  bool get hasTwoFactor => _verifiedTotp.isNotEmpty;
+
+  /// Whether this session signed in with one factor (aal1) while the account
+  /// has two-factor authentication on (aal2 is next): the authenticator app's
+  /// code is still owed. Read from the session, without a request.
+  bool get needsSecondFactor {
+    final aal = _auth.mfa.getAuthenticatorAssuranceLevel();
+    return aal.currentLevel == AuthenticatorAssuranceLevels.aal1 &&
+        aal.nextLevel == AuthenticatorAssuranceLevels.aal2;
+  }
+
+  /// Checks [code] from the authenticator app, which makes this session aal2;
+  /// [changes] announces it (mfaChallengeVerified).
+  Future<void> verifySecondFactor(String code) async {
+    final factor = _verifiedTotp.firstOrNull;
+    if (factor == null) {
+      throw const AuthException('Two-factor authentication is not on for this account.');
+    }
+    await _auth.mfa.challengeAndVerify(factorId: factor.id, code: code.trim());
+  }
+
+  /// Starts turning two-factor authentication on: adds an authenticator app
+  /// that is not verified yet, and returns what to show to set it up. Nothing
+  /// changes for the account until [confirmTwoFactor] checks its first code.
+  Future<TotpSetup> enrollTwoFactor() async {
+    final res = await _auth.mfa.enroll(factorType: FactorType.totp, issuer: 'Checkpoint');
+    final totp = res.totp;
+    if (totp == null) throw const AuthException('Two-factor setup did not return a key.');
+    return TotpSetup(factorId: res.id, secret: totp.secret, uri: totp.uri);
+  }
+
+  /// Finishes turning two-factor authentication on with the first [code] the
+  /// authenticator app shows for [factorId]. The session becomes aal2 and
+  /// Supabase ends the account's aal1 sessions on other devices.
+  Future<void> confirmTwoFactor(String factorId, String code) =>
+      _auth.mfa.challengeAndVerify(factorId: factorId, code: code.trim());
+
+  /// Drops the authenticator app of a setup that was not finished. (Supabase
+  /// also drops unverified ones by itself after a few minutes.)
+  Future<void> cancelTwoFactor(String factorId) => _auth.mfa.unenroll(factorId);
+
+  /// Turns two-factor authentication off. Supabase only allows it from an aal2
+  /// session (`insufficient_aal`). The session is refreshed afterwards, so it
+  /// stops listing the factor and [changes] announces that.
+  Future<void> disableTwoFactor() async {
+    for (final factor in _verifiedTotp.toList()) {
+      try {
+        await _auth.mfa.unenroll(factor.id);
+      } on AuthException catch (e) {
+        // Removed by an earlier attempt whose refresh failed.
+        if (e.code != ErrorCode.mfaFactorNotFound.code) rethrow;
+      }
+    }
+    await _auth.refreshSession();
   }
 
   /// Permanently deletes the signed-in user's account through the `delete-account`
@@ -361,6 +477,15 @@ class AuthService {
         'over_request_rate_limit' => 'Too many attempts. Wait a few minutes and try again.',
         'email_provider_disabled' => "Email sign-in isn't available right now. Use Continue with Google.",
         'signup_disabled' => "New accounts can't be created right now.",
+        // Two-factor authentication.
+        'mfa_verification_failed' =>
+          "That code didn't work. Enter the newest code from your authenticator app, "
+              "and check that your device's clock is right.",
+        'mfa_challenge_expired' || 'mfa_verification_rejected' => 'That code expired. Enter the newest one.',
+        'mfa_totp_enroll_not_enabled' || 'mfa_totp_verify_not_enabled' =>
+          "Two-factor authentication isn't available right now.",
+        'insufficient_aal' => 'For your security, sign out and sign in again with your code, then try again.',
+        'too_many_enrolled_mfa_factors' => 'Too many unfinished setups. Wait a few minutes and try again.',
         _ => e.message,
       };
     }

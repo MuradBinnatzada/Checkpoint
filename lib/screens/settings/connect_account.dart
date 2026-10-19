@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
@@ -5,8 +7,9 @@ import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/widgets/connected_accounts_panel.dart';
 
-/// What the buttons of the Connect accounts box in Settings do: ask for the name or ID
-/// of a service and save it, change it, or disconnect the service.
+/// What the buttons of the Connect accounts box in Settings do: sign in through
+/// Steam, or ask for the name of another service and save it, change it, or
+/// disconnect the service.
 AccountEditor accountEditorFor(BuildContext context) => AccountEditor(
   onConnect: (service) => connectService(context, service),
   onEdit: (service) => connectService(context, service, editing: true),
@@ -25,27 +28,22 @@ Future<void> connectService(
 
   switch (service) {
     case ConnectedService.steam:
-      final id = await showDialog<String>(
+      // Proved by signing in through Steam, never typed in: the server saves
+      // the Steam ID Steam confirms, and Steam shows as connected by itself once
+      // the profile has it. A dialog waits for the sign-in and can call it off.
+      final linking = store.connectSteam();
+      final message = await showDialog<String>(
         context: context,
-        builder: (_) => _TextDialog(
-          title: editing ? 'Change Steam ID' : 'Connect Steam Account',
-          hint: 'Enter 17-digit Steam ID64',
-          helper: 'e.g., 76561198000000000',
-          initial: editing ? store.steamId : null,
-          confirmLabel: editing ? 'Save' : 'Connect',
-          keyboardType: TextInputType.number,
-          validate: (text) => text.isEmpty ? 'Enter your Steam ID' : null,
+        barrierDismissible: false,
+        builder: (_) => _SteamLinkDialog(
+          linking: linking,
+          onCancel: store.cancelSteamLink,
         ),
       );
-      if (id == null) return;
-      // The ID is saved on the user's profile in Supabase; Steam shows as connected
-      // by itself once that save has succeeded: it is connected exactly when the
-      // profile has a Steam ID.
-      final error = await store.setSteamId(id);
-      if (error != null) {
+      if (message != null) {
         messenger
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(error)));
+          ..showSnackBar(SnackBar(content: Text(message)));
       }
     case ConnectedService.nintendo:
       final id = await showDialog<String>(
@@ -134,6 +132,61 @@ Future<void> disconnectService(
   if (store.isConnected(service)) store.toggleService(service);
 }
 
+/// Waits for the Steam sign-in [linking] (ProfileStore.connectSteam) and pops
+/// with what it says. Cancel stops waiting and pops with nothing.
+class _SteamLinkDialog extends StatefulWidget {
+  const _SteamLinkDialog({required this.linking, required this.onCancel});
+
+  final Future<String?> linking;
+  final VoidCallback onCancel;
+
+  @override
+  State<_SteamLinkDialog> createState() => _SteamLinkDialogState();
+}
+
+class _SteamLinkDialogState extends State<_SteamLinkDialog> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      widget.linking.then((message) {
+        if (mounted) Navigator.pop(context, message);
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Connect Steam'),
+      content: const Row(
+        children: [
+          SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              "Sign in on Steam's page to show the account is yours. "
+              'Checkpoint gets your Steam ID from Steam, never your password.',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            widget.onCancel();
+            Navigator.pop(context);
+          },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
 /// One text field in a dialog. Pops with the text (passed through [clean] when
 /// given), or nothing if cancelled; [validate] returns what to say about text that
 /// can't be accepted.
@@ -142,20 +195,16 @@ class _TextDialog extends StatefulWidget {
     required this.title,
     required this.hint,
     required this.validate,
-    this.helper,
     this.initial,
     this.prefix,
-    this.keyboardType,
     this.clean,
     this.confirmLabel = 'Connect',
   });
 
   final String title;
   final String hint;
-  final String? helper;
   final String? initial;
   final String? prefix;
-  final TextInputType? keyboardType;
   final String? Function(String text) validate;
   final String? Function(String text)? clean;
   final String confirmLabel;
@@ -193,7 +242,6 @@ class _TextDialogState extends State<_TextDialog> {
         autofocus: true,
         autocorrect: false,
         enableSuggestions: false,
-        keyboardType: widget.keyboardType,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _submit(),
         onChanged: (_) {
@@ -201,7 +249,6 @@ class _TextDialogState extends State<_TextDialog> {
         },
         decoration: InputDecoration(
           hintText: widget.hint,
-          helperText: widget.helper,
           errorText: _error,
           prefixText: widget.prefix,
         ),

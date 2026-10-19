@@ -25,6 +25,7 @@ import 'support/fakes.dart';
 void main() {
   late FakeRepository repo;
   late FakeAuthService authService;
+  late FakeSteamLink steam;
   late AppStores stores;
 
   User googleUser() => User(
@@ -49,10 +50,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     repo = FakeRepository();
     authService = FakeAuthService(googleUser());
+    steam = FakeSteamLink(repo);
     stores = AppStores(
       repository: repo,
       authService: authService,
       connectivity: FakeConnectivity(),
+      steamLink: steam,
     );
   });
 
@@ -453,6 +456,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // A Steam ID is proved by signing in, never typed: nothing to change.
+      expect(find.text('Change Steam ID'), findsNothing);
+      expect(find.text('Change username'), findsNothing);
       await tester.tap(find.text('Disconnect'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel'));
@@ -462,27 +468,57 @@ void main() {
       expect(repo.steamId, '76561198000000000');
     });
 
-    testWidgets('connecting Steam saves the ID and brings the sync button', (
+    testWidgets(
+      'connecting Steam signs in through Steam and brings the sync button',
+      (tester) async {
+        await open(tester, size: tall);
+        expect(find.text('Sync Library'), findsNothing);
+        steam.gate = Completer<void>();
+
+        await tester.tap(connectButton('Steam'));
+        await tester.pump();
+        // Steam's page is open; the app waits for it, and asks for no ID.
+        expect(find.text('Connect Steam'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        expect(steam.opened.single.host, 'steamcommunity.com');
+
+        steam.gate!.complete();
+        await tester.pumpAndSettle();
+        await settle(tester);
+
+        expect(find.text('Connect Steam'), findsNothing);
+        expect(find.text('Steam connected.'), findsOneWidget);
+        expect(stores.profile.steamConnected, isTrue);
+        // The server saved it; the app wrote no Steam ID.
+        expect(repo.writes.where((w) => w.startsWith('steam:')), isEmpty);
+        expect(find.text('Sync Library'), findsOneWidget);
+      // The sync button belongs to the game profiles, above Social media.
+        expect(
+          top(tester, find.text('Sync Library')),
+          lessThan(top(tester, find.text('SOCIAL MEDIA'))),
+        );
+      },
+    );
+
+    testWidgets('cancelling the Steam sign-in stops waiting and connects nothing', (
       tester,
     ) async {
       await open(tester, size: tall);
-      expect(find.text('Sync Library'), findsNothing);
+      steam.gate = Completer<void>();
 
       await tester.tap(connectButton('Steam'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), '76561198000000000');
-      await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
-      await tester.pumpAndSettle();
-      await settle(tester);
 
-      expect(repo.steamId, '76561198000000000');
-      expect(stores.profile.steamConnected, isTrue);
-      expect(find.text('Sync Library'), findsOneWidget);
-      // The sync button belongs to the game profiles, above Social media.
-      expect(
-        top(tester, find.text('Sync Library')),
-        lessThan(top(tester, find.text('SOCIAL MEDIA'))),
-      );
+      expect(find.text('Connect Steam'), findsNothing);
+      expect(steam.cancels, 1);
+      expect(stores.profile.linkingSteam, isFalse);
+
+      // Steam's page comes back after all: the app was no longer waiting.
+      steam.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Steam connected.'), findsNothing);
     });
   });
 
@@ -556,6 +592,9 @@ void main() {
     ) async {
       await open(tester, section: SettingsSection.security);
 
+      // Below the two-factor switch.
+      await tester.ensureVisible(find.text('Sign out other devices'));
+      await tester.pumpAndSettle();
       await tester.runAsync(() async {
         await tester.tap(find.text('Sign out other devices'));
         await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -571,6 +610,9 @@ void main() {
       authService.signOutOthersError = AuthException('Session expired');
       await open(tester, section: SettingsSection.security);
 
+      // Below the two-factor switch.
+      await tester.ensureVisible(find.text('Sign out other devices'));
+      await tester.pumpAndSettle();
       await tester.runAsync(() async {
         await tester.tap(find.text('Sign out other devices'));
         await Future<void>.delayed(const Duration(milliseconds: 50));

@@ -169,14 +169,13 @@ class _AccountRow extends StatelessWidget {
               _MenuAction.disconnect => editor.onDisconnect(service),
             },
             itemBuilder: (_) => [
-              if (service != ConnectedService.nintendo)
-                PopupMenuItem(
+              // Nintendo has no name. Steam's ID is proved by signing in, not
+              // typed: another account is Disconnect, then Connect.
+              if (service != ConnectedService.nintendo &&
+                  service != ConnectedService.steam)
+                const PopupMenuItem(
                   value: _MenuAction.edit,
-                  child: Text(
-                    service == ConnectedService.steam
-                        ? 'Change Steam ID'
-                        : 'Change username',
-                  ),
+                  child: Text('Change username'),
                 ),
               const PopupMenuItem(
                 value: _MenuAction.disconnect,

@@ -165,16 +165,27 @@ class CheckpointRepository {
         .eq(Db.id, userId);
   }
 
-  /// Saves the signed-in user's Steam ID64 on their own `profiles` row.
-  /// The `sync-steam` Edge Function reads it back from there, keyed by the
-  /// caller's verified user ID. Read it with [fetchProfile] / [ensureProfile]
-  /// (it comes back as [UserProfile.steamId]).
-  Future<void> setSteamId(String steamId) async {
-    final userId = _requireUserId();
-    await _client
-        .from(Db.profiles)
-        .update({Db.steamId: steamId.trim()})
-        .eq(Db.id, userId);
+  /// Starts connecting the signed-in user's Steam account through the
+  /// `steam-link` Edge Function, which answers the Steam sign-in page to open.
+  /// When the user signs in there, the function saves the Steam ID Steam
+  /// confirms on their `profiles` row (members can't write it themselves); read
+  /// it back with [fetchProfile] as [UserProfile.steamId]. [returnTo] is where
+  /// the browser goes when it is done, with `steam_link=ok` or an error code;
+  /// null for nowhere. Throws [FunctionException] when the function answers with
+  /// an error.
+  Future<Uri> startSteamLink({Uri? returnTo}) async {
+    final response = await _client.functions.invoke(
+      'steam-link',
+      body: {if (returnTo != null) 'return_to': returnTo.toString()},
+    );
+    final data = response.data;
+    final url = data is Map ? data['url'] : null;
+    final page = url is String ? Uri.tryParse(url) : null;
+    // Nothing but Steam's own page is ever opened as "Sign in through Steam".
+    if (page == null || page.scheme != 'https' || page.host != 'steamcommunity.com') {
+      throw const FormatException('steam-link did not answer a Steam sign-in page');
+    }
+    return page;
   }
 
   /// Removes the signed-in user's Steam ID from their own `profiles` row.
@@ -1054,18 +1065,19 @@ class CheckpointRepository {
     await _client.from(Db.logEntries).delete().eq(Db.id, id);
   }
 
-  /// Adds [game] to the global catalog if it isn't there yet.
+  /// Adds [game] to the global catalog if it isn't there yet, through the
+  /// `igdb-handler` Edge Function (mode `add`).
   ///
   /// A game's identity is its IGDB id: `games.igdb_id` is unique and `games.id`
   /// must be [gameIdForIgdb] of it (database constraint), so the game added here
   /// from search and the same game imported by Steam sync are one row.
   ///
-  /// `ignoreDuplicates` makes this INSERT ... ON CONFLICT (igdb_id) DO NOTHING, so
-  /// a game that already exists (added earlier by another user, or by sync-steam)
-  /// is left exactly as it is. That matters because the app no longer holds the
-  /// whole catalog in memory to check first, and RLS only lets a user edit the
-  /// catalog rows they created; a plain upsert on someone else's row would fail.
-  Future<void> upsertBaseGame(Game game) async {
+  /// Members can't write the catalog (20261019132900_security_hardening.sql), so
+  /// only the IGDB id is sent: the function builds a missing row from IGDB's own
+  /// answer, and a game that already exists (added earlier by another user, or by
+  /// sync-steam) is left exactly as it is. Throws [StateError] when IGDB has no
+  /// game by that id, and the [FunctionException] of a failed call.
+  Future<void> addToCatalog(Game game) async {
     final igdbId = game.igdbId;
     if (igdbId == null) {
       // Only games read back from the database can lack an IGDB id (legacy
@@ -1073,20 +1085,18 @@ class CheckpointRepository {
       throw StateError('Cannot add "${game.title}" to the catalog without an IGDB id.');
     }
     assert(game.id == gameIdForIgdb(igdbId), 'games.id must be derived from igdb_id');
-    await _client.from(Db.games).upsert({
-      Db.id: game.id,
-      Db.igdbId: igdbId,
-      Db.title: game.title,
-      Db.developer: game.developer,
-      Db.publisher: game.publisher,
-      // games_release_year_check allows 1950-2100 or NULL; 0 ("unknown") becomes NULL.
-      Db.releaseYear: sanitizeReleaseYear(game.releaseYear),
-      Db.platforms: game.platforms.map(gamePlatformToDb).toList(),
-      Db.genres: game.genres,
-      Db.summary: game.synopsis,
-      Db.coverUrl: game.coverUrl,
-      if (game.releaseDate case final released?) Db.releaseDate: _day(released),
-    }, onConflict: Db.igdbId, ignoreDuplicates: true);
+    final response = await _client.functions.invoke(
+      'igdb-handler',
+      body: {
+        'mode': 'add',
+        'igdb_ids': [igdbId],
+      },
+    );
+    final data = response.data;
+    bool lists(String key) => data is Map && data[key] is List && (data[key] as List).contains(igdbId);
+    if (!lists('added') && !lists('existing')) {
+      throw StateError('IGDB has no game "${game.title}" ($igdbId) to add to the catalog.');
+    }
   }
 
   /// Takes [gameId] out of the library together with its play sessions, in one

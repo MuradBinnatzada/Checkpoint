@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/checkpoint_app.dart';
+import 'package:checkpoint/services/session_storage.dart';
 import 'package:checkpoint/theme/palette.dart';
 
 const _supabaseUrl = 'https://nmbarqhvcjgyuwreebda.supabase.co';
@@ -15,6 +16,13 @@ Future<void> main() async {
   await Supabase.initialize(
     url: _supabaseUrl,
     publishableKey: _supabasePublishableKey,
+    // Android and iOS keep the session's tokens encrypted; null is
+    // supabase_flutter's own storage (the web and desktop apps).
+    authOptions: FlutterAuthClientOptions(
+      localStorage: EncryptedSessionStorage.supported
+          ? EncryptedSessionStorage(sessionKeyFor(_supabaseUrl))
+          : null,
+    ),
   );
 
   SystemChrome.setSystemUIOverlayStyle(

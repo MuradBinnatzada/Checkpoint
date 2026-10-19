@@ -9,6 +9,7 @@ import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
+import 'package:checkpoint/services/steam_link_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/company_store.dart';
@@ -79,6 +80,8 @@ class AppStores {
     GameApiService? apiService,
     ConnectivityService? connectivity,
     LinkTarget? initialLink,
+    SteamLinkFlow? steamLink,
+    String? steamLinkResult,
   }) {
     final localCache = cache ?? LocalCache();
     links = SharedLinkStore(repository: repository, initial: initialLink);
@@ -90,6 +93,8 @@ class AppStores {
       auth: auth,
       connectivity: network,
       cache: localCache,
+      steamLink: steamLink,
+      steamLinkResult: steamLinkResult,
     );
     search = SearchStore(
       repository: repository,
@@ -157,6 +162,8 @@ class AppStores {
     authService: AuthService(client),
     // The web app opened from a shared link: .../#/game/1942.
     initialLink: kIsWeb ? LinkTarget.parse(Uri.base.fragment) : null,
+    // The web app back from "Sign in through Steam": .../?steam_link=ok.
+    steamLinkResult: takeWebSteamLinkResult(),
   );
 
   late final SharedLinkStore links;
