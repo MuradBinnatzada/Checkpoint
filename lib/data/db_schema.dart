@@ -40,6 +40,10 @@ abstract final class Db {
   static const rpcRemoveLibraryGame = 'remove_library_game';
   static const rpcClearLibrary = 'clear_library';
 
+  /// Per category of one game: the median of the members' completion times and
+  /// how many there are (`category`, `median_minutes`, `submissions`).
+  static const rpcCompletionTimeStats = 'completion_time_stats';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';
@@ -141,10 +145,25 @@ abstract final class Db {
   /// [reviewMaxLength] characters, '' = none). Both are in `public_user_games`.
   static const completedAt = 'completed_at';
   static const review = 'review';
+
+  /// `user_games`: a completed game the member still plays, listed under
+  /// Playing too. Cleared by the same trigger whenever the status isn't
+  /// completed. Not in `public_user_games`.
+  static const stillPlaying = 'still_playing';
   static const reviewMaxLength = 500;
 
   /// `games`: the day the game first came out, from IGDB; NULL when unknown.
   static const releaseDate = 'release_date';
+
+  /// How long each member took to finish a game in their library, at most one
+  /// per member and game (20261019221500_completion_times.sql). Readable for
+  /// your own rows only; [rpcCompletionTimeStats] sums up everyone's.
+  static const completionTimes = 'completion_times';
+
+  /// `completion_times`: `main`, `main_extra` or `completionist`
+  /// (`CompletionCategory.wire`), and the time in whole minutes.
+  static const category = 'category';
+  static const minutes = 'minutes';
 
   /// A member's lists of games and their games (20261019115300_game_lists.sql).
   static const gameLists = 'game_lists';

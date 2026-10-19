@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
 
@@ -65,9 +66,10 @@ class PendingLog {
 /// saves only its own part (see [PendingEditsStorage]), so one can never
 /// overwrite what the other has queued.
 enum PendingScope {
-  /// Games, deletes and play sessions: [PendingEdits.games], [PendingEdits.removed],
-  /// [PendingEdits.logs], [PendingEdits.logEdits] and [PendingEdits.logDeletes].
-  /// Owned by `LibraryStore`.
+  /// Games, deletes, play sessions and completion times: [PendingEdits.games],
+  /// [PendingEdits.removed], [PendingEdits.logs], [PendingEdits.logEdits],
+  /// [PendingEdits.logDeletes] and [PendingEdits.completionTimes]. Owned by
+  /// `LibraryStore`.
   library,
 
   /// Follows and unfollows: [PendingEdits.follows]. Owned by `ProfileStore`.
@@ -82,7 +84,8 @@ enum PendingScope {
 /// state of each edited game (a base game is inserted first if needed, like any
 /// save), [removed] the games to delete, [logs] the sessions to insert,
 /// [logEdits] and [logDeletes] the changes to sessions the server already has,
-/// and [follows] whether each person is to be followed or unfollowed.
+/// [completionTimes] the latest completion time of each game, and [follows]
+/// whether each person is to be followed or unfollowed.
 class PendingEdits {
   PendingEdits();
 
@@ -106,6 +109,13 @@ class PendingEdits {
     edits.logDeletes.addAll([
       for (final id in json['logDeletes'] as List? ?? const []) '$id',
     ]);
+    final times = json['completionTimes'] as Map? ?? const {};
+    for (final MapEntry(:key, :value) in times.entries) {
+      // Null is a queued delete; anything else that doesn't read as a time is
+      // dropped rather than taken for one.
+      final time = CompletionTime.fromJson(value);
+      if (value == null || time != null) edits.completionTimes['$key'] = time;
+    }
     final follows = json['follows'] as Map? ?? const {};
     for (final entry in follows.entries) {
       edits.follows['${entry.key}'] = entry.value == true;
@@ -123,6 +133,9 @@ class PendingEdits {
   /// Ids of sessions the server has that are to be deleted.
   final Set<String> logDeletes = {};
 
+  /// By game id: the completion time to save, or null to delete it.
+  final Map<String, CompletionTime?> completionTimes = {};
+
   /// By user id: `true` to follow them, `false` to unfollow them.
   final Map<String, bool> follows = {};
 
@@ -135,6 +148,7 @@ class PendingEdits {
       logs.length +
       logEdits.length +
       logDeletes.length +
+      completionTimes.length +
       follows.length;
 
   /// Whether [scope]'s part is empty.
@@ -144,7 +158,8 @@ class PendingEdits {
           removed.isEmpty &&
           logs.isEmpty &&
           logEdits.isEmpty &&
-          logDeletes.isEmpty,
+          logDeletes.isEmpty &&
+          completionTimes.isEmpty,
     PendingScope.follows => follows.isEmpty,
   };
 
@@ -154,13 +169,20 @@ class PendingEdits {
     games[game.id] = game;
   }
 
-  /// Remembers that [gameId] is to be deleted. Its unsent edits and sessions are
-  /// moot: deleting a game deletes its sessions too.
+  /// Remembers that [gameId] is to be deleted. Its unsent edits, sessions and
+  /// completion time are moot: deleting a game deletes those too.
   void markRemoved(String gameId) {
     games.remove(gameId);
     logs.removeWhere((l) => l.gameId == gameId);
     logEdits.removeWhere((_, l) => l.gameId == gameId);
+    completionTimes.remove(gameId);
     removed.add(gameId);
+  }
+
+  /// Remembers [time] as [gameId]'s completion time to send (null: delete it).
+  /// Only the last one is kept.
+  void putCompletionTime(String gameId, CompletionTime? time) {
+    completionTimes[gameId] = time;
   }
 
   /// Remembers [log] as the latest state of the session with its id: a session
@@ -204,6 +226,10 @@ class PendingEdits {
       'logs': [for (final l in logs) l.toJson()],
       'logEdits': [for (final l in logEdits.values) l.toJson()],
       'logDeletes': logDeletes.toList(),
+      'completionTimes': {
+        for (final MapEntry(:key, :value) in completionTimes.entries)
+          key: value?.toJson(),
+      },
     },
     if (scope != PendingScope.library) 'follows': {...follows},
   };

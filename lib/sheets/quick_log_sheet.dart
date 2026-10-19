@@ -124,7 +124,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
     final canSave = game != null && hours != null && hours > 0 && !tooLong;
 
     final sorted = [...store.games]..sort((a, b) {
-        int rank(Game g) => g.status == GameStatus.playing ? 0 : (g.inLibrary ? 1 : 2);
+        int rank(Game g) => g.isPlaying ? 0 : (g.inLibrary ? 1 : 2);
         final c = rank(a).compareTo(rank(b));
         return c != 0 ? c : a.title.compareTo(b.title);
       });

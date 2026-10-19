@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -1667,6 +1668,73 @@ void main() {
       final failure = SyncFailure.from(error!);
       expect(failure.code, SyncFailureCode.rateLimited);
       expect(failure.retryAfter, const Duration(minutes: 20));
+    });
+  });
+
+  group('completion times', () {
+    test('the member\'s own time comes with the library row; none is null', () async {
+      api.reply([
+        {...userGameRow('g1'), 'completion_times': {'category': 'main_extra', 'minutes': 750}},
+        // Also read when the API embeds it as a list of one.
+        {...userGameRow('g2'), 'completion_times': [{'category': 'completionist', 'minutes': '3000'}]},
+        {...userGameRow('g3'), 'completion_times': null},
+        // A category this build does not know is no time, not a failed read.
+        {...userGameRow('g4'), 'completion_times': {'category': 'speedrun', 'minutes': 30}},
+      ]);
+
+      final games = await repo.fetchUserGames('u1');
+
+      expect(api.last.url.queryParameters['select'], contains('completion_times'));
+      Game game(String id) => games.firstWhere((g) => g.id == id);
+      expect(game('g1').completionTime, const CompletionTime(CompletionCategory.mainExtras, 750));
+      expect(game('g2').completionTime, const CompletionTime(CompletionCategory.completionist, 3000));
+      expect(game('g3').completionTime, isNull);
+      expect(game('g4').completionTime, isNull);
+      expect(game('g4').title, 'Hades');
+    });
+
+    test('a time is upserted on user and game, in its database spelling', () async {
+      await repo.upsertCompletionTime(
+        userId: 'u1',
+        gameId: 'g1',
+        time: const CompletionTime(CompletionCategory.mainStory, 95),
+      );
+
+      expect(api.last.url.path, '/rest/v1/completion_times');
+      expect(api.last.url.queryParameters['on_conflict'], 'user_id,game_id');
+      expect(api.bodyOf(api.last), {'user_id': 'u1', 'game_id': 'g1', 'category': 'main', 'minutes': 95});
+    });
+
+    test('a time is deleted for that user and game only', () async {
+      await repo.deleteCompletionTime('u1', 'g1');
+
+      expect(api.last.method, 'DELETE');
+      expect(api.last.url.path, '/rest/v1/completion_times');
+      expect(api.last.url.queryParameters['user_id'], 'eq.u1');
+      expect(api.last.url.queryParameters['game_id'], 'eq.g1');
+    });
+
+    test('the members\' times are one function call: a median and a count per category', () async {
+      api.reply([
+        {'category': 'main', 'median_minutes': 1440, 'submissions': 37},
+        {'category': 'completionist', 'median_minutes': '6000', 'submissions': '4'},
+        // A category this build does not know, and an empty one, are skipped.
+        {'category': 'speedrun', 'median_minutes': 30, 'submissions': 9},
+        {'category': 'main_extra', 'median_minutes': null, 'submissions': 0},
+      ]);
+
+      final times = await repo.fetchCommunityTimes('g1');
+
+      expect(api.last.url.path, '/rest/v1/rpc/completion_time_stats');
+      expect(api.bodyOf(api.last), {'target_game': 'g1'});
+      expect(times.byCategory.keys, [CompletionCategory.mainStory, CompletionCategory.completionist]);
+      final main = times.byCategory[CompletionCategory.mainStory]!;
+      expect(main.median, const Duration(hours: 24));
+      expect(main.count, 37);
+      expect(times.byCategory[CompletionCategory.completionist]!.median, const Duration(hours: 100));
+
+      api.reply(null);
+      expect((await repo.fetchCommunityTimes('g2')).byCategory, isEmpty);
     });
   });
 }

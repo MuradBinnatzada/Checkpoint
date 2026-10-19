@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/state/community_times_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -137,8 +139,9 @@ class _CompanyChip extends StatelessWidget {
 }
 
 /// The time to beat and similar games, under About on a game's screen. Asks
-/// IGDB for the game's details when the screen opens (see [GameDetailsStore]);
-/// until they are here, or when they can't be loaded, nothing is drawn, as
+/// IGDB for the game's details (see [GameDetailsStore]) and Checkpoint for its
+/// members' times (see [CommunityTimesStore]) when the screen opens; until one
+/// of them is here, or when neither can be loaded, nothing is drawn, as
 /// everything else on the screen works without them.
 class GameInfoSections extends StatefulWidget {
   const GameInfoSections({super.key, required this.game});
@@ -165,7 +168,9 @@ class _GameInfoSectionsState extends State<GameInfoSections> {
   /// After the frame: loading notifies, which isn't allowed during build.
   void _loadAfterFrame() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<GameDetailsStore>().load(widget.game);
+      if (!mounted) return;
+      context.read<GameDetailsStore>().load(widget.game);
+      context.read<CommunityTimesStore>().load(widget.game.id);
     });
   }
 
@@ -175,11 +180,19 @@ class _GameInfoSectionsState extends State<GameInfoSections> {
         .watch<GameDetailsStore>()
         .viewOf(widget.game.id)
         .details;
-    if (details == null) return const SizedBox.shrink();
+    final community = context
+        .watch<CommunityTimesStore>()
+        .viewOf(widget.game.id)
+        .times;
+    if (details == null && !community.hasShown) return const SizedBox.shrink();
 
     final sections = <Widget>[
-      _TimeToBeatPanel(title: widget.game.title, timeToBeat: details.timeToBeat),
-      if (details.similarGames.isNotEmpty)
+      _TimeToBeatPanel(
+        title: widget.game.title,
+        timeToBeat: details?.timeToBeat,
+        community: community,
+      ),
+      if (details != null && details.similarGames.isNotEmpty)
         _SimilarGames(games: details.similarGames),
     ];
     return Column(
@@ -225,56 +238,112 @@ const _fewTimeToBeatReports = 10;
 Uri howLongToBeatSearch(String title) =>
     Uri.parse('https://howlongtobeat.com/?q=${Uri.encodeComponent(title)}');
 
+/// The time to beat in each [CompletionCategory]: Checkpoint's median where
+/// enough members reported a time ([CommunityTimes.shown]), labelled with how
+/// many did ("37 Checkpoint players"), and IGDB's figure otherwise, labelled
+/// "IGDB".
 class _TimeToBeatPanel extends StatelessWidget {
-  const _TimeToBeatPanel({required this.title, required this.timeToBeat});
+  const _TimeToBeatPanel({
+    required this.title,
+    required this.timeToBeat,
+    required this.community,
+  });
 
   final String title;
 
-  /// IGDB's times; null when IGDB has none for the game.
+  /// IGDB's times; null when IGDB has none for the game (or didn't answer).
   final TimeToBeat? timeToBeat;
+
+  /// What Checkpoint's members reported.
+  final CommunityTimes community;
+
+  /// IGDB's figure for [category]: its hastily, normally and completely are
+  /// the main story, main + extras and completionist runs.
+  Duration? _igdb(CompletionCategory category) => switch (category) {
+    CompletionCategory.mainStory => timeToBeat?.hastily,
+    CompletionCategory.mainExtras => timeToBeat?.normally,
+    CompletionCategory.completionist => timeToBeat?.completely,
+  };
 
   @override
   Widget build(BuildContext context) {
-    Widget figure(String label, Duration? value) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value == null ? '–' : fmtDuration(value),
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: Palette.muted),
-          ),
-        ],
-      ),
+    const figureStyle = TextStyle(fontSize: 22, fontWeight: FontWeight.w800);
+    const sourceStyle = TextStyle(
+      fontSize: 11.5,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
     );
 
+    Widget figure(CompletionCategory category) {
+      final ours = community.shown(category);
+      final value = ours?.median ?? _igdb(category);
+      return Expanded(
+        child: Padding(
+          // A gap between the columns, none after the last.
+          padding: EdgeInsets.only(
+            right: category == CompletionCategory.values.last ? 0 : 8,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value == null ? '–' : fmtDuration(value),
+                  style: figureStyle,
+                ),
+              ),
+              // Shrinks rather than breaking "Completionist" on a narrow screen.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  category.label,
+                  style: const TextStyle(fontSize: 12, color: Palette.muted),
+                ),
+              ),
+              if (ours != null)
+                Text(
+                  '${fmtThousands(ours.count)} Checkpoint players',
+                  style: sourceStyle.copyWith(color: Palette.accent),
+                )
+              else if (value != null)
+                Text('IGDB', style: sourceStyle.copyWith(color: Palette.muted)),
+            ],
+          ),
+        ),
+      );
+    }
+
     const caption = TextStyle(color: Palette.muted, fontSize: 12, height: 1.35);
-    final times = timeToBeat;
-    final count = times?.count ?? 0;
+    const categories = CompletionCategory.values;
+    final showsOurs = community.hasShown;
+    final showsIgdb = categories.any(
+      (c) => community.shown(c) == null && _igdb(c) != null,
+    );
+    final count = timeToBeat?.count ?? 0;
     return Panel(
       title: 'Time to beat',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (times == null)
+          if (!showsOurs && !showsIgdb)
             const Text('IGDB has no times for this game yet.', style: caption)
           else ...[
             Row(
-              children: [
-                figure('Hastily', times.hastily),
-                figure('Normally', times.normally),
-                figure('Completely', times.completely),
-              ],
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final c in categories) figure(c)],
             ),
-            if (count > 0) ...[
+            if (showsOurs) ...[
               const SizedBox(height: 10),
+              const Text(
+                'Checkpoint players: the median of the times reported here.',
+                style: caption,
+              ),
+            ],
+            if (showsIgdb && count > 0) ...[
+              SizedBox(height: showsOurs ? 4 : 10),
               Text(
                 'From ${fmtThousands(count)} '
                 '${count == 1 ? 'player' : 'players'} on IGDB'

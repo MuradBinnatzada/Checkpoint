@@ -6,6 +6,7 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/browse.dart';
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/filter_options.dart';
@@ -549,15 +550,45 @@ class FakeRepository implements CheckpointRepository {
     String? customBackdropUrl,
     DateTime? dateAdded,
     String review = '',
+    bool stillPlaying = false,
   }) async {
+    await userGameGate?.future;
     _checkWrite();
     writes.add('game:$gameId:$status:$rating');
     backdrops[gameId] = customBackdropUrl;
     reviews[gameId] = review;
+    stillPlayingSent[gameId] = stillPlaying;
   }
+
+  /// Holds [upsertUserGame] until completed, to have a game's save in flight.
+  Completer<void>? userGameGate;
 
   /// The review each game's last save sent.
   final Map<String, String> reviews = {};
+
+  /// The "still playing" flag each game's last save sent.
+  final Map<String, bool> stillPlayingSent = {};
+
+  @override
+  Future<void> upsertCompletionTime({
+    required String userId,
+    required String gameId,
+    required CompletionTime time,
+  }) async {
+    _checkWrite();
+    writes.add('time:$gameId:${time.category.wire}:${time.minutes}');
+    completionTimes[gameId] = time;
+  }
+
+  @override
+  Future<void> deleteCompletionTime(String userId, String gameId) async {
+    _checkWrite();
+    writes.add('time-delete:$gameId');
+    completionTimes.remove(gameId);
+  }
+
+  /// The signed-in user's completion times on the server, by game id.
+  final Map<String, CompletionTime> completionTimes = {};
 
   /// The backdrop each game's last save sent.
   final Map<String, String?> backdrops = {};
@@ -744,6 +775,25 @@ class FakeRepository implements CheckpointRepository {
     _checkOnline();
     if (failFriendsReads) throw Exception('friends read failed');
     return friendsWithGame[gameId] ?? const GameFriends();
+  }
+
+  /// What `completion_time_stats` answers for each game, by game id.
+  /// [communityGate] holds the read until completed; [failCommunityReads]
+  /// fails it.
+  final Map<String, CommunityTimes> communityTimes = {};
+  Completer<void>? communityGate;
+  bool failCommunityReads = false;
+
+  /// The games [fetchCommunityTimes] was asked about, in order.
+  final List<String> communityReads = [];
+
+  @override
+  Future<CommunityTimes> fetchCommunityTimes(String gameId) async {
+    communityReads.add(gameId);
+    await communityGate?.future;
+    _checkOnline();
+    if (failCommunityReads) throw Exception('completion times read failed');
+    return communityTimes[gameId] ?? const CommunityTimes();
   }
 
   /// What `following_recent_activity` answers, newest first. [feedGate] holds

@@ -8,6 +8,7 @@ import 'package:checkpoint/data/db_schema.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
@@ -299,7 +300,9 @@ class CheckpointRepository {
   /// Members per page of the Users tab.
   static const int _socialUsersPageSize = 30;
 
-  /// Columns of a library row: its own fields and the catalog game it points at.
+  /// Columns of a library row: its own fields, the member's completion time for
+  /// the game (`completion_times` belongs to the row, so it embeds as one object
+  /// or null) and the catalog game it points at.
   /// Listed explicitly (rather than `select()`) so the heavy `achievements` JSONB
   /// column is never part of this payload; load it per game with
   /// [fetchGameAchievements] instead.
@@ -317,6 +320,11 @@ class CheckpointRepository {
           ${Db.customBackdropUrl},
           ${Db.completedAt},
           ${Db.review},
+          ${Db.stillPlaying},
+          ${Db.completionTimes} (
+            ${Db.category},
+            ${Db.minutes}
+          ),
           ${Db.games}!inner (
             ${Db.id},
             ${Db.igdbId},
@@ -884,6 +892,31 @@ class CheckpointRepository {
     );
   }
 
+  /// How long the members took to finish [gameId], by category: the median and
+  /// how many times it is the median of (see [CommunityTimes]). One request,
+  /// counted in the database: no member's own time is sent. Empty when nobody
+  /// reported one, and without a session.
+  Future<CommunityTimes> fetchCommunityTimes(String gameId) async {
+    final data = await _client.rpc(
+      Db.rpcCompletionTimeStats,
+      params: {'target_game': gameId},
+    );
+    if (data is! List) return const CommunityTimes();
+    final byCategory = <CompletionCategory, CommunityTime>{};
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final category = CompletionCategory.fromWire(raw[Db.category]);
+      final median = _int(raw['median_minutes']);
+      final count = _int(raw['submissions']);
+      if (category == null || median <= 0 || count <= 0) continue;
+      byCategory[category] = CommunityTime(
+        median: Duration(minutes: median),
+        count: count,
+      );
+    }
+    return CommunityTimes(Map.unmodifiable(byCategory));
+  }
+
   /// Items of "From people you follow" on Home. The server caps it at 100.
   static const int friendsFeedLimit = 30;
 
@@ -1003,6 +1036,7 @@ class CheckpointRepository {
     String? customBackdropUrl,
     DateTime? dateAdded,
     String review = '',
+    bool stillPlaying = false,
   }) async {
     await _client.from(Db.userGames).upsert({
       Db.userId: userId,
@@ -1016,7 +1050,35 @@ class CheckpointRepository {
       Db.isFavorite: isFavorite,
       Db.customBackdropUrl: customBackdropUrl,
       Db.review: review.trim(),
+      // The trigger clears it for any status but completed.
+      Db.stillPlaying: stillPlaying && status == GameStatus.completed,
     }, onConflict: '${Db.userId},${Db.gameId}');
+  }
+
+  /// Saves how long [userId] took to finish [gameId], replacing the time they
+  /// gave before (one per member and game). The game must be in their library
+  /// on the server: the time belongs to its row there, and goes with it.
+  Future<void> upsertCompletionTime({
+    required String userId,
+    required String gameId,
+    required CompletionTime time,
+  }) async {
+    await _client.from(Db.completionTimes).upsert({
+      Db.userId: userId,
+      Db.gameId: gameId,
+      Db.category: time.category.wire,
+      Db.minutes: time.minutes,
+    }, onConflict: '${Db.userId},${Db.gameId}');
+  }
+
+  /// Removes [userId]'s completion time for [gameId]. Removing one that isn't
+  /// there does nothing.
+  Future<void> deleteCompletionTime(String userId, String gameId) async {
+    await _client
+        .from(Db.completionTimes)
+        .delete()
+        .eq(Db.userId, userId)
+        .eq(Db.gameId, gameId);
   }
 
   /// Inserts a play session. [loggedAt] is when it was logged, for a session
@@ -1437,10 +1499,17 @@ Game _gameFromUserGameRow(Map<String, dynamic> row) {
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
     review: _firstText([row[Db.review]]) ?? '',
+    stillPlaying: row[Db.stillPlaying] == true,
     // `achievements` is intentionally not read here: fetchUserGames doesn't
     // select it. See fetchGameAchievements.
-  ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt]));
+  ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt])).withCompletionTime(_completionTimeFromEmbed(row[Db.completionTimes]));
 }
+
+/// The member's completion time embedded in their library row: one object, or
+/// null when they gave none. A list of at most one is read too, in case the API
+/// ever embeds it as one-to-many.
+CompletionTime? _completionTimeFromEmbed(Object? value) =>
+    CompletionTime.fromJson(value is List ? value.firstOrNull : value);
 
 GameList _listFromRow(Map<String, dynamic> row) {
   final items = [

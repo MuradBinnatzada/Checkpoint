@@ -12,6 +12,7 @@ import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/steam_link_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/community_times_store.dart';
 import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
@@ -71,7 +72,11 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    the catalog before it goes on a list; [LibraryStore] finds the games of
 ///    lists through it (a game tapped on a list);
 ///  * [ReleaseAlertsStore] reads [LibraryStore]'s wishlist and follows
-///    [AuthStore] for whose releases were announced.
+///    [AuthStore] for whose releases were announced;
+///  * [CommunityTimesStore] holds how long the members took to finish a game
+///    (the medians, never one member's time). It follows [AuthStore] only;
+///    [LibraryStore] tells it (a callback set here) when the member's own time
+///    for a game reached the server, so it reads that game's again.
 class AppStores {
   AppStores({
     required CheckpointRepository repository,
@@ -115,6 +120,7 @@ class AppStores {
     socialGraph = SocialGraphStore(repository: repository, auth: auth);
     gameFriends = GameFriendsStore(repository: repository, auth: auth);
     friendsFeed = FriendsFeedStore(repository: repository, auth: auth);
+    communityTimes = CommunityTimesStore(repository: repository, auth: auth);
     publicAchievements = PublicAchievementsStore(
       repository: repository,
       auth: auth,
@@ -141,6 +147,7 @@ class AppStores {
       onCleared: publicAchievements.markCleared,
       onCatalogFilled: () => libraryAttributes.markStale(),
       onSteamSynced: publicAchievements.refreshAfterSync,
+      onCompletionTimeSaved: (gameId) => unawaited(communityTimes.load(gameId)),
       apiService: apiService,
     );
     libraryAttributes = LibraryAttributesStore(
@@ -179,6 +186,7 @@ class AppStores {
   late final SocialGraphStore socialGraph;
   late final GameFriendsStore gameFriends;
   late final FriendsFeedStore friendsFeed;
+  late final CommunityTimesStore communityTimes;
   late final PublicAchievementsStore publicAchievements;
   late final LibraryStore library;
   late final LibraryAttributesStore libraryAttributes;
@@ -196,6 +204,7 @@ class AppStores {
     socialGraph.initialize();
     gameFriends.initialize();
     friendsFeed.initialize();
+    communityTimes.initialize();
     publicAchievements.initialize();
     libraryAttributes.initialize();
     lists.initialize();
@@ -215,6 +224,7 @@ class AppStores {
     playTimer.dispose();
     publicAchievements.dispose();
     friendsFeed.dispose();
+    communityTimes.dispose();
     gameFriends.dispose();
     socialGraph.dispose();
     publicLibraries.dispose();

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
 import 'package:checkpoint/models/achievement.dart';
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/library_stats.dart';
@@ -61,6 +62,7 @@ class LibraryStore extends ChangeNotifier {
     this._onCleared,
     this._onCatalogFilled,
     this._onSteamSynced,
+    this._onCompletionTimeSaved,
     GameApiService? apiService,
   }) : _cache = cache ?? LocalCache(),
        _pendingStorage = pendingStorage ?? PendingEditsStorage(),
@@ -90,6 +92,11 @@ class LibraryStore extends ChangeNotifier {
   /// Called with the user's id after a Steam sync, which also counted their
   /// achievements again, so whoever holds those counts reads them again.
   final void Function(String userId)? _onSteamSynced;
+
+  /// Called with a game's id once the member's completion time for it (or its
+  /// removal) reached the server, so whoever holds the members' times for the
+  /// game reads them again.
+  final void Function(String gameId)? _onCompletionTimeSaved;
 
   final GameApiService _apiService;
 
@@ -445,7 +452,11 @@ class LibraryStore extends ChangeNotifier {
       final queuedLogs = _pending.logs.length + _pending.logEdits.length;
       _pending.logs.removeWhere((l) => l.gameId == id);
       _pending.logEdits.removeWhere((_, l) => l.gameId == id);
+      // The server deleted the completion time with the row.
+      final queuedTime = _pending.completionTimes.containsKey(id);
+      _pending.completionTimes.remove(id);
       if (_pending.games.remove(id) != null ||
+          queuedTime ||
           _pending.logs.length + _pending.logEdits.length != queuedLogs) {
         _savePending();
       }
@@ -502,6 +513,7 @@ class LibraryStore extends ChangeNotifier {
     _pending.logs.clear();
     _pending.logEdits.clear();
     _pending.logDeletes.clear();
+    _pending.completionTimes.clear();
     _savePending();
     _syncStatus = SyncStatus.idle;
     _syncFailure = null;
@@ -876,10 +888,10 @@ class LibraryStore extends ChangeNotifier {
 
   Game gameById(String id) => maybeGame(id)!;
 
+  /// Games being played now, most recently played first: Playing, and
+  /// completed ones the member still plays.
   List<Game> playingNow() {
-    final list = _libraryGames
-        .where((g) => g.status == GameStatus.playing)
-        .toList();
+    final list = _libraryGames.where((g) => g.isPlaying).toList();
     final epoch = DateTime.fromMillisecondsSinceEpoch(0);
     list.sort(
       (a, b) =>
@@ -913,7 +925,10 @@ class LibraryStore extends ChangeNotifier {
     return out;
   }
 
-  int count(GameStatus s) => _libraryGames.where((g) => g.status == s).length;
+  /// Games listed under [s] (see [Game.isListedUnder]): Playing counts the
+  /// completed games still being played too.
+  int count(GameStatus s) =>
+      _libraryGames.where((g) => g.isListedUnder(s)).length;
   double get totalHours =>
       _libraryGames.fold<double>(0, (sum, g) => sum + g.hoursPlayed);
 
@@ -949,11 +964,18 @@ class LibraryStore extends ChangeNotifier {
   Future<void> addToLibrary(String id, GameStatus status) =>
       setStatus(id, status);
 
-  Future<void> setStatus(String id, GameStatus status) async {
+  /// [stillPlaying] is for a game made (or kept) Completed: whether it is
+  /// still being played ([Game.stillPlaying]). Null keeps what it had, which is
+  /// false for a game that wasn't completed. Any other status clears it.
+  Future<void> setStatus(String id, GameStatus status, {bool? stillPlaying}) async {
     final game = gameById(id);
+    final wasCompleted = game.status == GameStatus.completed;
     var next = game.copyWith(
       status: status,
       dateAdded: game.dateAdded ?? DateTime.now(),
+      stillPlaying: status == GameStatus.completed
+          ? stillPlaying ?? (wasCompleted && game.stillPlaying)
+          : false,
     );
     // As the database keeps it (user_games_track_completion), so the Year in
     // Review counts it right away.
@@ -962,6 +984,17 @@ class LibraryStore extends ChangeNotifier {
     } else if (game.status != GameStatus.completed) {
       next = next.withCompletedAt(DateTime.now());
     }
+    _replaceGame(next);
+    await _saveUserGame(next);
+  }
+
+  /// Keeps the completed game [id] under Playing too ([Game.stillPlaying]), or
+  /// takes it off again. Does nothing for a game that isn't completed: it would
+  /// be Playing, not still playing.
+  Future<void> setStillPlaying(String id, bool value) async {
+    final game = gameById(id);
+    if (game.status != GameStatus.completed || game.stillPlaying == value) return;
+    final next = game.copyWith(stillPlaying: value);
     _replaceGame(next);
     await _saveUserGame(next);
   }
@@ -987,6 +1020,7 @@ class LibraryStore extends ChangeNotifier {
       playedOn: playedOn,
       review: review == null || review.length <= Db.reviewMaxLength ? review : review.substring(0, Db.reviewMaxLength),
       dateAdded: existing.dateAdded ?? DateTime.now(),
+      stillPlaying: status == GameStatus.completed && existing.stillPlaying,
     );
     if (status != GameStatus.completed) {
       next = next.withCompletedAt(null);
@@ -1045,6 +1079,80 @@ class LibraryStore extends ChangeNotifier {
     final next = game.withBackdrop(url);
     _replaceGame(next);
     await _saveUserGame(next);
+  }
+
+  /// Saves how long the member took to finish [gameId] (null: removes it). Only
+  /// for a game in the library: the time belongs to its library row, so it goes
+  /// when the game is removed, and it stays when the game moves away from
+  /// Completed. Shown at once; kept on the device and sent later when the server
+  /// can't be reached, and put back as the server has it when it is refused.
+  Future<void> setCompletionTime(String gameId, CompletionTime? time) async {
+    final current = _user;
+    final game = maybeGame(gameId);
+    if (current == null || game == null || !game.inLibrary) return;
+    if (game.completionTime == time) return;
+    _replaceGame(game.withCompletionTime(time));
+
+    _editSeq++;
+    _pendingSaves++;
+    try {
+      // The time needs the library row on the server: one being sent (the game
+      // was just marked completed) goes first, and behind one that is queued
+      // for later, the time waits in the same queue.
+      await _gameSaves[gameId];
+      if (_user?.id != current.id) return; // signed out or switched meanwhile
+      if (_pending.games.containsKey(gameId)) {
+        _queueCompletionTime(gameId, time);
+        return;
+      }
+      await _sendCompletionTime(current.id, gameId, time);
+      // This is newer than anything queued for the same game.
+      if (_pending.completionTimes.containsKey(gameId)) {
+        _pending.completionTimes.remove(gameId);
+        _savePending();
+      }
+    } catch (e, st) {
+      debugPrint('Completion time save failed: $e\n$st');
+      if (isConnectionFailure(e)) {
+        _queueCompletionTime(gameId, time);
+      } else {
+        _setNotice('Could not save your completion time.');
+        _refreshQueued = true; // Revert to server truth once writes settle
+      }
+    } finally {
+      _pendingSaves--;
+      if (_pendingSaves == 0 && _refreshQueued) {
+        _refreshQueued = false;
+        await _refreshLibrary(current);
+      }
+    }
+  }
+
+  /// Sends [gameId]'s completion time, or deletes it when [time] is null, and
+  /// tells [_onCompletionTimeSaved]. Throws when that fails.
+  Future<void> _sendCompletionTime(
+    String userId,
+    String gameId,
+    CompletionTime? time,
+  ) async {
+    _auth.requireSession();
+    if (time == null) {
+      await _repository.deleteCompletionTime(userId, gameId);
+    } else {
+      await _repository.upsertCompletionTime(
+        userId: userId,
+        gameId: gameId,
+        time: time,
+      );
+    }
+    _onCompletionTimeSaved?.call(gameId);
+  }
+
+  /// Keeps [time] on the device to send with the other queued edits.
+  void _queueCompletionTime(String gameId, CompletionTime? time) {
+    _pending.putCompletionTime(gameId, time);
+    _savePending();
+    _queuedNotice();
   }
 
   GameStatus _statusAfterLogging(GameStatus? s) =>
@@ -1389,8 +1497,13 @@ class LibraryStore extends ChangeNotifier {
       isFavorite: game.isFavorite,
       customBackdropUrl: game.customBackdropUrl,
       review: game.review,
+      stillPlaying: game.stillPlaying,
     );
   }
+
+  /// The library rows being sent now, by game id: each future is done when the
+  /// send is, and never fails ([_saveUserGame] handles that).
+  final Map<String, Future<void>> _gameSaves = {};
 
   Future<void> _saveUserGame(Game game) async {
     final current = _user;
@@ -1398,6 +1511,8 @@ class LibraryStore extends ChangeNotifier {
 
     _editSeq++;
     _pendingSaves++;
+    final sent = Completer<void>();
+    _gameSaves[game.id] = sent.future;
 
     try {
       await _persistGame(current.id, game);
@@ -1415,6 +1530,10 @@ class LibraryStore extends ChangeNotifier {
         _refreshQueued = true; // Revert to server truth once writes settle
       }
     } finally {
+      if (identical(_gameSaves[game.id], sent.future)) {
+        _gameSaves.remove(game.id);
+      }
+      sent.complete();
       _pendingSaves--;
       if (_pendingSaves == 0 && _refreshQueued) {
         _refreshQueued = false;
@@ -1485,13 +1604,27 @@ class LibraryStore extends ChangeNotifier {
 
   /// [games] as the user last left them: the server's list with the edits that
   /// haven't reached it applied on top, so a refresh never undoes them.
+  ///
+  /// Completion times are sent and queued apart from the game: a queued game
+  /// keeps the time the server has, and the queued times go on top.
   List<Game> _withPendingEdits(List<Game> games) {
-    if (_pending.games.isEmpty && _pending.removed.isEmpty) return games;
+    if (_pending.games.isEmpty &&
+        _pending.removed.isEmpty &&
+        _pending.completionTimes.isEmpty) {
+      return games;
+    }
     final byId = <String, Game>{
       for (final g in games)
         if (!_pending.removed.contains(g.id)) g.id: g,
     };
-    byId.addAll(_pending.games);
+    for (final g in _pending.games.values) {
+      byId[g.id] = g.withCompletionTime(byId[g.id]?.completionTime);
+    }
+    for (final MapEntry(key: id, value: time)
+        in _pending.completionTimes.entries) {
+      final g = byId[id];
+      if (g != null) byId[id] = g.withCompletionTime(time);
+    }
     return byId.values.toList();
   }
 
@@ -1514,10 +1647,10 @@ class LibraryStore extends ChangeNotifier {
     ]);
   }
 
-  /// Sends the queued edits to the server, deletes first, then games, then
-  /// sessions (new ones, then changed and deleted ones). Stops at the first one
-  /// the server can't be reached for (the rest
-  /// stay queued); one it refuses is dropped, with a notice. Safe to call any
+  /// Sends the queued edits to the server, deletes first, then games and their
+  /// completion times, then sessions (new ones, then changed and deleted ones).
+  /// Stops at the first one the server can't be reached for (the rest stay
+  /// queued); one it refuses is dropped, with a notice. Safe to call any
   /// time: it does nothing without a live session or while already running.
   Future<void> flushPending() async {
     final user = _user;
@@ -1564,6 +1697,21 @@ class LibraryStore extends ChangeNotifier {
         final ok = await attempt(
           () => _persistGame(user.id, game),
           () => _pending.games.remove(game.id),
+        );
+        if (!ok) return;
+      }
+      // After the games: a time needs its library row on the server.
+      for (final MapEntry(key: gameId, value: time) in [
+        ..._pending.completionTimes.entries,
+      ]) {
+        final ok = await attempt(
+          () => _sendCompletionTime(user.id, gameId, time),
+          () {
+            // A newer time queued while this one was sent is still to go.
+            if (_pending.completionTimes[gameId] == time) {
+              _pending.completionTimes.remove(gameId);
+            }
+          },
         );
         if (!ok) return;
       }

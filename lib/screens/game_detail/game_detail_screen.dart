@@ -5,9 +5,11 @@ import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
+import 'package:checkpoint/screens/game_detail/completion_time_field.dart';
 import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
 import 'package:checkpoint/screens/game_detail/sessions_screen.dart';
+import 'package:checkpoint/screens/profile/game_achievements_dialog.dart';
 import 'package:checkpoint/sheets/game_backdrop_sheet.dart';
 import 'package:checkpoint/sheets/list_sheets.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
@@ -20,7 +22,6 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
-import 'package:checkpoint/widgets/achievement_tile.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
@@ -380,8 +381,15 @@ class _ProgressPanel extends StatelessWidget {
     return Panel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          if (game.status != null) StatusPill(game.status!) else const Text('Not in your library', style: TextStyle(color: Palette.muted)),
-          const Spacer(),
+          Expanded(
+            child: game.status == null
+                ? const Text('Not in your library', style: TextStyle(color: Palette.muted))
+                : Wrap(spacing: 6, runSpacing: 6, children: [
+                    StatusPill(game.status!),
+                    if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
+                  ]),
+          ),
+          const SizedBox(width: 8),
           FilledButton.tonalIcon(
             onPressed: () => showLogHoursSheet(context, game.id),
             icon: const Icon(Icons.timer_outlined, size: 18),
@@ -459,6 +467,7 @@ class _StatusActions extends StatelessWidget {
 
     void change(GameStatus next, String message) {
       final prev = game.status;
+      final prevStillPlaying = game.stillPlaying;
       store.setStatus(game.id, next);
       HapticFeedback.mediumImpact();
       messenger
@@ -467,35 +476,61 @@ class _StatusActions extends StatelessWidget {
           content: Text(message),
           duration: undoSnackBarDuration,
           persist: false,
-          action: prev == null ? null : SnackBarAction(label: 'Undo', onPressed: () => store.setStatus(game.id, prev)),
+          action: prev == null
+              ? null
+              : SnackBarAction(label: 'Undo', onPressed: () => store.setStatus(game.id, prev, stillPlaying: prevStillPlaying)),
         ));
     }
 
-    return Wrap(spacing: 10, runSpacing: 10, children: [
-      FilledButton.icon(
-        onPressed: game.status == GameStatus.completed ? null : () => change(GameStatus.completed, 'Marked as completed'),
-        icon: const Icon(Icons.verified_rounded, size: 18),
-        label: const Text('Mark as Completed'),
-      ),
-      FilledButton.tonalIcon(
-        onPressed: game.status == GameStatus.toPlay ? null : () => change(GameStatus.toPlay, 'Moved to To Play'),
-        icon: const Icon(Icons.inventory_2_rounded, size: 18),
-        label: const Text('Move to To Play'),
-      ),
-      OutlinedButton.icon(
-        onPressed: game.status == GameStatus.dropped ? null : () => change(GameStatus.dropped, 'Dropped'),
-        style: OutlinedButton.styleFrom(foregroundColor: Palette.danger, side: BorderSide(color: Palette.danger.withValues(alpha: 0.6))),
-        icon: const Icon(Icons.block_rounded, size: 18),
-        label: const Text('Drop'),
-      ),
-      if (game.status != GameStatus.playing)
-        TextButton.icon(
-          onPressed: () => change(GameStatus.playing, 'Started playing'),
-          icon: const Icon(Icons.play_circle_rounded, size: 18),
-          label: const Text('Start Playing'),
+    void setStillPlaying(bool value) {
+      store.setStillPlaying(game.id, value);
+      HapticFeedback.selectionClick();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(value ? 'Listed under Playing too' : 'No longer under Playing'),
+          duration: undoSnackBarDuration,
+          persist: false,
+          action: SnackBarAction(label: 'Undo', onPressed: () => store.setStillPlaying(game.id, !value)),
+        ));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 10, runSpacing: 10, children: [
+        FilledButton.icon(
+          onPressed: game.status == GameStatus.completed ? null : () => change(GameStatus.completed, 'Marked as completed'),
+          icon: const Icon(Icons.verified_rounded, size: 18),
+          label: const Text('Mark as Completed'),
         ),
+        FilledButton.tonalIcon(
+          onPressed: game.status == GameStatus.toPlay ? null : () => change(GameStatus.toPlay, 'Moved to To Play'),
+          icon: const Icon(Icons.inventory_2_rounded, size: 18),
+          label: const Text('Move to To Play'),
+        ),
+        OutlinedButton.icon(
+          onPressed: game.status == GameStatus.dropped ? null : () => change(GameStatus.dropped, 'Dropped'),
+          style: OutlinedButton.styleFrom(foregroundColor: Palette.danger, side: BorderSide(color: Palette.danger.withValues(alpha: 0.6))),
+          icon: const Icon(Icons.block_rounded, size: 18),
+          label: const Text('Drop'),
+        ),
+        // A completed game is played on with the switch below instead, so it
+        // stays Completed.
+        if (game.status != GameStatus.playing && game.status != GameStatus.completed)
+          TextButton.icon(
+            onPressed: () => change(GameStatus.playing, 'Started playing'),
+            icon: const Icon(Icons.play_circle_rounded, size: 18),
+            label: const Text('Start Playing'),
+          ),
+      ]),
+      if (game.status == GameStatus.completed) ...[
+        const SizedBox(height: 12),
+        _StillPlayingSwitch(value: game.stillPlaying, onChanged: setStillPlaying),
+      ],
+      // Stays in the tree whatever the status, so it sees the game being marked
+      // completed (and opens); it draws nothing for any other status.
+      CompletionTimeField(game: game),
       if (game.status != null) ...[
-        const SizedBox(width: double.infinity, height: 4),
+        const SizedBox(height: 24),
         TextButton.icon(
           onPressed: () => _confirmRemove(context, game),
           style: TextButton.styleFrom(foregroundColor: Palette.danger),
@@ -504,6 +539,40 @@ class _StatusActions extends StatelessWidget {
         ),
       ]
     ]);
+  }
+}
+
+/// "Still playing" for a completed game: finished, but played on (online,
+/// post-game, DLC), so it is listed under Playing and on Home too while it
+/// stays Completed.
+class _StillPlayingSwitch extends StatelessWidget {
+  const _StillPlayingSwitch({required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = GameStatus.playing.color;
+    return Material(
+      color: value ? color.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.03),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: value ? color.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.06)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        dense: true,
+        contentPadding: const EdgeInsets.only(left: 14, right: 8),
+        secondary: Icon(GameStatus.playing.icon, color: value ? color : Palette.muted),
+        title: const Text('Still playing', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        subtitle: const Text(
+          'Keep it under Playing too, for online, post-game or DLC',
+          style: TextStyle(color: Palette.muted, fontSize: 12, height: 1.3),
+        ),
+      ),
+    );
   }
 }
 
@@ -582,13 +651,9 @@ class _AchievementsPanel extends StatefulWidget {
 }
 
 class _AchievementsPanelState extends State<_AchievementsPanel> {
-  static const int _initialVisible = 8;
-  static const int _pageSize = 20;
-
   bool _loading = false;
   bool _checking = false;
   String? _error;
-  int _visible = _initialVisible;
 
   @override
   void initState() {
@@ -667,19 +732,20 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
     ]);
   }
 
-  Widget _list(List<Achievement> all) {
+  /// The progress only; the achievements themselves open in the same dialog
+  /// as on a profile, with search and the unlocked / locked filter.
+  Widget _summary(List<Achievement> all, {required bool canLoad}) {
     final total = all.length;
     final unlocked = all.where((a) => a.unlocked).length;
-    final percent = (unlocked * 100 / total).round();
-    final shown = sortAchievements(all).take(_visible).toList();
-    final remaining = total - shown.length;
-    final nextPage = remaining < _pageSize ? remaining : _pageSize;
+    final complete = unlocked >= total;
+    // Floor, so 99.6% never reads as 100% while something is still locked.
+    final percent = complete ? 100 : (unlocked * 100 / total).floor();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
         Text('$unlocked / $total', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         const SizedBox(width: 8),
-        Text('($percent%)', style: const TextStyle(color: Palette.muted, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('($percent%)', style: TextStyle(color: complete ? Palette.star : Palette.muted, fontSize: 14, fontWeight: FontWeight.w600)),
       ]),
       const SizedBox(height: 10),
       ClipRRect(
@@ -692,26 +758,14 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
         ),
       ),
       const SizedBox(height: 14),
-      for (final a in shown) AchievementTile(achievement: a),
-      // "Show less" appears as soon as the list has been expanded past its
-      // starting size, not only once everything is visible. The "Show more"
-      // label is Flexible so the pair can't overflow on narrow screens.
-      if (remaining > 0 || _visible > _initialVisible)
-        Row(children: [
-          if (remaining > 0)
-            Flexible(
-              child: TextButton(
-                onPressed: () => setState(() => _visible += _pageSize),
-                child: Text('Show $nextPage more ($remaining left)', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ),
-          if (remaining > 0 && _visible > _initialVisible) const SizedBox(width: 16),
-          if (_visible > _initialVisible)
-            TextButton(
-              onPressed: () => setState(() => _visible = _initialVisible),
-              child: const Text('Show less'),
-            ),
-        ]),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.tonalIcon(
+          onPressed: () => showOwnGameAchievementsDialog(context, gameId: widget.game.id, canRefresh: canLoad),
+          icon: const Icon(Icons.emoji_events_rounded, size: 18),
+          label: const Text('Show achievements'),
+        ),
+      ),
       if (_error != null) _errorText(),
     ]);
   }
@@ -753,7 +807,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
                     'Steam lists no achievements for this game.',
                     style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
                   )
-                : _list(achievements),
+                : _summary(achievements, canLoad: canLoad),
       ),
     );
   }

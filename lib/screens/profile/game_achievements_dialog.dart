@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
+import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -25,6 +26,22 @@ Future<void> showGameAchievementsDialog(
   return showDialog<void>(
     context: context,
     builder: (_) => GameAchievementsDialog(userId: userId, game: game),
+  );
+}
+
+/// Opens the signed-in member's own achievements for the library game [gameId]
+/// in the same dialog as on a profile. The list is the one its screen loaded
+/// (see [LibraryStore.syncGameAchievements]); [canRefresh] offers asking Steam
+/// again from the dialog.
+Future<void> showOwnGameAchievementsDialog(
+  BuildContext context, {
+  required String gameId,
+  required bool canRefresh,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) =>
+        OwnGameAchievementsDialog(gameId: gameId, canRefresh: canRefresh),
   );
 }
 
@@ -48,12 +65,6 @@ class GameAchievementsDialog extends StatefulWidget {
 }
 
 class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
-  /// A list this short is laid out whole, so the dialog is only as tall as it.
-  static const _shrinkWrapUpTo = 8;
-
-  final _search = TextEditingController();
-  String _query = '';
-  _Filter _filter = _Filter.all;
   bool _refreshing = false;
 
   @override
@@ -63,12 +74,6 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_load());
     });
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
   }
 
   Future<void> _load({bool force = false}) =>
@@ -92,9 +97,134 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
       widget.game.gameId,
     );
     final list = view.status == LoadStatus.ready ? view.achievements : null;
-    final unlocked =
-        list?.where((a) => a.unlocked).length ?? widget.game.unlocked;
-    final total = list?.length ?? widget.game.total;
+    return _AchievementsDialogFrame(
+      title: widget.game.title,
+      coverUrl: widget.game.coverUrl,
+      status: view.status,
+      achievements: list,
+      unlocked: list?.where((a) => a.unlocked).length ?? widget.game.unlocked,
+      total: list?.length ?? widget.game.total,
+      error: view.error,
+      refreshing: _refreshing,
+      onRefresh: view.status == LoadStatus.loading ? null : _refresh,
+      onRetry: () => unawaited(_load(force: true)),
+    );
+  }
+}
+
+/// [showOwnGameAchievementsDialog]'s dialog: the library game's achievements,
+/// kept current with [LibraryStore], so a refresh here shows on its screen too.
+class OwnGameAchievementsDialog extends StatefulWidget {
+  const OwnGameAchievementsDialog({
+    super.key,
+    required this.gameId,
+    required this.canRefresh,
+  });
+
+  final String gameId;
+  final bool canRefresh;
+
+  @override
+  State<OwnGameAchievementsDialog> createState() =>
+      _OwnGameAchievementsDialogState();
+}
+
+class _OwnGameAchievementsDialogState extends State<OwnGameAchievementsDialog> {
+  bool _refreshing = false;
+  String? _error;
+
+  Future<void> _refresh() async {
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
+    final error = await context.read<LibraryStore>().syncGameAchievements(
+      widget.gameId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _refreshing = false;
+      _error = error;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = context.watch<LibraryStore>().maybeGame(widget.gameId);
+    final list = game?.achievements ?? const <Achievement>[];
+    return _AchievementsDialogFrame(
+      title: game?.title ?? '',
+      coverUrl: game?.coverUrl,
+      status: LoadStatus.ready,
+      achievements: list,
+      unlocked: list.where((a) => a.unlocked).length,
+      total: list.length,
+      error: _error,
+      refreshing: _refreshing,
+      showRefresh: widget.canRefresh,
+      onRefresh: _refreshing ? null : _refresh,
+      onRetry: _refresh,
+    );
+  }
+}
+
+/// The dialog itself, wherever its list comes from: [_Header], then search and
+/// the unlocked / locked filter, then the achievements, unlocked first.
+class _AchievementsDialogFrame extends StatefulWidget {
+  const _AchievementsDialogFrame({
+    required this.title,
+    required this.coverUrl,
+    required this.status,
+    required this.achievements,
+    required this.unlocked,
+    required this.total,
+    required this.error,
+    required this.refreshing,
+    required this.onRefresh,
+    required this.onRetry,
+    this.showRefresh = true,
+  });
+
+  final String title;
+  final String? coverUrl;
+  final LoadStatus status;
+
+  /// Null until [status] is [LoadStatus.ready].
+  final List<Achievement>? achievements;
+
+  /// What the header shows, from the list or, until it is here, the counts.
+  final int unlocked;
+  final int total;
+
+  /// With [LoadStatus.failed], why; beside a list, why it may be out of date.
+  final String? error;
+  final bool refreshing;
+  final bool showRefresh;
+  final VoidCallback? onRefresh;
+  final VoidCallback onRetry;
+
+  @override
+  State<_AchievementsDialogFrame> createState() =>
+      _AchievementsDialogFrameState();
+}
+
+class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
+  /// A list this short is laid out whole, so the dialog is only as tall as it.
+  static const _shrinkWrapUpTo = 8;
+
+  final _search = TextEditingController();
+  String _query = '';
+  _Filter _filter = _Filter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.achievements;
     final size = MediaQuery.sizeOf(context);
 
     return Dialog(
@@ -115,14 +245,16 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Header(
-              game: widget.game,
-              unlocked: unlocked,
-              total: total,
-              refreshing: _refreshing,
-              onRefresh: view.status == LoadStatus.loading ? null : _refresh,
+              title: widget.title,
+              coverUrl: widget.coverUrl,
+              unlocked: widget.unlocked,
+              total: widget.total,
+              refreshing: widget.refreshing,
+              showRefresh: widget.showRefresh,
+              onRefresh: widget.onRefresh,
             ),
             if (list != null && list.isNotEmpty) _controls(list),
-            Flexible(child: _body(view, list)),
+            Flexible(child: _body(list)),
           ],
         ),
       ),
@@ -135,10 +267,11 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
     final locked = list.length - unlocked;
     final showSearch = list.length > _shrinkWrapUpTo;
     final showFilter = unlocked > 0 && locked > 0;
-    if (!showSearch && !showFilter) return const SizedBox(height: 4);
+    if (!showSearch && !showFilter) return const SizedBox(height: 12);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      // Clear of the header's glow, so the field doesn't sit on its edge.
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -192,8 +325,8 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
     );
   }
 
-  Widget _body(GameAchievementsView view, List<Achievement>? list) {
-    switch (view.status) {
+  Widget _body(List<Achievement>? list) {
+    switch (widget.status) {
       case LoadStatus.idle:
       case LoadStatus.loading:
         return const SizedBox(
@@ -208,10 +341,10 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
         );
       case LoadStatus.failed:
         return _Message(
-          text: view.error ?? 'Could not load the achievements.',
+          text: widget.error ?? 'Could not load the achievements.',
           error: true,
           action: TextButton.icon(
-            onPressed: () => unawaited(_load(force: true)),
+            onPressed: widget.onRetry,
             icon: const Icon(Icons.refresh_rounded, size: 18),
             label: const Text('Try again'),
           ),
@@ -233,7 +366,7 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
               a.description.toLowerCase().contains(_query))
             a,
     ];
-    final error = view.error;
+    final error = widget.error;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -270,17 +403,21 @@ class _GameAchievementsDialogState extends State<GameAchievementsDialog> {
 /// is unlocked.
 class _Header extends StatelessWidget {
   const _Header({
-    required this.game,
+    required this.title,
+    required this.coverUrl,
     required this.unlocked,
     required this.total,
     required this.refreshing,
+    required this.showRefresh,
     required this.onRefresh,
   });
 
-  final GameAchievementSummary game;
+  final String title;
+  final String? coverUrl;
   final int unlocked;
   final int total;
   final bool refreshing;
+  final bool showRefresh;
   final VoidCallback? onRefresh;
 
   @override
@@ -309,13 +446,13 @@ class _Header extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Cover(url: game.coverUrl, glow: complete),
+              _Cover(url: coverUrl, glow: complete),
               const SizedBox(width: 14),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    game.title,
+                    title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -335,7 +472,7 @@ class _Header extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              else
+              else if (showRefresh)
                 IconButton(
                   tooltip: 'Refresh from Steam',
                   onPressed: onRefresh,

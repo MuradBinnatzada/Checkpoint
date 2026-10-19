@@ -260,15 +260,16 @@ class LibraryViewStore extends ChangeNotifier {
   }
 
   /// The games of [library] with status [s], filtered and sorted; pass `null` for
-  /// every status ("All"). The filters apply either way.
+  /// every status ("All"). The filters apply either way. A completed game still
+  /// being played is under Playing as well (see [Game.isListedUnder]).
   List<Game> visible(Iterable<Game> library, GameStatus? s) => [
     for (final g in library)
-      if ((s == null || g.status == s) && _matches(g)) g,
+      if ((s == null || g.isListedUnder(s)) && _matches(g)) g,
   ]..sort(_compare);
 
   /// How many games [visible] would return, without sorting them.
   int count(Iterable<Game> library, GameStatus? s) => library
-      .where((g) => (s == null || g.status == s) && _matches(g))
+      .where((g) => (s == null || g.isListedUnder(s)) && _matches(g))
       .length;
 
   /// The details arrived, or were dropped because another account signed in

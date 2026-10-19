@@ -102,7 +102,8 @@ void main() {
       expect(find.text('25 h'), findsOneWidget);
       expect(find.text('50 h'), findsOneWidget);
       expect(find.text('150 h'), findsOneWidget);
-      expect(find.text('Hastily'), findsOneWidget);
+      expect(find.text('Main Story'), findsOneWidget);
+      expect(find.text('IGDB'), findsNWidgets(3));
       expect(find.text('From 4,358 players on IGDB'), findsOneWidget);
       expect(find.text('Compare on HowLongToBeat'), findsOneWidget);
       expect(find.text('Similar games'), findsOneWidget);

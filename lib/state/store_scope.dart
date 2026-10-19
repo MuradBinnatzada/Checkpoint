@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
+import 'package:checkpoint/state/community_times_store.dart';
 import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
@@ -96,7 +97,10 @@ class AppStoresScope extends StatelessWidget {
                                           store: stores.releaseAlerts,
                                           child: StoreScope<SharedLinkStore>(
                                             store: stores.links,
-                                            child: child,
+                                            child: StoreScope<CommunityTimesStore>(
+                                              store: stores.communityTimes,
+                                              child: child,
+                                            ),
                                           ),
                                         ),
                                       ),

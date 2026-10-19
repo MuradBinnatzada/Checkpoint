@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/achievement.dart';
+import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game_cover.dart';
 
 enum GameStatus {
@@ -289,6 +290,8 @@ class Game {
     this.releaseDate,
     this.completedAt,
     this.review = '',
+    this.completionTime,
+    this.stillPlaying = false,
   });
 
   final String id;
@@ -343,6 +346,17 @@ class Game {
   /// empty: none.
   final String review;
 
+  /// How long the member took to finish it (`completion_times`), which they
+  /// can add once it is completed; null: none. Kept when the status changes.
+  final CompletionTime? completionTime;
+
+  /// A completed game the member still plays (online, post-game, DLC...):
+  /// it stays Completed and is listed under Playing too
+  /// (`user_games.still_playing`). Always false for any other status: the
+  /// database clears it when the status changes, and so does
+  /// `LibraryStore.setStatus`.
+  final bool stillPlaying;
+
   /// Rebuilds a game from [toJson]'s output (the offline cache). The cover
   /// colours and icon are derived from the other fields, as when a game is read
   /// from the database, so they are not stored.
@@ -377,6 +391,8 @@ class Game {
       releaseDate: _dateOrNull(json['releaseDate']),
       completedAt: _dateOrNull(json['completedAt']),
       review: json['review'] as String? ?? '',
+      completionTime: CompletionTime.fromJson(json['completionTime']),
+      stillPlaying: json['stillPlaying'] == true,
     );
   }
 
@@ -410,9 +426,21 @@ class Game {
         'releaseDate': releaseDate?.toUtc().toIso8601String(),
         'completedAt': completedAt?.toUtc().toIso8601String(),
         'review': review,
+        'completionTime': completionTime?.toJson(),
+        'stillPlaying': stillPlaying,
       };
 
   bool get inLibrary => status != null;
+
+  /// Being played now: Playing, or Completed and [stillPlaying].
+  bool get isPlaying =>
+      status == GameStatus.playing ||
+      (status == GameStatus.completed && stillPlaying);
+
+  /// Listed under [s] in the library: its status, and Playing too while a
+  /// completed game is [stillPlaying].
+  bool isListedUnder(GameStatus s) =>
+      status == s || (s == GameStatus.playing && isPlaying);
 
   /// What the "Played on" pickers offer for this game, in [GamePlatform] order:
   /// exactly the platforms it was released on, the saved choice (so it never
@@ -451,6 +479,7 @@ class Game {
     List<String>? genres,
     DateTime? releaseDate,
     String? review,
+    bool? stillPlaying,
   }) =>
       Game(
         id: id,
@@ -481,6 +510,8 @@ class Game {
         releaseDate: releaseDate ?? this.releaseDate,
         completedAt: completedAt,
         review: review ?? this.review,
+        completionTime: completionTime,
+        stillPlaying: stillPlaying ?? this.stillPlaying,
       );
 
   /// This game with [completedAt] set to exactly [at] (null: not completed).
@@ -512,6 +543,8 @@ class Game {
         releaseDate: releaseDate,
         completedAt: at,
         review: review,
+        completionTime: completionTime,
+        stillPlaying: stillPlaying,
       );
 
   /// This game with the member's own backdrop set to exactly [url] (null: the
@@ -543,6 +576,41 @@ class Game {
         releaseDate: releaseDate,
         completedAt: completedAt,
         review: review,
+        completionTime: completionTime,
+        stillPlaying: stillPlaying,
+      );
+
+  /// This game with the member's completion time set to exactly [time] (null:
+  /// none). [copyWith] can't clear it: a null argument there means "keep the
+  /// current value".
+  Game withCompletionTime(CompletionTime? time) => Game(
+        id: id,
+        title: title,
+        publisher: publisher,
+        developer: developer,
+        releaseYear: releaseYear,
+        platforms: platforms,
+        genres: genres,
+        synopsis: synopsis,
+        coverColors: coverColors,
+        coverIcon: coverIcon,
+        coverUrl: coverUrl,
+        igdbId: igdbId,
+        steamAppId: steamAppId,
+        status: status,
+        rating: rating,
+        hoursPlayed: hoursPlayed,
+        playedOn: playedOn,
+        purchasePrice: purchasePrice,
+        dateAdded: dateAdded,
+        isFavorite: isFavorite,
+        achievements: achievements,
+        customBackdropUrl: customBackdropUrl,
+        releaseDate: releaseDate,
+        completedAt: completedAt,
+        review: review,
+        completionTime: time,
+        stillPlaying: stillPlaying,
       );
 
   /// This game as the catalog knows it, with all of the user's tracking state

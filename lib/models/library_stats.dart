@@ -43,6 +43,11 @@ class LibraryStats {
       games++;
       final status = g.status;
       if (status != null) byStatus[status] = (byStatus[status] ?? 0) + 1;
+      // A completed game still being played is under Playing as well, as in
+      // the library's tabs.
+      if (status == GameStatus.completed && g.isPlaying) {
+        byStatus[GameStatus.playing] = (byStatus[GameStatus.playing] ?? 0) + 1;
+      }
       totalHours += g.hoursPlayed;
       if (g.rating > 0) {
         ratedCount++;
@@ -84,6 +89,9 @@ class LibraryStats {
 
   /// Games in the library, whatever their status.
   final int games;
+
+  /// Games listed under each status (see [Game.isListedUnder]), so a completed
+  /// game still being played counts for Completed and Playing both.
   final Map<GameStatus, int> byStatus;
   final double totalHours;
   final Map<GamePlatform, double> hoursByPlatform;
