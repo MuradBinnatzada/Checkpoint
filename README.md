@@ -110,7 +110,7 @@ The app ships pointing at the project's Supabase instance with a public anon key
 2. Deploy the functions in `supabase/functions` and set their secrets (Twitch client ID/secret for IGDB, Steam API key, and `CRON_SECRET` if you want the background sync).
 3. Update the Supabase URL and key in `lib/main.dart`.
 4. Create Google OAuth client IDs and update `lib/services/auth_service.dart`. For iOS, pass `--dart-define=GOOGLE_IOS_CLIENT_ID=...`.
-5. For email sign-in, enable Authentication > Providers > Email, and choose whether new accounts must confirm their address first (the app handles both). The links in the confirmation and password reset emails go to the Site URL, or on web to the address that served the app, which must be listed under Authentication > URL Configuration > Redirect URLs.
+5. For email sign-in, enable Authentication > Providers > Email, and choose whether new accounts must confirm their address first (the app handles both). The links in the confirmation and password reset emails go to the Site URL, or on web to the address that served the app, which must be listed under Authentication > URL Configuration > Redirect URLs. Opening a reset link signs the user in and the app asks for a new password (email accounts can also change it under Settings > Security). Only the web app can receive the link for now: Android and iOS need a deep-link scheme and desktop a way to catch it, and the link must be opened in the same browser that asked for it (Supabase's PKCE flow keeps the verifier there).
 
 ## Privacy
 

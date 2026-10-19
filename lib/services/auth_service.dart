@@ -98,6 +98,12 @@ class AuthService {
   Future<void> sendPasswordReset(String email) =>
       _auth.resetPasswordForEmail(email.trim(), redirectTo: _emailRedirectUrl);
 
+  /// Replaces the signed-in account's password: after a reset link signed the
+  /// user in, or from Settings. Supabase doesn't ask for the current one unless
+  /// the project turns that on; [changes] announces the update.
+  Future<void> updatePassword(String password) =>
+      _auth.updateUser(UserAttributes(password: password));
+
   Future<void> signInWithGoogle() async {
     if (_usesLoopbackRedirect) {
       await _signInWithGoogleDesktop();
@@ -287,13 +293,17 @@ class AuthService {
   static String messageFor(Object e) {
     if (e is AuthRetryableFetchException) return "Can't reach Checkpoint. Check your connection and try again.";
     if (e is AuthException) {
-      // The codes Supabase sends for email sign-in and sign-up; anything else
-      // (the Google flow's own messages included) is shown as it comes.
+      // The codes Supabase sends for email sign-in, sign-up and password
+      // changes; anything else (the Google flow's own messages included) is
+      // shown as it comes.
       return switch (e.code) {
         'invalid_credentials' => 'Wrong email or password. If you joined with Google, use Continue with Google.',
         'user_already_exists' || 'email_exists' =>
           'That email is already registered. Sign in instead, or use Forgot password? to choose a new password.',
         'weak_password' => 'That password is too weak. ${e.message}'.trim(),
+        'same_password' => 'That is your current password. Choose a different one.',
+        // "Secure password change" is on and this session is over a day old.
+        'reauthentication_needed' => 'For your security, sign out and sign in again, then change your password.',
         'email_not_confirmed' => 'Confirm your email first: open the link we sent you, then sign in.',
         'email_address_invalid' => 'Enter a valid email address.',
         'over_email_send_rate_limit' => 'Too many emails were sent. Wait a few minutes and try again.',

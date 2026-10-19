@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/app/new_password_screen.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -8,7 +9,8 @@ import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_link_rows.dart';
 
-/// How the account signs in, and a way to end the sessions left on other devices.
+/// How the account signs in, a way to change the password of an email account,
+/// and a way to end the sessions left on other devices.
 class SecuritySection extends StatefulWidget {
   const SecuritySection({super.key});
 
@@ -66,6 +68,18 @@ class _SecuritySectionState extends State<SecuritySection> {
             ],
           ),
         ),
+        if (provider == 'email') ...[
+          const SizedBox(height: 14),
+          ProfileLinkRows(
+            links: [
+              ProfileLink(
+                icon: Icons.password_rounded,
+                label: 'Change password',
+                onTap: () => changePassword(context),
+              ),
+            ],
+          ),
+        ],
         if (provider == 'google') ...[
           const SizedBox(height: 14),
           ProfileLinkRows(

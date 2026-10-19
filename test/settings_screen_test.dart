@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
-    show AuthException, User;
+    show AuthApiException, AuthException, User;
 
+import 'package:checkpoint/app/new_password_screen.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
@@ -29,6 +30,15 @@ void main() {
   User googleUser() => User(
     id: 'u1',
     appMetadata: const {'provider': 'google'},
+    userMetadata: const {},
+    aud: 'authenticated',
+    createdAt: '2026-01-01T00:00:00Z',
+    email: 'ada@example.com',
+  );
+
+  User emailUser() => User(
+    id: 'u1',
+    appMetadata: const {'provider': 'email'},
     userMetadata: const {},
     aud: 'authenticated',
     createdAt: '2026-01-01T00:00:00Z',
@@ -485,8 +495,61 @@ void main() {
         expect(find.text('Google'), findsOneWidget);
         expect(find.text('ada@example.com'), findsOneWidget);
         expect(find.text('Manage your Google Account'), findsOneWidget);
+        // Google keeps the password.
+        expect(find.text('Change password'), findsNothing);
       },
     );
+
+    Future<void> savePassword(WidgetTester tester, String password) async {
+      await tester.tap(find.text('Change password'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'New password'),
+        password,
+      );
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Confirm new password'),
+        password,
+      );
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Save password'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an email account can change its password', (tester) async {
+      authService.user = emailUser();
+      await open(tester, section: SettingsSection.security);
+
+      expect(find.text('Email and password'), findsOneWidget);
+      expect(find.text('Manage your Google Account'), findsNothing);
+
+      await savePassword(tester, 'correct horse');
+
+      expect(authService.passwordUpdates, ['correct horse']);
+      expect(find.byType(NewPasswordScreen), findsNothing);
+      expect(find.text('Password changed'), findsOneWidget);
+      expect(stores.auth.isLoggedIn, isTrue);
+    });
+
+    testWidgets('says why a new password was refused', (tester) async {
+      authService.user = emailUser();
+      authService.passwordError = const AuthApiException(
+        'New password should be different from the old password.',
+        statusCode: '422',
+        code: 'same_password',
+      );
+      await open(tester, section: SettingsSection.security);
+
+      await savePassword(tester, 'hunter22');
+
+      expect(
+        find.text('That is your current password. Choose a different one.'),
+        findsOneWidget,
+      );
+      expect(find.byType(NewPasswordScreen), findsOneWidget);
+    });
 
     testWidgets('signs out the other devices and keeps this one', (
       tester,

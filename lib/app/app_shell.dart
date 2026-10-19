@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/app/new_password_screen.dart';
 import 'package:checkpoint/screens/home/home_screen.dart';
 import 'package:checkpoint/screens/library/library_screen.dart';
 import 'package:checkpoint/screens/profile/profile_screen.dart';
@@ -28,23 +29,47 @@ class _AppShellState extends State<AppShell> {
     AuthGate(child: ProfileScreen()),
   ];
 
+  late final AuthStore _auth;
   late final LibraryStore _library;
   late final ProfileStore _profile;
+
+  /// The new password screen a reset link opened is showing.
+  bool _askingForPassword = false;
 
   @override
   void initState() {
     super.initState();
+    _auth = context.read<AuthStore>();
     _library = context.read<LibraryStore>();
     _profile = context.read<ProfileStore>();
+    _auth.addListener(_askForNewPassword);
     _library.addListener(_showNotices);
     _profile.addListener(_showNotices);
+    // The link may have been handled before the shell was built.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askForNewPassword());
   }
 
   @override
   void dispose() {
+    _auth.removeListener(_askForNewPassword);
     _library.removeListener(_showNotices);
     _profile.removeListener(_showNotices);
     super.dispose();
+  }
+
+  /// A password reset link signed the user in: asks for the new password over
+  /// whatever is open. Closing the screen without saving puts it off.
+  Future<void> _askForNewPassword() async {
+    if (!mounted || _askingForPassword || !_auth.isRecoveringPassword) return;
+    _askingForPassword = true;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => const NewPasswordScreen(afterReset: true),
+      ),
+    );
+    _askingForPassword = false;
+    _auth.dismissPasswordRecovery();
   }
 
   /// Tells the user when an edit could not be saved (or was kept for later), from

@@ -828,6 +828,28 @@ class FakeAuthService implements AuthService {
     if (error != null) throw error;
   }
 
+  /// What [updatePassword] throws, when set; the password is unchanged then.
+  Object? passwordError;
+
+  /// Every password [updatePassword] was asked to save.
+  final List<String> passwordUpdates = [];
+
+  /// Like the real one: the server saves it and Supabase announces the update.
+  @override
+  Future<void> updatePassword(String password) async {
+    passwordUpdates.add(password);
+    final error = passwordError;
+    if (error != null) throw error;
+    emit(user, event: AuthChangeEvent.userUpdated);
+  }
+
+  /// Signs [next] in the way a password reset link does.
+  void openResetLink(User next, {bool fromBroadcast = false}) => emit(
+    next,
+    event: AuthChangeEvent.passwordRecovery,
+    fromBroadcast: fromBroadcast,
+  );
+
   /// What [signOutOtherDevices] throws, when set.
   Object? signOutOthersError;
   int signOutOthersCalls = 0;
@@ -842,15 +864,21 @@ class FakeAuthService implements AuthService {
   @override
   Stream<AuthState> get changes => _changes.stream;
 
-  /// Signs [next] in (or out, when null) and announces it, as Supabase does.
-  void emit(User? next) {
+  /// Signs [next] in (or out, when null) and announces it, as Supabase does,
+  /// with [event] in place of signedIn / signedOut when given. [fromBroadcast]
+  /// is an event another browser tab passed on.
+  void emit(User? next, {AuthChangeEvent? event, bool fromBroadcast = false}) {
     user = next;
     _changes.add(
       AuthState(
-        next == null ? AuthChangeEvent.signedOut : AuthChangeEvent.signedIn,
+        event ??
+            (next == null
+                ? AuthChangeEvent.signedOut
+                : AuthChangeEvent.signedIn),
         next == null
             ? null
             : Session(accessToken: 't', tokenType: 'bearer', user: next),
+        fromBroadcast: fromBroadcast,
       ),
     );
   }

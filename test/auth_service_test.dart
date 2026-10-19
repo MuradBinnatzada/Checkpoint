@@ -131,6 +131,32 @@ void main() {
     expect(service.currentUser?.email, 'ada@example.com');
   });
 
+  test(
+    'updatePassword saves the new password of the signed-in account',
+    () async {
+      final session = {
+        'access_token': 'a',
+        'refresh_token': 'r',
+        'token_type': 'bearer',
+        'expires_in': 3600,
+        'user': _signUpUser(identities: [_emailIdentity]),
+      };
+      answer = (request) => request.url.path == '/auth/v1/user'
+          ? _signUpUser(identities: [_emailIdentity])
+          : session;
+      await service.signInWithEmail('ada@example.com', 'old password');
+      requests.clear();
+
+      await service.updatePassword('correct horse');
+
+      expect(requests.single.method, 'PUT');
+      expect(requests.single.url.path, '/auth/v1/user');
+      expect(requests.single.headers['authorization'], 'Bearer a');
+      final body = jsonDecode(requests.single.body) as Map<String, dynamic>;
+      expect(body, {'password': 'correct horse'});
+    },
+  );
+
   group('messageFor', () {
     String message(String code, [String text = 'raw']) =>
         AuthService.messageFor(
@@ -163,6 +189,17 @@ void main() {
           ),
         ),
         'That password is too weak. Password should be at least 8 characters.',
+      );
+    });
+
+    test('words a refused password change', () {
+      expect(
+        message('same_password'),
+        'That is your current password. Choose a different one.',
+      );
+      expect(
+        message('reauthentication_needed'),
+        startsWith('For your security, sign out and sign in again'),
       );
     });
 

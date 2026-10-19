@@ -17,6 +17,7 @@ class AuthStore extends ChangeNotifier {
 
   User? _user;
   bool _sessionPending = false;
+  bool _recoveringPassword = false;
   StreamSubscription<AuthState>? _subscription;
   final StreamController<User?> _changes = StreamController<User?>.broadcast();
 
@@ -44,6 +45,12 @@ class AuthStore extends ChangeNotifier {
   /// queue edits instead of calling the server; [restoreSession] ends the state.
   bool get isSessionPending => _sessionPending;
 
+  /// The user opened a password reset link, which signed them in, and has not
+  /// chosen a new password yet: the app shell asks for one until
+  /// [updatePassword] saves it or [dismissPasswordRecovery] puts it off. Only
+  /// the browser tab that opened the link asks, not the other open tabs.
+  bool get isRecoveringPassword => _recoveringPassword;
+
   /// Emits the current user (`null` = signed out) on every auth event: sign-in,
   /// sign-out, token refresh, profile update. Unlike [addListener], this includes
   /// events for the same account, which the data stores treat as "refresh your
@@ -58,11 +65,20 @@ class AuthStore extends ChangeNotifier {
     _subscription = _service.changes.listen((state) {
       final next = state.session?.user;
       final accountChanged = next?.id != _user?.id;
+      final opensReset =
+          state.event == AuthChangeEvent.passwordRecovery &&
+          !state.fromBroadcast;
+      final recovering =
+          next != null &&
+          (opensReset || (_recoveringPassword && !accountChanged));
+      final recoveryChanged = recovering != _recoveringPassword;
       _sessionPending = false;
       _user = next;
+      _recoveringPassword = recovering;
       // Widgets watching this store care who is signed in, not about the hourly
-      // token refresh, so they are told only when the account changes.
-      if (accountChanged) notifyListeners();
+      // token refresh, so they are told only when the account changes (or a
+      // reset link wants a new password).
+      if (accountChanged || recoveryChanged) notifyListeners();
       _changes.add(next);
     }, onError: (Object e) => debugPrint('Auth stream error: $e'));
 
@@ -115,6 +131,24 @@ class AuthStore extends ChangeNotifier {
   /// Emails a link for choosing a new password.
   Future<void> sendPasswordReset(String email) =>
       _service.sendPasswordReset(email);
+
+  /// Replaces the signed-in account's password, which also ends
+  /// [isRecoveringPassword]. Throws when there is no live session to ask with
+  /// ([SessionPending]) or the server refused it (too weak, the same as before).
+  Future<void> updatePassword(String password) async {
+    if (_user == null) throw StateError('Not signed in.');
+    requireSession();
+    await _service.updatePassword(password);
+    dismissPasswordRecovery();
+  }
+
+  /// Stops asking for a new password after a reset link. The user stays signed
+  /// in and keeps the old password.
+  void dismissPasswordRecovery() {
+    if (!_recoveringPassword) return;
+    _recoveringPassword = false;
+    notifyListeners();
+  }
 
   Future<void> signInWithGoogle() => _service.signInWithGoogle();
 
