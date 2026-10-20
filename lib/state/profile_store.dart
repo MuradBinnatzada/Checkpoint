@@ -160,8 +160,12 @@ class ProfileStore extends ChangeNotifier {
     await _onUser(_auth.user);
   }
 
+  /// Set by [dispose]: a send that ends after it tells no one.
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_authSubscription?.cancel());
     unawaited(_connectivitySubscription?.cancel());
     unawaited(_cancelDataSubscriptions());
@@ -750,6 +754,10 @@ class ProfileStore extends ChangeNotifier {
   /// The device has a change the server doesn't have yet. Saved with the list.
   bool _servicesPending = false;
 
+  /// The server has the connected accounts this device has: no change to them
+  /// is waiting to be sent. Listeners hear when a send gets through.
+  bool get servicesSaved => !_servicesPending;
+
   /// Bumped by every change made on the device and every send that reached the
   /// server, so a read of the server's accounts that was under way meanwhile can
   /// tell its answer is out of date.
@@ -867,6 +875,7 @@ class ProfileStore extends ChangeNotifier {
       if (sent == _accounts) {
         _servicesPending = false;
         await _saveConnectedServices(user.id);
+        if (!_disposed && _user?.id == user.id) notifyListeners();
       }
     }
   }

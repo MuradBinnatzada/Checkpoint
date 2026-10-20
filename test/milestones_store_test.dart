@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/services/local_cache.dart';
@@ -229,6 +230,48 @@ void main() {
 
       expect(store.status, LoadStatus.ready);
       expect(store.earned.has('library_10'), isTrue);
+    });
+  });
+
+  group('without Steam', () {
+    test('marking a Platinum asks for Perfectionist and announces it', () async {
+      repo.library = [testGame('a', playedOn: GamePlatform.ps5)];
+      await start();
+      expect(repo.awardCalls, hasLength(1));
+
+      repo.reachable = {'perfect_game': now};
+      await library.setPerfected('a', true);
+      await pumpEventQueue();
+
+      expect(repo.perfectedSent['a'], isTrue);
+      expect(repo.awardCalls, hasLength(2));
+      expect(store.earned.has('perfect_game'), isTrue);
+      expect(ids(announced.last.milestones), ['perfect_game']);
+    });
+
+    test('connecting PSN asks once the server has it', () async {
+      repo.library = [testGame('a')];
+      // Connected accounts are sent for a signed-in profile.
+      await profile.initialize();
+      await start();
+      expect(repo.awardCalls, hasLength(1));
+
+      repo.reachable = {'steam_connected': now};
+      repo.servicesGate = Completer<void>();
+      profile.setServiceId(ConnectedService.psn, 'Kratos');
+      await pumpEventQueue();
+
+      // Still on its way: the server couldn't count it yet.
+      expect(store.progress.valueOf(MilestoneMetric.gameAccount), isNull);
+      expect(repo.awardCalls, hasLength(1));
+
+      repo.servicesGate!.complete();
+      await pumpEventQueue();
+
+      expect(repo.connectedServices, contains(ConnectedService.psn));
+      expect(repo.awardCalls, hasLength(2));
+      expect(store.earned.has('steam_connected'), isTrue);
+      expect(ids(announced.last.milestones), ['steam_connected']);
     });
   });
 

@@ -405,6 +405,7 @@ class _ProgressPanel extends StatelessWidget {
               : Wrap(spacing: 6, runSpacing: 6, children: [
                   StatusPill(game.status!),
                   if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
+                  if (game.isPerfected) PerfectPill(game.perfectMark),
                 ]),
           FilledButton.tonalIcon(
             onPressed: () => showLogHoursSheet(context, game.id),
@@ -511,6 +512,20 @@ class _StatusActions extends StatelessWidget {
         ));
     }
 
+    void setPerfected(bool value) {
+      final mark = game.perfectMark;
+      store.setPerfected(game.id, value);
+      HapticFeedback.selectionClick();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(value ? mark.done : 'No longer marked ${mark.title}'),
+          duration: undoSnackBarDuration,
+          persist: false,
+          action: SnackBarAction(label: 'Undo', onPressed: () => store.setPerfected(game.id, !value)),
+        ));
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 10, runSpacing: 10, children: [
         FilledButton.icon(
@@ -540,7 +555,26 @@ class _StatusActions extends StatelessWidget {
       ]),
       if (game.status == GameStatus.completed) ...[
         const SizedBox(height: 12),
-        _StillPlayingSwitch(value: game.stillPlaying, onChanged: setStillPlaying),
+        _FlagSwitch(
+          value: game.stillPlaying,
+          onChanged: setStillPlaying,
+          icon: GameStatus.playing.icon,
+          color: GameStatus.playing.color,
+          title: 'Still playing',
+          subtitle: 'Keep it under Playing too, for online, post-game or DLC',
+        ),
+      ],
+      // Named by where it is played: pick PS5 above and it is the Platinum.
+      if (game.canBePerfected) ...[
+        const SizedBox(height: 12),
+        _FlagSwitch(
+          value: game.perfected,
+          onChanged: setPerfected,
+          icon: game.perfectMark.icon,
+          color: game.perfectMark.color,
+          title: game.perfectMark.title,
+          subtitle: game.perfectMark.description,
+        ),
       ],
       // Stays in the tree whatever the status, so it sees the game being marked
       // completed (and opens); it draws nothing for any other status.
@@ -558,17 +592,29 @@ class _StatusActions extends StatelessWidget {
   }
 }
 
-/// "Still playing" for a completed game: finished, but played on (online,
-/// post-game, DLC), so it is listed under Playing and on Home too while it
-/// stays Completed.
-class _StillPlayingSwitch extends StatelessWidget {
-  const _StillPlayingSwitch({required this.value, required this.onChanged});
+/// A switch for something about the member's game, tinted [color] while on:
+/// "Still playing" for a completed game (finished, but played on, so it is
+/// listed under Playing and on Home too while it stays Completed), and its
+/// Platinum trophy, every achievement or 100% ([Game.perfected]).
+class _FlagSwitch extends StatelessWidget {
+  const _FlagSwitch({
+    required this.value,
+    required this.onChanged,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
   final bool value;
   final ValueChanged<bool> onChanged;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    final color = context.palette.legible(GameStatus.playing.color);
+    final color = context.palette.legible(this.color);
     return Material(
       color: value ? color.withValues(alpha: 0.10) : context.palette.text.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(
@@ -581,10 +627,10 @@ class _StillPlayingSwitch extends StatelessWidget {
         onChanged: onChanged,
         dense: true,
         contentPadding: const EdgeInsets.only(left: 14, right: 8),
-        secondary: Icon(GameStatus.playing.icon, color: value ? color : context.palette.muted),
-        title: const Text('Still playing', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        secondary: Icon(icon, color: value ? color : context.palette.muted),
+        title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
         subtitle: Text(
-          'Keep it under Playing too, for online, post-game or DLC',
+          subtitle,
           style: TextStyle(color: context.palette.muted, fontSize: 12, height: 1.3),
         ),
       ),

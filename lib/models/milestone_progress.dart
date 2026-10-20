@@ -12,11 +12,13 @@ import 'package:checkpoint/models/user_profile.dart';
 /// device from what it holds: their library, sessions, lists and profile. It is
 /// for the progress bars, and for telling when a milestone was probably just
 /// reached; the server decides (`award_milestones`), so the rules here follow
-/// its SQL (20261020120100_milestones.sql).
+/// its SQL (20261020120100_milestones.sql and
+/// 20261020140337_milestones_without_steam.sql).
 ///
 /// What the device doesn't know is left out, and its milestones get no bar: the
-/// lists until they are loaded, Steam achievement counts (they are not part of
-/// the library), and anything passed as null.
+/// lists until they are loaded, and anything passed as null. Perfect games are
+/// the ones the member marked: the server also counts every Steam achievement
+/// unlocked, which isn't part of the library, so it may count more.
 @immutable
 class MilestoneProgress {
   const MilestoneProgress(this.values);
@@ -28,7 +30,7 @@ class MilestoneProgress {
     int? following,
     int? followers,
     UserProfile? profile,
-    bool? steamConnected,
+    bool? gameAccount,
     bool? twoFactor,
     DateTime? now,
   }) {
@@ -111,8 +113,8 @@ class MilestoneProgress {
       MilestoneMetric.dropped: countWhere(
         (g) => g.status == GameStatus.dropped,
       ),
-      if (steamConnected != null)
-        MilestoneMetric.steamConnected: steamConnected ? 1 : 0,
+      MilestoneMetric.perfectGames: countWhere((g) => g.isPerfected),
+      if (gameAccount != null) MilestoneMetric.gameAccount: gameAccount ? 1 : 0,
       if (twoFactor != null) MilestoneMetric.twoFactor: twoFactor ? 1 : 0,
     });
   }

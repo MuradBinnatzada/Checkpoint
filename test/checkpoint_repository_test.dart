@@ -211,6 +211,19 @@ void main() {
       expect(games.firstWhere((g) => g.id == 'g1').coverUrl, 'https://images.igdb.com/hades.jpg');
     });
 
+    test('reads whether the member marked a game perfected', () async {
+      api.reply([
+        {...userGameRow('g1'), 'perfected': true},
+        userGameRow('g2'),
+      ]);
+
+      final games = await repo.fetchUserGames('u1');
+
+      expect(api.last.url.queryParameters['select'], contains('perfected'));
+      expect(games.firstWhere((g) => g.id == 'g1').perfected, isTrue);
+      expect(games.firstWhere((g) => g.id == 'g2').perfected, isFalse);
+    });
+
     test('asks for the user\'s rows only, and never for the heavy achievements column', () async {
       await repo.fetchUserGames('u1');
 
@@ -1168,6 +1181,19 @@ void main() {
       expect(games.first.rating, 4.5);
     });
 
+    test('another member\'s library shows the games they marked perfected', () async {
+      api.serveTable([
+        {...publicGameRow('g1'), 'perfected': true},
+        publicGameRow('g2'),
+      ], 'game_id');
+
+      final games = await repo.fetchPublicLibrary('m1');
+
+      expect(api.last.url.queryParameters['select'], contains('perfected'));
+      expect(games.firstWhere((g) => g.id == 'g1').perfected, isTrue);
+      expect(games.firstWhere((g) => g.id == 'g2').perfected, isFalse);
+    });
+
     test('recent activity is one row per game, newest first, without the note', () async {
       Map<String, dynamic> session(String gameId, String title, String at, {Object? hours = 2}) => {
         'game_id': gameId,
@@ -1464,6 +1490,33 @@ void main() {
 
       final row = api.bodyOf(api.last) as Map<String, dynamic>;
       expect(row['custom_backdrop_url'], art);
+    });
+
+    test('upsertUserGame sends whether the game is perfected, false unless said', () async {
+      await repo.upsertUserGame(
+        userId: 'u1',
+        gameId: 'g1',
+        status: GameStatus.completed,
+        rating: 0,
+        hoursPlayed: 1,
+        playedOn: GamePlatform.ps5,
+        purchasePrice: 0,
+        isFavorite: false,
+      );
+      expect((api.bodyOf(api.last) as Map)['perfected'], isFalse);
+
+      await repo.upsertUserGame(
+        userId: 'u1',
+        gameId: 'g1',
+        status: GameStatus.completed,
+        rating: 0,
+        hoursPlayed: 1,
+        playedOn: GamePlatform.ps5,
+        purchasePrice: 0,
+        isFavorite: false,
+        perfected: true,
+      );
+      expect((api.bodyOf(api.last) as Map)['perfected'], isTrue);
     });
 
     test('setConnectedAccounts replaces the services and the account names on the signed-in user\'s row', () async {

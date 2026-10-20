@@ -232,6 +232,73 @@ List<GamePlatform> releasePlatformsFromDb(Iterable<Object?> values) {
   return result.toList();
 }
 
+/// What getting everything out of a game ([Game.perfected]) is called where it
+/// was played: the Platinum trophy on the PlayStations that have trophies,
+/// every achievement on PC and the Xboxes that have them, and 100% anywhere
+/// else (Nintendo has neither). It is one flag whatever the name.
+enum PerfectMark {
+  platinum(
+    'Platinum',
+    'Platinum trophy',
+    'You earned every trophy in it',
+    'Platinum trophy earned',
+    Icons.emoji_events_rounded,
+    Color(0xFF8FE3EC),
+  ),
+  achievements(
+    'All achievements',
+    'All achievements',
+    'You unlocked every achievement in it',
+    'All achievements unlocked',
+    Icons.military_tech_rounded,
+    Color(0xFFFFC857),
+  ),
+  complete(
+    '100%',
+    '100% complete',
+    'You did everything there is to do in it',
+    'Marked 100% complete',
+    Icons.workspace_premium_rounded,
+    Color(0xFFFFC857),
+  );
+
+  const PerfectMark(this.label, this.title, this.description, this.done, this.icon, this.color);
+
+  /// On the game's badges.
+  final String label;
+
+  /// On the switch that marks it.
+  final String title;
+  final String description;
+
+  /// Said when it is marked.
+  final String done;
+  final IconData icon;
+
+  /// Picked for the dark theme, like the milestone tiers; pass it through
+  /// `Palette.legible` for text and icons on the light one.
+  final Color color;
+
+  static PerfectMark forPlatform(GamePlatform? platform) => switch (platform) {
+        GamePlatform.ps5 ||
+        GamePlatform.ps4 ||
+        GamePlatform.ps3 ||
+        GamePlatform.vita ||
+        // What older builds stored for "some PlayStation": most likely one
+        // with trophies.
+        GamePlatform.playstation =>
+          platinum,
+        GamePlatform.pc ||
+        GamePlatform.steamDeck ||
+        GamePlatform.xboxSeries ||
+        GamePlatform.xboxOne ||
+        GamePlatform.xbox360 ||
+        GamePlatform.xbox =>
+          achievements,
+        _ => complete,
+      };
+}
+
 /// `games.release_year` only accepts 1950-2100 or NULL (`games_release_year_check`).
 /// Returns [year] when it fits, otherwise null. This covers the model's
 /// `0 = unknown` placeholder as well as any out-of-range value.
@@ -292,6 +359,7 @@ class Game {
     this.review = '',
     this.completionTime,
     this.stillPlaying = false,
+    this.perfected = false,
   });
 
   final String id;
@@ -357,6 +425,12 @@ class Game {
   /// `LibraryStore.setStatus`.
   final bool stillPlaying;
 
+  /// The member got everything out of it: a Platinum trophy, every achievement
+  /// or 100%, named by where they played it ([perfectMark]). Self-reported
+  /// (`user_games.perfected`); it counts for the Perfectionist milestone. Kept
+  /// whatever the status, but never offered on a wishlisted game.
+  final bool perfected;
+
   /// Rebuilds a game from [toJson]'s output (the offline cache). The cover
   /// colours and icon are derived from the other fields, as when a game is read
   /// from the database, so they are not stored.
@@ -393,6 +467,7 @@ class Game {
       review: json['review'] as String? ?? '',
       completionTime: CompletionTime.fromJson(json['completionTime']),
       stillPlaying: json['stillPlaying'] == true,
+      perfected: json['perfected'] == true,
     );
   }
 
@@ -428,6 +503,7 @@ class Game {
         'review': review,
         'completionTime': completionTime?.toJson(),
         'stillPlaying': stillPlaying,
+        'perfected': perfected,
       };
 
   bool get inLibrary => status != null;
@@ -441,6 +517,15 @@ class Game {
   /// completed game is [stillPlaying].
   bool isListedUnder(GameStatus s) =>
       status == s || (s == GameStatus.playing && isPlaying);
+
+  /// Can be marked [perfected]: it is in the library, and not just wished for.
+  bool get canBePerfected => inLibrary && status != GameStatus.wishlist;
+
+  /// [perfected] and counted: as `award_milestones` counts it.
+  bool get isPerfected => perfected && canBePerfected;
+
+  /// What [perfected] is called for this game, by where it is played.
+  PerfectMark get perfectMark => PerfectMark.forPlatform(playedOn);
 
   /// What the "Played on" pickers offer for this game, in [GamePlatform] order:
   /// exactly the platforms it was released on, the saved choice (so it never
@@ -480,6 +565,7 @@ class Game {
     DateTime? releaseDate,
     String? review,
     bool? stillPlaying,
+    bool? perfected,
   }) =>
       Game(
         id: id,
@@ -512,6 +598,7 @@ class Game {
         review: review ?? this.review,
         completionTime: completionTime,
         stillPlaying: stillPlaying ?? this.stillPlaying,
+        perfected: perfected ?? this.perfected,
       );
 
   /// This game with [completedAt] set to exactly [at] (null: not completed).
@@ -545,6 +632,7 @@ class Game {
         review: review,
         completionTime: completionTime,
         stillPlaying: stillPlaying,
+        perfected: perfected,
       );
 
   /// This game with the member's own backdrop set to exactly [url] (null: the
@@ -578,6 +666,7 @@ class Game {
         review: review,
         completionTime: completionTime,
         stillPlaying: stillPlaying,
+        perfected: perfected,
       );
 
   /// This game with the member's completion time set to exactly [time] (null:
@@ -611,6 +700,7 @@ class Game {
         review: review,
         completionTime: time,
         stillPlaying: stillPlaying,
+        perfected: perfected,
       );
 
   /// This game as the catalog knows it, with all of the user's tracking state

@@ -337,6 +337,7 @@ class CheckpointRepository {
           ${Db.completedAt},
           ${Db.review},
           ${Db.stillPlaying},
+          ${Db.perfected},
           ${Db.completionTimes} (
             ${Db.category},
             ${Db.minutes}
@@ -750,6 +751,7 @@ class CheckpointRepository {
     Db.customBackdropUrl,
     Db.review,
     Db.completedAt,
+    Db.perfected,
     ..._catalogColumns,
   ].join(', ');
 
@@ -1086,6 +1088,7 @@ class CheckpointRepository {
     DateTime? dateAdded,
     String review = '',
     bool stillPlaying = false,
+    bool perfected = false,
   }) async {
     await _client.from(Db.userGames).upsert({
       Db.userId: userId,
@@ -1101,6 +1104,7 @@ class CheckpointRepository {
       Db.review: review.trim(),
       // The trigger clears it for any status but completed.
       Db.stillPlaying: stillPlaying && status == GameStatus.completed,
+      Db.perfected: perfected,
     }, onConflict: '${Db.userId},${Db.gameId}');
   }
 
@@ -1490,6 +1494,7 @@ Game _gameFromPublicRow(Map<String, dynamic> row) {
     dateAdded: _date(row[Db.dateAdded]),
     isFavorite: row[Db.isFavorite] == true,
     review: _firstText([row[Db.review]]) ?? '',
+    perfected: row[Db.perfected] == true,
   ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt]));
 }
 
@@ -1560,6 +1565,7 @@ Game _gameFromUserGameRow(Map<String, dynamic> row) {
     isFavorite: row[Db.isFavorite] == true,
     review: _firstText([row[Db.review]]) ?? '',
     stillPlaying: row[Db.stillPlaying] == true,
+    perfected: row[Db.perfected] == true,
     // `achievements` is intentionally not read here: fetchUserGames doesn't
     // select it. See fetchGameAchievements.
   ).withBackdrop(_firstText([row[Db.customBackdropUrl]])).withCompletedAt(_date(row[Db.completedAt])).withCompletionTime(_completionTimeFromEmbed(row[Db.completionTimes]));

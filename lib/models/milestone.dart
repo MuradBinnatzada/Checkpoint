@@ -38,7 +38,8 @@ enum MilestoneCategory {
 }
 
 /// What a milestone counts: `milestones.metric` in the database, where
-/// `award_milestones` works each one out (20261020120100_milestones.sql).
+/// `award_milestones` works each one out (20261020120100_milestones.sql, as
+/// changed by 20261020140337_milestones_without_steam.sql).
 /// [unit] names what is counted in a progress line ("37 / 50 games"); empty for
 /// a milestone that is a yes or no.
 enum MilestoneMetric {
@@ -67,7 +68,7 @@ enum MilestoneMetric {
   favorites('favorites', 'favorites'),
   wishlist('wishlist', 'wishlisted'),
   dropped('dropped', ''),
-  steamConnected('steam_connected', ''),
+  gameAccount('game_account', ''),
   twoFactor('two_factor', ''),
   perfectGames('perfect_games', '');
 
@@ -169,8 +170,9 @@ class Milestone {
 }
 
 /// Every milestone, by category, easiest first. Must match the `milestones` rows
-/// of 20261020120100_milestones.sql (ids, metrics, thresholds, frames, titles);
-/// test/milestones_test.dart compares them. Ids are stored: never rename one.
+/// the migrations seed (20261020120100_milestones.sql and the later ones that
+/// change it: ids, metrics, thresholds, frames, titles); test/milestones_test.dart
+/// compares them. Ids are stored: never rename one.
 const List<Milestone> milestones = [
   // Library
   Milestone(
@@ -790,14 +792,16 @@ const List<Milestone> milestones = [
     metric: MilestoneMetric.dropped,
     threshold: 1,
   ),
+  // Was "Steam Powered", for Steam only; the id stayed, so those who earned
+  // it kept it (20261020140337_milestones_without_steam.sql).
   Milestone(
     id: 'steam_connected',
-    title: 'Steam Powered',
-    description: 'Connect your Steam account.',
+    title: 'Plugged In',
+    description: 'Connect a game account: Steam, PSN, Xbox or Nintendo.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
-    icon: Icons.cloud_sync_rounded,
-    metric: MilestoneMetric.steamConnected,
+    icon: Icons.cable_rounded,
+    metric: MilestoneMetric.gameAccount,
     threshold: 1,
   ),
   Milestone(
@@ -814,7 +818,7 @@ const List<Milestone> milestones = [
   Milestone(
     id: 'perfect_game',
     title: 'Perfectionist',
-    description: 'Unlock every Steam achievement in a game.',
+    description: 'Earn a Platinum trophy, every achievement or 100% in a game.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.gold,
     icon: Icons.fact_check_rounded,

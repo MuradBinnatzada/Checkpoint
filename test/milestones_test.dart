@@ -41,20 +41,27 @@ void main() {
       }
     });
 
-    test('matches the rows the migration seeds', () {
-      final sql = File('supabase/migrations/20261020120100_milestones.sql')
-          .readAsStringSync();
+    test('matches the rows the migrations seed', () {
+      // The seed, then the migrations that change it, in the order they run:
+      // a later row replaces an earlier one with the same id.
+      const files = [
+        '20261020120100_milestones.sql',
+        '20261020140337_milestones_without_steam.sql',
+      ];
       final row = RegExp(
         r"\('([a-z0-9_]+)', '([a-z_]+)', (\d+), (null|'[a-z]+'), (null|'[^']+')\)",
       );
       final seeded = {
-        for (final match in row.allMatches(sql))
-          match.group(1)!: (
-            metric: match.group(2)!,
-            threshold: int.parse(match.group(3)!),
-            frame: _unquote(match.group(4)!),
-            title: _unquote(match.group(5)!),
-          ),
+        for (final file in files)
+          for (final match in row.allMatches(
+            File('supabase/migrations/$file').readAsStringSync(),
+          ))
+            match.group(1)!: (
+              metric: match.group(2)!,
+              threshold: int.parse(match.group(3)!),
+              frame: _unquote(match.group(4)!),
+              title: _unquote(match.group(5)!),
+            ),
       };
 
       expect(seeded.keys.toSet(), {for (final m in milestones) m.id});
@@ -185,6 +192,32 @@ void main() {
       );
     });
 
+    test('counts the games marked perfected, but not a wishlisted one', () {
+      final progress = MilestoneProgress.of(
+        library: [
+          testGame('a', playedOn: GamePlatform.ps5).copyWith(perfected: true),
+          testGame('b', status: GameStatus.wishlist).copyWith(perfected: true),
+          testGame('c'),
+        ],
+        sessions: const [],
+      );
+      expect(progress.valueOf(MilestoneMetric.perfectGames), 1);
+      expect(progress.reached(milestoneById('perfect_game')!), isTrue);
+    });
+
+    test('counts any game account connected, when it is known', () {
+      MilestoneProgress of(bool? connected) => MilestoneProgress.of(
+        library: const [],
+        sessions: const [],
+        gameAccount: connected,
+      );
+      final plugged = milestoneById('steam_connected')!;
+      expect(plugged.metric, MilestoneMetric.gameAccount);
+      expect(of(true).reached(plugged), isTrue);
+      expect(of(false).reached(plugged), isFalse);
+      expect(of(null).fractionOf(plugged), isNull);
+    });
+
     test('counts only the sessions the member logged', () {
       final progress = MilestoneProgress.of(
         library: const [],
@@ -256,7 +289,7 @@ void main() {
       );
       expect(progress.valueOf(MilestoneMetric.lists), isNull);
       expect(progress.valueOf(MilestoneMetric.followers), isNull);
-      expect(progress.valueOf(MilestoneMetric.perfectGames), isNull);
+      expect(progress.valueOf(MilestoneMetric.gameAccount), isNull);
       expect(progress.fractionOf(milestoneById('lists_1')!), isNull);
       expect(progress.reached(milestoneById('lists_1')!), isFalse);
     });

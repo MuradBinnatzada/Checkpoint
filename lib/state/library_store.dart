@@ -999,6 +999,17 @@ class LibraryStore extends ChangeNotifier {
     await _saveUserGame(next);
   }
 
+  /// Marks the game [id] perfected ([Game.perfected]): the member got its
+  /// Platinum trophy, every achievement or 100% out of it. Does nothing for a
+  /// game that can't be ([Game.canBePerfected]).
+  Future<void> setPerfected(String id, bool value) async {
+    final game = gameById(id);
+    if (!game.canBePerfected || game.perfected == value) return;
+    final next = game.copyWith(perfected: value);
+    _replaceGame(next);
+    await _saveUserGame(next);
+  }
+
   /// Puts [game] in the library as an imported file has it: [status], and the
   /// [rating], [hours], [playedOn] and [review] the file gives (what it leaves
   /// out keeps what the library has; hours never go down). No session is logged:
@@ -1498,6 +1509,7 @@ class LibraryStore extends ChangeNotifier {
       customBackdropUrl: game.customBackdropUrl,
       review: game.review,
       stillPlaying: game.stillPlaying,
+      perfected: game.perfected,
     );
   }
 

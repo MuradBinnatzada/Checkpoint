@@ -170,6 +170,10 @@ abstract final class Db {
   /// Playing too. Cleared by the same trigger whenever the status isn't
   /// completed. Not in `public_user_games`.
   static const stillPlaying = 'still_playing';
+
+  /// `user_games` (and `public_user_games`): the member got everything out of
+  /// the game, a Platinum trophy, every achievement or 100% (`PerfectMark`).
+  static const perfected = 'perfected';
   static const reviewMaxLength = 500;
 
   /// `games`: the day the game first came out, from IGDB; NULL when unknown.

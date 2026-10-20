@@ -615,6 +615,7 @@ class FakeRepository implements CheckpointRepository {
     DateTime? dateAdded,
     String review = '',
     bool stillPlaying = false,
+    bool perfected = false,
   }) async {
     await userGameGate?.future;
     _checkWrite();
@@ -622,6 +623,7 @@ class FakeRepository implements CheckpointRepository {
     backdrops[gameId] = customBackdropUrl;
     reviews[gameId] = review;
     stillPlayingSent[gameId] = stillPlaying;
+    perfectedSent[gameId] = perfected;
   }
 
   /// Holds [upsertUserGame] until completed, to have a game's save in flight.
@@ -632,6 +634,10 @@ class FakeRepository implements CheckpointRepository {
 
   /// The "still playing" flag each game's last save sent.
   final Map<String, bool> stillPlayingSent = {};
+
+  /// The perfected flag (Platinum, all achievements, 100%) each game's last
+  /// save sent.
+  final Map<String, bool> perfectedSent = {};
 
   @override
   Future<void> upsertCompletionTime({

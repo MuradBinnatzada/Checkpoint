@@ -298,6 +298,7 @@ class _PosterTile extends StatelessWidget {
       game.title,
       if (game.rating > 0) 'rated ${fmtHours(game.rating)} out of 5',
       if (game.hoursPlayed > 0) '${fmtHours(game.hoursPlayed)} hours played',
+      if (game.isPerfected) game.perfectMark.title,
     ].join(', ');
     return Semantics(
       button: true,
@@ -312,7 +313,9 @@ class _PosterTile extends StatelessWidget {
     return Stack(
       children: [
         Positioned.fill(child: CoverArt(game: game)),
-        if (game.rating > 0)
+        // The rating and the Platinum (or 100%) share the corner: a cover
+        // with no image has its title along the bottom.
+        if (game.rating > 0 || game.isPerfected)
           Positioned(
             left: 6,
             top: 6,
@@ -321,16 +324,26 @@ class _PosterTile extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // The badges are dark in either theme, on the cover art.
-                  Icon(Icons.star_rounded, size: 12, color: Palette.dark.star),
-                  const SizedBox(width: 2),
-                  Text(
-                    fmtHours(game.rating),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                  if (game.rating > 0) ...[
+                    Icon(Icons.star_rounded, size: 12, color: Palette.dark.star),
+                    const SizedBox(width: 2),
+                    Text(
+                      fmtHours(game.rating),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
+                  ],
+                  if (game.rating > 0 && game.isPerfected)
+                    const SizedBox(width: 4),
+                  if (game.isPerfected)
+                    Icon(
+                      game.perfectMark.icon,
+                      size: 12,
+                      color: game.perfectMark.color,
+                    ),
                 ],
               ),
             ),
@@ -460,6 +473,20 @@ class _LibraryListTile extends StatelessWidget {
                                 color: context.palette.muted,
                               ),
                             ),
+                      if (game.isPerfected) ...[
+                        const SizedBox(width: 8),
+                        Tooltip(
+                          message: game.perfectMark.title,
+                          child: Icon(
+                            game.perfectMark.icon,
+                            size: 16,
+                            color: context.palette.legible(
+                              game.perfectMark.color,
+                            ),
+                            semanticLabel: game.perfectMark.title,
+                          ),
+                        ),
+                      ],
                       const Spacer(),
                       Icon(
                         Icons.schedule_rounded,
