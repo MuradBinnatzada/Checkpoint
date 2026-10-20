@@ -194,16 +194,16 @@ class _CompanyScreenState extends State<CompanyScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.sort_rounded,
                       size: 18,
-                      color: Palette.muted,
+                      color: context.palette.muted,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       _sort.label,
-                      style: const TextStyle(
-                        color: Palette.muted,
+                      style: TextStyle(
+                        color: context.palette.muted,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -227,11 +227,11 @@ class _CompanyScreenState extends State<CompanyScreen> {
               selected: {_key.$2},
               onSelectionChanged: (s) => _show(role: s.first),
               style: SegmentedButton.styleFrom(
-                backgroundColor: Palette.surfaceHigh,
-                foregroundColor: Colors.white70,
-                selectedBackgroundColor: Palette.accent,
-                selectedForegroundColor: Palette.onAccent,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+                backgroundColor: context.palette.surfaceHigh,
+                foregroundColor: context.palette.textSoft,
+                selectedBackgroundColor: context.palette.accent,
+                selectedForegroundColor: context.palette.onAccent,
+                side: BorderSide(color: context.palette.outline),
               ),
             ),
           ),
@@ -392,8 +392,8 @@ class _CompanyInfo extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       facts.join(' · '),
-                      style: const TextStyle(
-                        color: Palette.muted,
+                      style: TextStyle(
+                        color: context.palette.muted,
                         fontSize: 13,
                       ),
                     ),
@@ -413,17 +413,17 @@ class _CompanyInfo extends StatelessWidget {
                                 'Part of ${parent.name}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Palette.accent,
+                                style: TextStyle(
+                                  color: context.palette.accent,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
-                            const Icon(
+                            Icon(
                               Icons.chevron_right_rounded,
                               size: 18,
-                              color: Palette.accent,
+                              color: context.palette.accent,
                             ),
                           ],
                         ),
@@ -444,10 +444,10 @@ class _CompanyInfo extends StatelessWidget {
             padding: const EdgeInsets.only(top: 12),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Couldn’t load this studio’s details.',
-                    style: TextStyle(color: Palette.muted, fontSize: 13),
+                    style: TextStyle(color: context.palette.muted, fontSize: 13),
                   ),
                 ),
                 TextButton(onPressed: onRetry, child: const Text('Try again')),
@@ -530,7 +530,7 @@ class _WebsiteIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const size = 14.0;
-    const color = Colors.white70;
+    final color = context.palette.textSoft;
     final brand = switch (kind) {
       CompanyWebsiteKind.wikipedia => FontAwesomeIcons.wikipediaW,
       CompanyWebsiteKind.steam => FontAwesomeIcons.steam,
@@ -547,7 +547,7 @@ class _WebsiteIcon extends StatelessWidget {
       CompanyWebsiteKind.official || CompanyWebsiteKind.other => null,
     };
     if (brand == null) {
-      return const Icon(Icons.language_rounded, size: size + 2, color: color);
+      return Icon(Icons.language_rounded, size: size + 2, color: color);
     }
     return FaIcon(brand, size: size, color: color);
   }

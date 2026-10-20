@@ -84,13 +84,13 @@ class _AchievementsSectionState extends State<AchievementsSection> {
         tooltip: 'Refresh achievements',
         visualDensity: VisualDensity.compact,
         onPressed: () => _load(force: true),
-        icon: const Icon(Icons.refresh_rounded, color: Palette.muted),
+        icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
       ),
       LoadStatus.idle => Icon(
         totals.allUnlocked
             ? Icons.emoji_events_rounded
             : Icons.emoji_events_outlined,
-        color: totals.allUnlocked ? Palette.star : Palette.muted,
+        color: totals.allUnlocked ? context.palette.star : context.palette.muted,
       ),
     };
 
@@ -188,7 +188,7 @@ class _Empty extends StatelessWidget {
           ? 'No achievements yet. Sync your Steam library (Settings > Account) '
                 'to list every game you unlocked achievements in.'
           : 'No Steam achievements to show yet.',
-      style: const TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+      style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
     );
   }
 }
@@ -214,14 +214,14 @@ class _Glow extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        color: active ? Palette.star.withValues(alpha: 0.08) : null,
+        color: active ? context.palette.star.withValues(alpha: 0.08) : null,
         border: active
-            ? Border.all(color: Palette.star.withValues(alpha: 0.6))
+            ? Border.all(color: context.palette.star.withValues(alpha: 0.6))
             : null,
         boxShadow: active
             ? [
                 BoxShadow(
-                  color: Palette.star.withValues(alpha: 0.35),
+                  color: context.palette.star.withValues(alpha: 0.35),
                   blurRadius: 18,
                 ),
               ]
@@ -271,14 +271,14 @@ class _TotalsHeader extends StatelessWidget {
                     fontSize: 30,
                     height: 1.05,
                     fontWeight: FontWeight.w800,
-                    color: done ? Palette.star : null,
+                    color: done ? context.palette.star : null,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '/ ${totals.total} unlocked',
-                  style: const TextStyle(
-                    color: Palette.muted,
+                  style: TextStyle(
+                    color: context.palette.muted,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -291,15 +291,15 @@ class _TotalsHeader extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: totals.progress,
                 minHeight: 8,
-                color: Palette.star,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                color: context.palette.star,
+                backgroundColor: context.palette.track,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               detail,
               style: TextStyle(
-                color: done ? Palette.star : Palette.muted,
+                color: done ? context.palette.star : context.palette.muted,
                 fontSize: 12.5,
                 fontWeight: done ? FontWeight.w700 : FontWeight.w400,
               ),
@@ -320,9 +320,9 @@ class _Failed extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Could not load achievements. Check your connection and try again.',
-          style: TextStyle(color: Palette.danger, fontSize: 12.5, height: 1.35),
+          style: TextStyle(color: context.palette.danger, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 8),
         TextButton.icon(
@@ -378,17 +378,17 @@ class _GameAchievements extends StatelessWidget {
                   Row(
                     children: [
                       if (complete) ...[
-                        const Icon(
+                        Icon(
                           Icons.emoji_events_rounded,
                           size: 14,
-                          color: Palette.star,
+                          color: context.palette.star,
                         ),
                         const SizedBox(width: 4),
                       ],
                       Text(
                         '${game.unlocked} / ${game.total} · $percent%',
                         style: TextStyle(
-                          color: complete ? Palette.star : Palette.muted,
+                          color: complete ? context.palette.star : context.palette.muted,
                           fontSize: 12.5,
                           fontWeight: complete
                               ? FontWeight.w700
@@ -403,15 +403,15 @@ class _GameAchievements extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: game.progress,
                       minHeight: 6,
-                      color: Palette.star,
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      color: context.palette.star,
+                      backgroundColor: context.palette.track,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+            Icon(Icons.chevron_right_rounded, color: context.palette.muted),
           ],
         ),
       ),
@@ -428,11 +428,11 @@ class _Cover extends StatelessWidget {
     const width = 40.0;
     const height = 54.0;
     final fallback = Container(
-      color: Palette.surfaceHigh,
-      child: const Icon(
+      color: context.palette.surfaceHigh,
+      child: Icon(
         Icons.sports_esports_rounded,
         size: 20,
-        color: Palette.muted,
+        color: context.palette.muted,
       ),
     );
     final link = url;

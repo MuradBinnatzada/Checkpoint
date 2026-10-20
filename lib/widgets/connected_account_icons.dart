@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/service_link.dart';
 
 /// A row of small brand icons, one per connected account: game profiles first,
@@ -57,7 +58,7 @@ class _GroupGap extends StatelessWidget {
       width: 1,
       height: 18,
       margin: const EdgeInsets.symmetric(horizontal: 2),
-      color: Colors.white.withValues(alpha: 0.14),
+      color: context.palette.text.withValues(alpha: 0.14),
     );
   }
 }
@@ -76,10 +77,10 @@ class _AccountIcon extends StatelessWidget {
       height: 34,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: service.color.withValues(alpha: 0.16),
+        color: context.palette.legible(service.color).withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: FaIcon(service.icon, size: 16, color: service.color),
+      child: FaIcon(service.icon, size: 16, color: context.palette.legible(service.color)),
     );
 
     if (link == null) {

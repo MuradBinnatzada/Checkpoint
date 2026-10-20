@@ -77,11 +77,11 @@ class _ListScreenState extends State<ListScreen> {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(list.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded, size: 14, color: Palette.muted),
+              Icon(list.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded, size: 14, color: context.palette.muted),
               const SizedBox(width: 6),
               Text(
                 '${list.isPublic ? 'Public' : 'Private'} · ${list.games.length} game${list.games.length == 1 ? '' : 's'}',
-                style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+                style: TextStyle(color: context.palette.muted, fontSize: 12.5),
               ),
             ]),
             if (list.description.isNotEmpty) ...[
@@ -134,7 +134,7 @@ class _ListScreenState extends State<ListScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Palette.danger),
+            style: TextButton.styleFrom(foregroundColor: context.palette.danger),
             child: const Text('Delete'),
           ),
         ],
@@ -164,7 +164,7 @@ class _GameRow extends StatelessWidget {
         child: Row(children: [
           SizedBox(
             width: 28,
-            child: Text('${index + 1}', style: const TextStyle(color: Palette.muted, fontWeight: FontWeight.w700)),
+            child: Text('${index + 1}', style: TextStyle(color: context.palette.muted, fontWeight: FontWeight.w700)),
           ),
           SizedBox(width: 44, child: CoverArt(game: game, radius: 6, showTitle: false)),
           const SizedBox(width: 12),
@@ -172,20 +172,20 @@ class _GameRow extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(game.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
               if (game.hasReleaseYear)
-                Text('${game.releaseYear}', style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+                Text('${game.releaseYear}', style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
             ]),
           ),
           if (onRemove != null) ...[
             IconButton(
               tooltip: 'Take off the list',
               onPressed: onRemove,
-              icon: const Icon(Icons.remove_circle_outline_rounded, color: Palette.muted),
+              icon: Icon(Icons.remove_circle_outline_rounded, color: context.palette.muted),
             ),
             ReorderableDragStartListener(
               index: index,
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(8),
-                child: Icon(Icons.drag_handle_rounded, color: Palette.muted),
+                child: Icon(Icons.drag_handle_rounded, color: context.palette.muted),
               ),
             ),
           ],

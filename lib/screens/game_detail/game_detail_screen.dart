@@ -19,6 +19,7 @@ import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
@@ -51,12 +52,18 @@ class GameDetailScreen extends StatelessWidget {
         SliverAppBar(
           pinned: true,
           expandedHeight: _expanded,
-          backgroundColor: Palette.background,
+          backgroundColor: context.palette.background,
           surfaceTintColor: Colors.transparent,
           leadingWidth: 68,
           leading: Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Center(child: _RoundIconButton(icon: Icons.arrow_back_ios_new_rounded, onTap: () => Navigator.maybePop(context))),
+            padding: const EdgeInsets.only(left: 12),
+            child: Center(
+              child: _RoundIconButton(
+                icon: Icons.arrow_back_ios_new_rounded,
+                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                onTap: () => Navigator.maybePop(context),
+              ),
+            ),
           ),
           actions: [
             // Wishlist and favorite are always side by side, whatever the game's
@@ -65,7 +72,7 @@ class GameDetailScreen extends StatelessWidget {
             if (isLoggedIn) ...[
               if (canChangeBackdrop(game))
                 Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.only(right: 2),
                   child: Center(
                     child: _RoundIconButton(
                       icon: Icons.wallpaper_rounded,
@@ -76,7 +83,7 @@ class GameDetailScreen extends StatelessWidget {
                 ),
               if (canShareLinks && game.igdbId != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.only(right: 2),
                   child: Center(
                     child: _RoundIconButton(
                       icon: Icons.share_rounded,
@@ -91,7 +98,7 @@ class GameDetailScreen extends StatelessWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.only(right: 2),
                 child: Center(
                   child: _RoundIconButton(
                     icon: Icons.playlist_add_rounded,
@@ -101,15 +108,15 @@ class GameDetailScreen extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.only(right: 2),
                 child: Center(child: _WishlistButton(game: game)),
               ),
               Padding(
-                padding: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.only(right: 12),
                 child: Center(
                   child: _RoundIconButton(
                     icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    color: game.isFavorite ? Palette.danger : Colors.white,
+                    color: game.isFavorite ? Palette.dark.danger : Colors.white,
                     tooltip: game.isFavorite ? 'Remove from favorites' : 'Add to favorites',
                     onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
                   ),
@@ -124,31 +131,37 @@ class GameDetailScreen extends StatelessWidget {
             // The header art is always laid out at its full expanded size and anchored
             // to the bottom, then clipped. That way the title/year column is never
             // squeezed into the shrinking app bar (the source of the bottom overflow).
-            return ClipRect(
-              child: Stack(fit: StackFit.expand, children: [
-                Opacity(
-                  opacity: t,
-                  child: OverflowBox(
-                    alignment: Alignment.bottomCenter,
-                    minHeight: _expanded + top,
-                    maxHeight: _expanded + top,
-                    child: _DetailHeaderArt(game: game, topInset: top),
-                  ),
-                ),
-                Positioned(
-                  left: 68,
-                  right: 20,
-                  bottom: 0,
-                  height: kToolbarHeight,
-                  child: Opacity(
-                    opacity: 1 - t,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            // The status bar's icons are light on the art, and the theme's once
+            // the header has collapsed onto the page.
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: systemBarsStyle(t > 0.5 ? Palette.dark : context.palette),
+              child: ClipRect(
+                child: Stack(fit: StackFit.expand, children: [
+                  Opacity(
+                    opacity: t,
+                    child: OverflowBox(
+                      alignment: Alignment.bottomCenter,
+                      minHeight: _expanded + top,
+                      maxHeight: _expanded + top,
+                      // Text on the cover art, under a dark scrim: dark in either theme.
+                      child: DarkArtTheme(child: _DetailHeaderArt(game: game, topInset: top)),
                     ),
                   ),
-                ),
-              ]),
+                  Positioned(
+                    left: 68,
+                    right: 20,
+                    bottom: 0,
+                    height: kToolbarHeight,
+                    child: Opacity(
+                      opacity: 1 - t,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
             );
           }),
         ),
@@ -173,7 +186,7 @@ class GameDetailScreen extends StatelessWidget {
                       ),
                       if (game.playedOn == null) ...[
                         const SizedBox(height: 10),
-                        const Text('Pick the platform you play this on. It is used in your session log and profile stats.', style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35)),
+                        Text('Pick the platform you play this on. It is used in your session log and profile stats.', style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35)),
                       ],
                     ]),
                   ),
@@ -202,19 +215,24 @@ class _RoundIconButton extends StatelessWidget {
   final Color? color;
   final String? tooltip;
 
+  /// A 40 px circle in a 48 px touch target: the space around it is part of the
+  /// button, so the row of them keeps its spacing with 2 px between.
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.38),
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Tooltip(message: tooltip ?? '', child: Icon(icon, size: 18, color: color ?? Colors.white)),
-        ),
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      iconSize: 18,
+      icon: Icon(icon),
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(40),
+        minimumSize: const Size.square(40),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.padded,
+        // Darker on the light theme, where the collapsed header leaves it on a
+        // white page: the white icon still reads.
+        backgroundColor: Colors.black.withValues(alpha: context.palette.isDark ? 0.38 : 0.55),
+        foregroundColor: color ?? Colors.white,
       ),
     );
   }
@@ -371,25 +389,23 @@ class _ProgressPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget stat(String value, String label) => Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
-            Text(label, style: const TextStyle(fontSize: 12, color: Palette.muted)),
-          ]),
-        );
+    Widget stat(String value, String label) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(label, style: TextStyle(fontSize: 12, color: context.palette.muted)),
+        ]);
 
     return Panel(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(
-            child: game.status == null
-                ? const Text('Not in your library', style: TextStyle(color: Palette.muted))
-                : Wrap(spacing: 6, runSpacing: 6, children: [
-                    StatusPill(game.status!),
-                    if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
-                  ]),
-          ),
-          const SizedBox(width: 8),
+      // Stretched, so each Wrap spans the panel and its button sits on the right.
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Each row is a Wrap: with large text the button goes under, rather than
+        // off the edge.
+        Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 10, children: [
+          game.status == null
+              ? Text('Not in your library', style: TextStyle(color: context.palette.muted))
+              : Wrap(spacing: 6, runSpacing: 6, children: [
+                  StatusPill(game.status!),
+                  if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
+                ]),
           FilledButton.tonalIcon(
             onPressed: () => showLogHoursSheet(context, game.id),
             icon: const Icon(Icons.timer_outlined, size: 18),
@@ -397,7 +413,7 @@ class _ProgressPanel extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: 16),
-        Row(children: [
+        Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
           stat('${fmtHours(game.hoursPlayed)} h', 'Played'),
           if (context.watch<AuthStore>().isLoggedIn) PlayTimerButton(game: game),
         ]),
@@ -422,7 +438,7 @@ class _RatingPanel extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           game.rating > 0 ? '${fmtHours(game.rating)} / 5' : 'Tap or drag across the stars (half-stars supported)',
-          style: TextStyle(color: game.rating > 0 ? Palette.star : Palette.muted, fontWeight: FontWeight.w600, fontSize: 13),
+          style: TextStyle(color: game.rating > 0 ? context.palette.star : context.palette.muted, fontWeight: FontWeight.w600, fontSize: 13),
         ),
         if (context.watch<AuthStore>().isLoggedIn) ...[
           const SizedBox(height: 12),
@@ -440,13 +456,13 @@ class _RatingPanel extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 2),
-                    child: Icon(Icons.format_quote_rounded, size: 18, color: Palette.muted),
+                    child: Icon(Icons.format_quote_rounded, size: 18, color: context.palette.muted),
                   ),
                   const SizedBox(width: 8),
                   Expanded(child: Text(game.review, style: const TextStyle(height: 1.4))),
-                  const Icon(Icons.edit_rounded, size: 16, color: Palette.muted),
+                  Icon(Icons.edit_rounded, size: 16, color: context.palette.muted),
                 ]),
               ),
             ),
@@ -509,7 +525,7 @@ class _StatusActions extends StatelessWidget {
         ),
         OutlinedButton.icon(
           onPressed: game.status == GameStatus.dropped ? null : () => change(GameStatus.dropped, 'Dropped'),
-          style: OutlinedButton.styleFrom(foregroundColor: Palette.danger, side: BorderSide(color: Palette.danger.withValues(alpha: 0.6))),
+          style: OutlinedButton.styleFrom(foregroundColor: context.palette.danger, side: BorderSide(color: context.palette.danger.withValues(alpha: 0.6))),
           icon: const Icon(Icons.block_rounded, size: 18),
           label: const Text('Drop'),
         ),
@@ -533,7 +549,7 @@ class _StatusActions extends StatelessWidget {
         const SizedBox(height: 24),
         TextButton.icon(
           onPressed: () => _confirmRemove(context, game),
-          style: TextButton.styleFrom(foregroundColor: Palette.danger),
+          style: TextButton.styleFrom(foregroundColor: context.palette.danger),
           icon: const Icon(Icons.delete_outline_rounded, size: 18),
           label: const Text('Remove from Library'),
         ),
@@ -552,12 +568,12 @@ class _StillPlayingSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = GameStatus.playing.color;
+    final color = context.palette.legible(GameStatus.playing.color);
     return Material(
-      color: value ? color.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.03),
+      color: value ? color.withValues(alpha: 0.10) : context.palette.text.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: value ? color.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.06)),
+        side: BorderSide(color: value ? color.withValues(alpha: 0.35) : context.palette.hairline),
       ),
       clipBehavior: Clip.antiAlias,
       child: SwitchListTile(
@@ -565,11 +581,11 @@ class _StillPlayingSwitch extends StatelessWidget {
         onChanged: onChanged,
         dense: true,
         contentPadding: const EdgeInsets.only(left: 14, right: 8),
-        secondary: Icon(GameStatus.playing.icon, color: value ? color : Palette.muted),
+        secondary: Icon(GameStatus.playing.icon, color: value ? color : context.palette.muted),
         title: const Text('Still playing', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-        subtitle: const Text(
+        subtitle: Text(
           'Keep it under Playing too, for online, post-game or DLC',
-          style: TextStyle(color: Palette.muted, fontSize: 12, height: 1.3),
+          style: TextStyle(color: context.palette.muted, fontSize: 12, height: 1.3),
         ),
       ),
     );
@@ -596,7 +612,7 @@ Future<void> _confirmRemove(BuildContext context, Game game) async {
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
-          style: TextButton.styleFrom(foregroundColor: Palette.danger),
+          style: TextButton.styleFrom(foregroundColor: context.palette.danger),
           child: const Text('Remove'),
         ),
       ],
@@ -703,7 +719,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
 
   Widget _errorText() => Padding(
         padding: const EdgeInsets.only(top: 10),
-        child: Text(_error!, style: TextStyle(color: Palette.danger, fontSize: 12.5, height: 1.35)),
+        child: Text(_error!, style: TextStyle(color: context.palette.danger, fontSize: 12.5, height: 1.35)),
       );
 
   Widget _checkingIndicator() => const Padding(
@@ -713,9 +729,9 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
 
   Widget _prompt() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text(
+      Text(
         'Pull your unlocked achievements for this game from Steam.',
-        style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+        style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
       ),
       const SizedBox(height: 12),
       SizedBox(
@@ -745,7 +761,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
       Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
         Text('$unlocked / $total', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         const SizedBox(width: 8),
-        Text('($percent%)', style: TextStyle(color: complete ? Palette.star : Palette.muted, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('($percent%)', style: TextStyle(color: complete ? context.palette.star : context.palette.muted, fontSize: 14, fontWeight: FontWeight.w600)),
       ]),
       const SizedBox(height: 10),
       ClipRRect(
@@ -753,8 +769,8 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
         child: LinearProgressIndicator(
           value: unlocked / total,
           minHeight: 8,
-          color: Palette.star,
-          backgroundColor: Colors.white.withValues(alpha: 0.08),
+          color: context.palette.star,
+          backgroundColor: context.palette.track,
         ),
       ),
       const SizedBox(height: 14),
@@ -789,10 +805,10 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
               tooltip: 'Refresh from Steam',
               visualDensity: VisualDensity.compact,
               onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded, color: Palette.muted),
+              icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
             );
     } else {
-      trailing = const Icon(Icons.emoji_events_outlined, color: Palette.muted);
+      trailing = Icon(Icons.emoji_events_outlined, color: context.palette.muted);
     }
 
     return Padding(
@@ -803,9 +819,9 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
         child: achievements == null
             ? (_checking ? _checkingIndicator() : _prompt())
             : achievements.isEmpty
-                ? const Text(
+                ? Text(
                     'Steam lists no achievements for this game.',
-                    style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+                    style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
                   )
                 : _summary(achievements, canLoad: canLoad),
       ),

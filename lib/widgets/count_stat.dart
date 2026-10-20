@@ -26,7 +26,7 @@ class CountStat extends StatelessWidget {
         ),
         Text(
           label,
-          style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5),
         ),
       ],
     );

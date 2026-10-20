@@ -17,7 +17,9 @@ class DangerPanel extends StatelessWidget {
     this.disabled = false,
   });
 
-  static const color = Colors.redAccent;
+  /// Red, deep enough to read on the light theme.
+  static Color colorOf(BuildContext context) =>
+      context.palette.legible(Colors.redAccent);
 
   final String title;
   final String description;
@@ -34,6 +36,7 @@ class DangerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = colorOf(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -52,14 +55,14 @@ class DangerPanel extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             description,
-            style: const TextStyle(color: Palette.muted, height: 1.4),
+            style: TextStyle(color: context.palette.muted, height: 1.4),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: busy || disabled ? null : onPressed,
             style: OutlinedButton.styleFrom(
               foregroundColor: color,
-              side: const BorderSide(color: color),
+              side: BorderSide(color: color),
             ),
             icon: busy
                 ? const SizedBox(

@@ -96,8 +96,8 @@ class _Group extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            color: Palette.muted,
+          style: TextStyle(
+            color: context.palette.muted,
             fontSize: 11.5,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.8,
@@ -106,7 +106,7 @@ class _Group extends StatelessWidget {
         const SizedBox(height: 4),
         for (var i = 0; i < children.length; i++) ...[
           if (i > 0)
-            Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+            Divider(height: 1, color: context.palette.hairline),
           children[i],
         ],
         if (footer != null) ...[const SizedBox(height: 12), footer!],
@@ -159,11 +159,11 @@ class _AccountRow extends StatelessWidget {
                   ? Icons.content_copy_rounded
                   : Icons.open_in_new_rounded,
               size: 18,
-              color: Palette.muted,
+              color: context.palette.muted,
             ),
           PopupMenuButton<_MenuAction>(
             tooltip: '${service.label} options',
-            icon: const Icon(Icons.more_vert_rounded, color: Palette.muted),
+            icon: Icon(Icons.more_vert_rounded, color: context.palette.muted),
             onSelected: (action) => switch (action) {
               _MenuAction.edit => editor.onEdit(service),
               _MenuAction.disconnect => editor.onDisconnect(service),
@@ -196,13 +196,13 @@ class _AccountRow extends StatelessWidget {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: service.color.withValues(alpha: connected ? 0.16 : 0.08),
+              color: context.palette.legible(service.color).withValues(alpha: connected ? 0.16 : 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
             child: FaIcon(
               service.icon,
               size: 18,
-              color: connected ? service.color : Palette.muted,
+              color: connected ? context.palette.legible(service.color) : context.palette.muted,
             ),
           ),
           const SizedBox(width: 12),
@@ -224,14 +224,18 @@ class _AccountRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12.5,
                     color: connected && (name?.isNotEmpty ?? false)
-                        ? Colors.white70
-                        : Palette.muted,
+                        ? context.palette.textSoft
+                        : context.palette.muted,
                   ),
                 ),
               ],
             ),
           ),
-          trailing,
+          // Capped, so with large text the button can't take the whole row.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 140),
+            child: trailing,
+          ),
         ],
       ),
     );

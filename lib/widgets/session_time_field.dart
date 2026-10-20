@@ -49,7 +49,7 @@ class SessionTimeField extends StatelessWidget {
         ? 'Now'
         : '${fmtDay(at)}, ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(at))}';
     return Material(
-      color: Palette.surfaceHigh,
+      color: context.palette.surfaceHigh,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -57,11 +57,11 @@ class SessionTimeField extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
           child: Row(children: [
-            const Icon(Icons.event_rounded, size: 20, color: Palette.muted),
+            Icon(Icons.event_rounded, size: 20, color: context.palette.muted),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('When', style: TextStyle(color: Palette.muted, fontSize: 12)),
+                Text('When', style: TextStyle(color: context.palette.muted, fontSize: 12)),
                 Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
               ]),
             ),
@@ -72,9 +72,9 @@ class SessionTimeField extends StatelessWidget {
                 icon: const Icon(Icons.close_rounded, size: 20),
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(12),
-                child: Icon(Icons.edit_calendar_rounded, size: 20, color: Palette.muted),
+                child: Icon(Icons.edit_calendar_rounded, size: 20, color: context.palette.muted),
               ),
           ]),
         ),

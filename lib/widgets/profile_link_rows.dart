@@ -33,9 +33,9 @@ class ProfileLinkRows extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Palette.surface,
+        color: context.palette.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: context.palette.hairline),
       ),
       child: Column(
         children: [
@@ -44,7 +44,7 @@ class ProfileLinkRows extends StatelessWidget {
               Divider(
                 height: 1,
                 indent: 52,
-                color: Colors.white.withValues(alpha: 0.06),
+                color: context.palette.hairline,
               ),
             Material(
               type: MaterialType.transparency,
@@ -60,7 +60,7 @@ class ProfileLinkRows extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(links[i].icon, size: 20, color: Palette.accent),
+                      Icon(links[i].icon, size: 20, color: context.palette.accent),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
@@ -74,17 +74,17 @@ class ProfileLinkRows extends StatelessWidget {
                       if (links[i].count != null) ...[
                         Text(
                           fmtCount(links[i].count!),
-                          style: const TextStyle(
-                            color: Palette.muted,
+                          style: TextStyle(
+                            color: context.palette.muted,
                             fontSize: 14,
                           ),
                         ),
                         const SizedBox(width: 6),
                       ],
-                      const Icon(
+                      Icon(
                         Icons.chevron_right_rounded,
                         size: 22,
-                        color: Palette.muted,
+                        color: context.palette.muted,
                       ),
                     ],
                   ),

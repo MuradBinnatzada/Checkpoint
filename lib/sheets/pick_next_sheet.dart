@@ -82,7 +82,7 @@ class _PickNextSheetState extends State<PickNextSheet> {
             AppChoiceChip(
               label: status.label,
               icon: status.icon,
-              iconColor: status.color,
+              iconColor: context.palette.legible(status.color),
               selected: _statuses.contains(status),
               onSelected: () => _toggleStatus(status),
             ),
@@ -91,21 +91,23 @@ class _PickNextSheetState extends State<PickNextSheet> {
           const SizedBox(height: 12),
           DropdownButtonFormField<GamePlatform?>(
             initialValue: _platform,
-            decoration: fieldDecoration('Platform'),
+            // Fills the field, so a long name (or large text) gets an ellipsis.
+            isExpanded: true,
+            decoration: fieldDecoration(context, 'Platform'),
             items: [
-              const DropdownMenuItem(value: null, child: Text('Any platform')),
-              for (final p in platforms) DropdownMenuItem(value: p, child: Text(p.label)),
+              const DropdownMenuItem(value: null, child: Text('Any platform', overflow: TextOverflow.ellipsis)),
+              for (final p in platforms) DropdownMenuItem(value: p, child: Text(p.label, overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (p) => _refilter(() => _platform = p),
           ),
         ],
         const SizedBox(height: 18),
         if (pick == null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Text(
               'Nothing here to pick from. Choose other statuses, or add games to your library.',
-              style: TextStyle(color: Palette.muted, height: 1.4),
+              style: TextStyle(color: context.palette.muted, height: 1.4),
             ),
           )
         else
@@ -155,7 +157,7 @@ class _PickCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(game.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.15)),
             const SizedBox(height: 6),
-            Text(details, style: const TextStyle(color: Palette.muted, height: 1.35)),
+            Text(details, style: TextStyle(color: context.palette.muted, height: 1.35)),
           ]),
         ),
       ]),

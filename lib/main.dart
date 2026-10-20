@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/checkpoint_app.dart';
 import 'package:checkpoint/services/session_storage.dart';
-import 'package:checkpoint/theme/palette.dart';
+import 'package:checkpoint/state/appearance_store.dart';
 
 const _supabaseUrl = 'https://nmbarqhvcjgyuwreebda.supabase.co';
 const _supabasePublishableKey =
@@ -25,15 +24,9 @@ Future<void> main() async {
     ),
   );
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      statusBarBrightness: Brightness.dark,
-      systemNavigationBarColor: Palette.navBar,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
+  // Before the first frame, so the app opens in the theme it was left in. The
+  // system bars follow the theme (see CheckpointApp).
+  final appearance = await AppearanceStore.load();
 
-  runApp(const CheckpointApp());
+  runApp(CheckpointApp(appearance: appearance));
 }

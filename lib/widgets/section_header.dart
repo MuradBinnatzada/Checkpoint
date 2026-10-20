@@ -11,7 +11,8 @@ class SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 12, 12),
       child: Row(children: [
-        Expanded(child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800))),
+        // A heading, so screen readers can jump from section to section.
+        Expanded(child: Semantics(header: true, child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)))),
         if (actionLabel != null) TextButton(onPressed: onAction, child: Text(actionLabel!)),
       ]),
     );

@@ -48,11 +48,11 @@ class _RatingsPanelState extends State<RatingsPanel> {
   Widget build(BuildContext context) {
     final stats = widget.stats;
     if (stats.ratedCount == 0) {
-      return const Panel(
+      return Panel(
         title: 'Ratings',
         child: Text(
           'No rated games yet.',
-          style: TextStyle(color: Palette.muted, fontSize: 13),
+          style: TextStyle(color: context.palette.muted, fontSize: 13),
         ),
       );
     }
@@ -88,7 +88,7 @@ class _RatingsPanelState extends State<RatingsPanel> {
                 const SizedBox(height: 6),
                 Text(
                   '${stats.ratedCount} rated',
-                  style: const TextStyle(color: Palette.muted, fontSize: 12),
+                  style: TextStyle(color: context.palette.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -171,9 +171,9 @@ class _AxisLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(text, style: const TextStyle(color: Palette.muted, fontSize: 11)),
+        Text(text, style: TextStyle(color: context.palette.muted, fontSize: 11)),
         const SizedBox(width: 1),
-        const Icon(Icons.star_rounded, size: 11, color: Palette.muted),
+        Icon(Icons.star_rounded, size: 11, color: context.palette.muted),
       ],
     );
   }
@@ -191,9 +191,9 @@ class _Bubble extends StatelessWidget {
     final orLess = rating == RatingsPanel.bars.first;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Palette.surfaceHigh,
+        color: context.palette.surfaceHigh,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: context.palette.text.withValues(alpha: 0.12)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -202,11 +202,11 @@ class _Bubble extends StatelessWidget {
           children: [
             // Only the first bar spans two ratings (½ and 1).
             if (orLess)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(right: 3),
                 child: Text(
                   '≤',
-                  style: TextStyle(color: Palette.muted, fontSize: 12),
+                  style: TextStyle(color: context.palette.muted, fontSize: 12),
                 ),
               ),
             StarRating(rating: rating, size: 11),
@@ -247,11 +247,11 @@ class _Bar extends StatelessWidget {
         : 6 + (RatingsPanel._barAreaHeight - 6) * count / tallest;
     final Color color;
     if (count == 0) {
-      color = selected ? Colors.white38 : Colors.white10;
+      color = selected ? context.palette.faint : context.palette.track;
     } else if (selected) {
-      color = Palette.star;
+      color = context.palette.star;
     } else {
-      color = Palette.star.withValues(alpha: 0.35 + 0.65 * count / tallest);
+      color = context.palette.star.withValues(alpha: 0.35 + 0.65 * count / tallest);
     }
     final stars = rating == RatingsPanel.bars.first
         ? '1 star or less'

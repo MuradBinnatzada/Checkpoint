@@ -190,11 +190,11 @@ class _SignInPanelState extends State<SignInPanel> {
                 child: Container(
                   width: 72,
                   height: 72,
-                  decoration: const BoxDecoration(
-                    color: Palette.surfaceHigh,
+                  decoration: BoxDecoration(
+                    color: context.palette.surfaceHigh,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(widget.icon, color: Palette.accent, size: 32),
+                  child: Icon(widget.icon, color: context.palette.accent, size: 32),
                 ),
               ),
               const SizedBox(height: 16),
@@ -210,7 +210,7 @@ class _SignInPanelState extends State<SignInPanel> {
               Text(
                 widget.message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Palette.muted, height: 1.35),
+                style: TextStyle(color: context.palette.muted, height: 1.35),
               ),
               const SizedBox(height: 20),
               FilledButton.tonalIcon(
@@ -233,18 +233,25 @@ class _SignInPanelState extends State<SignInPanel> {
                 ),
               ],
               const SizedBox(height: 20),
-              const Row(
-                children: [
-                  Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'or use your email',
-                      style: TextStyle(color: Palette.muted, fontSize: 13),
+              // With large text the words wrap, leaving the lines a little room.
+              LayoutBuilder(
+                builder: (context, constraints) => Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: constraints.maxWidth - 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'or use your email',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.palette.muted, fontSize: 13),
+                        ),
+                      ),
                     ),
-                  ),
-                  Expanded(child: Divider()),
-                ],
+                    const Expanded(child: Divider()),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               SegmentedButton<_Mode>(
@@ -433,7 +440,7 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Palette.surfaceHigh,
+        color: context.palette.surfaceHigh,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
@@ -441,9 +448,9 @@ class _Notice extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
+            Icon(
               Icons.mark_email_read_outlined,
-              color: Palette.accent,
+              color: context.palette.accent,
               size: 20,
             ),
             const SizedBox(width: 10),

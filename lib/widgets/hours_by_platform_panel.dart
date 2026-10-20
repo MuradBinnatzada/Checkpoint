@@ -27,7 +27,7 @@ class HoursByPlatformPanel extends StatelessWidget {
     return Panel(
       title: 'Hours by platform',
       child: entries.isEmpty
-          ? Text(emptyText, style: const TextStyle(color: Palette.muted))
+          ? Text(emptyText, style: TextStyle(color: context.palette.muted))
           : Column(
               children: [
                 for (final e in entries)
@@ -35,7 +35,7 @@ class HoursByPlatformPanel extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       children: [
-                        Icon(e.key.icon, size: 18, color: e.key.color),
+                        Icon(e.key.icon, size: 18, color: context.palette.legible(e.key.color)),
                         const SizedBox(width: 10),
                         SizedBox(
                           width: 82,
@@ -55,8 +55,8 @@ class HoursByPlatformPanel extends StatelessWidget {
                             child: LinearProgressIndicator(
                               value: e.value / max,
                               minHeight: 9,
-                              color: e.key.color,
-                              backgroundColor: Colors.white10,
+                              color: context.palette.legible(e.key.color),
+                              backgroundColor: context.palette.track,
                             ),
                           ),
                         ),
@@ -66,9 +66,9 @@ class HoursByPlatformPanel extends StatelessWidget {
                           child: Text(
                             '${fmtHours(e.value)} h',
                             textAlign: TextAlign.end,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: Palette.muted,
+                              color: context.palette.muted,
                             ),
                           ),
                         ),

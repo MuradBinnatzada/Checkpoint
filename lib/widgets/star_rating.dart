@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,19 +34,29 @@ class StarRating extends StatelessWidget {
         final icon = v >= 1
             ? Icons.star_rounded
             : (v >= 0.5 ? Icons.star_half_rounded : Icons.star_outline_rounded);
-        return Icon(icon, size: size, color: v > 0 ? Palette.star : Colors.white24);
+        return Icon(icon, size: size, color: v > 0 ? context.palette.star : context.palette.faint);
       }),
     );
     if (onChanged == null) {
       return Semantics(label: '${fmtHours(rating)} out of 5 stars', child: stars);
     }
+    // An adjustable control for screen readers: swiping up or down (or the
+    // volume keys) moves it half a star, since they can't drag across it.
+    String spoken(double v) => '${fmtHours(v)} out of 5 stars';
     return Semantics(
-      label: 'Rating ${fmtHours(rating)} out of 5',
+      slider: true,
+      label: 'Rating',
+      value: rating > 0 ? spoken(rating) : 'Not rated',
+      increasedValue: spoken(math.min(5, rating + 0.5)),
+      decreasedValue: spoken(math.max(0.5, rating - 0.5)),
+      onIncrease: rating < 5 ? () => onChanged!(math.min(5, rating + 0.5)) : null,
+      onDecrease: rating > 0.5 ? () => onChanged!(math.max(0.5, rating - 0.5)) : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (d) => _emit(d.localPosition.dx),
         onHorizontalDragUpdate: (d) => _emit(d.localPosition.dx),
-        child: SizedBox(width: size * 5, height: size, child: stars),
+        // At least 48 px tall to tap, however small the stars.
+        child: SizedBox(width: size * 5, height: math.max(size, 48), child: Center(child: stars)),
       ),
     );
   }

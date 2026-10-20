@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/screens/settings/account_section.dart';
+import 'package:checkpoint/screens/settings/appearance_section.dart';
 import 'package:checkpoint/screens/settings/data_section.dart';
 import 'package:checkpoint/screens/settings/privacy_section.dart';
 import 'package:checkpoint/screens/settings/security_section.dart';
@@ -12,6 +13,7 @@ enum SettingsSection {
   account('Account', Icons.person_rounded),
   security('Security', Icons.shield_rounded),
   privacy('Privacy', Icons.lock_rounded),
+  appearance('Appearance', Icons.palette_rounded),
   data('Your data', Icons.import_export_rounded);
 
   const SettingsSection(this.label, this.icon);
@@ -55,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       SettingsSection.security => const SecuritySection(),
       SettingsSection.privacy => const PrivacySection(),
+      SettingsSection.appearance => const AppearanceSection(),
       SettingsSection.data => const DataSection(),
     };
     // A section starts at its top, whatever the one before was scrolled to.
@@ -89,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     VerticalDivider(
                       width: 1,
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: context.palette.text.withValues(alpha: 0.08),
                     ),
                     Expanded(child: content),
                   ],
@@ -136,8 +139,8 @@ class _Sidebar extends StatelessWidget {
             child: ListTile(
               enabled: enabled,
               selected: section == selected,
-              selectedColor: Palette.accent,
-              selectedTileColor: Palette.accent.withValues(alpha: 0.12),
+              selectedColor: context.palette.accent,
+              selectedTileColor: context.palette.accent.withValues(alpha: 0.12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -168,11 +171,11 @@ class _SectionChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    // As tall as the chips, which take 48 px to tap and grow with large text.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: Row(
         children: [
           for (final section in SettingsSection.values) ...[
             if (section != SettingsSection.values.first)

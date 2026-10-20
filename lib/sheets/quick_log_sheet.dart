@@ -141,6 +141,9 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           menuHeight: 280,
           label: const Text('Game'),
           leadingIcon: const Icon(Icons.sports_esports_rounded),
+          // The arrow is a button of its own: screen readers say what it does.
+          trailingIcon: const Icon(Icons.arrow_drop_down, semanticLabel: 'Show games'),
+          selectedTrailingIcon: const Icon(Icons.arrow_drop_up, semanticLabel: 'Hide games'),
           dropdownMenuEntries: [
             for (final g in sorted)
               DropdownMenuEntry<String>(value: g.id, label: g.title, leadingIcon: Icon(g.coverIcon, color: g.coverColors.first, size: 20)),
@@ -162,7 +165,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('Hours played this session', suffix: 'hrs').copyWith(
+          decoration: fieldDecoration(context, 'Hours played this session', suffix: 'hrs').copyWith(
             errorText: tooLong
                 ? 'One session is at most ${fmtHours(maxSessionHours)} hours. To change a game\'s total, use Log Hours on its page.'
                 : null,
@@ -184,7 +187,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration('Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -199,7 +202,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           const SizedBox(height: 8),
           Center(
             child: TextButton(
-              style: TextButton.styleFrom(foregroundColor: Palette.danger),
+              style: TextButton.styleFrom(foregroundColor: context.palette.danger),
               onPressed: () {
                 context.read<PlayTimerStore>().clear();
                 Navigator.pop(context);

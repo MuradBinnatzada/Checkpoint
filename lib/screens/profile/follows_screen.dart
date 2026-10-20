@@ -86,11 +86,11 @@ class _FollowsScreenState extends State<FollowsScreen>
         ),
         bottom: TabBar(
           controller: _tabs,
-          indicatorColor: Palette.accent,
+          indicatorColor: context.palette.accent,
           indicatorSize: TabBarIndicatorSize.tab,
-          labelColor: Colors.white,
-          unselectedLabelColor: Palette.muted,
-          dividerColor: Colors.white.withValues(alpha: 0.08),
+          labelColor: context.palette.text,
+          unselectedLabelColor: context.palette.muted,
+          dividerColor: context.palette.text.withValues(alpha: 0.08),
           labelStyle: const TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,

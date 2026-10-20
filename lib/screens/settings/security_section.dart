@@ -100,14 +100,14 @@ class _SecuritySectionState extends State<SecuritySection> {
               ),
             ],
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(4, 8, 4, 0),
             child: Text(
               'You sign in with Google, so your password and Google\'s 2-Step '
               'Verification are managed in your Google Account. Two-factor '
               'authentication below adds a Checkpoint code on top.',
               style: TextStyle(
-                color: Palette.muted,
+                color: context.palette.muted,
                 fontSize: 12.5,
                 height: 1.4,
               ),
@@ -130,10 +130,10 @@ class _SecuritySectionState extends State<SecuritySection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Signed in on a device you no longer use? This ends the sessions on '
                 'every other device. This one stays signed in.',
-                style: TextStyle(color: Palette.muted, height: 1.4),
+                style: TextStyle(color: context.palette.muted, height: 1.4),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -224,9 +224,9 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
       type: MaterialType.transparency,
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        secondary: const Icon(
+        secondary: Icon(
           Icons.phonelink_lock_rounded,
-          color: Palette.accent,
+          color: context.palette.accent,
         ),
         title: const Text(
           'Authenticator app',
@@ -237,8 +237,8 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
               ? 'On. Signing in asks for a code from your authenticator app.'
               : 'Ask for a code from an authenticator app each time you sign '
                     'in, after your password or Google or Apple account.',
-          style: const TextStyle(
-            color: Palette.muted,
+          style: TextStyle(
+            color: context.palette.muted,
             fontSize: 12.5,
             height: 1.35,
           ),
@@ -307,15 +307,15 @@ class _NewBackupCodesTileState extends State<_NewBackupCodesTile> {
       type: MaterialType.transparency,
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.key_rounded, color: Palette.accent),
+        leading: Icon(Icons.key_rounded, color: context.palette.accent),
         title: const Text(
           'New backup codes',
           style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'One-time codes that sign you in without your authenticator app. '
           'New ones replace the ones you have.',
-          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         trailing: _busy
             ? const SizedBox(
@@ -323,7 +323,7 @@ class _NewBackupCodesTileState extends State<_NewBackupCodesTile> {
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+            : Icon(Icons.chevron_right_rounded, color: context.palette.muted),
         onTap: _busy ? null : _makeNew,
       ),
     );
@@ -347,7 +347,7 @@ class _InfoRow extends StatelessWidget {
             width: 72,
             child: Text(
               label,
-              style: const TextStyle(color: Palette.muted, fontSize: 13),
+              style: TextStyle(color: context.palette.muted, fontSize: 13),
             ),
           ),
           Expanded(

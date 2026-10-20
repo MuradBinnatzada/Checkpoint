@@ -113,13 +113,13 @@ class PlayTimerBar extends StatelessWidget {
     if (running == null) return const SizedBox.shrink();
     final game = context.watch<LibraryStore>().maybeGame(running.gameId);
     return Material(
-      color: Palette.surfaceHigh,
+      color: context.palette.surfaceHigh,
       child: InkWell(
         onTap: game == null ? null : () => openGame(context, game.id),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
           child: Row(children: [
-            const Icon(Icons.timer_rounded, color: Palette.accent, size: 20),
+            Icon(Icons.timer_rounded, color: context.palette.accent, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -129,7 +129,7 @@ class PlayTimerBar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                const ElapsedText(style: TextStyle(color: Palette.muted, fontSize: 12.5)),
+                ElapsedText(style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
               ]),
             ),
             FilledButton.tonalIcon(

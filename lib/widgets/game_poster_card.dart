@@ -34,17 +34,17 @@ class GamePosterCard extends StatelessWidget {
             const SizedBox(height: 4),
             game.rating > 0
                 ? StarRating(rating: game.rating, size: 14)
-                : const Text('Not rated', style: TextStyle(fontSize: 11, color: Palette.muted)),
+                : Text('Not rated', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: context.palette.muted)),
           ],
           if (subtitle != null) ...[
             const SizedBox(height: 4),
             Row(children: [
               if (subtitleIcon != null) ...[
-                Icon(subtitleIcon, size: 12, color: Palette.muted),
+                Icon(subtitleIcon, size: 12, color: context.palette.muted),
                 const SizedBox(width: 4),
               ],
               Expanded(
-                child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Palette.muted)),
+                child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: context.palette.muted)),
               ),
             ]),
           ],

@@ -121,7 +121,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Divider(height: 28, color: Colors.white.withValues(alpha: 0.06)),
+        Divider(height: 28, color: context.palette.hairline),
         if (_editing)
           _form(saved)
         else if (saved != null)
@@ -145,15 +145,15 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
-            const Icon(Icons.timer_outlined, size: 18, color: Palette.muted),
+            Icon(Icons.timer_outlined, size: 18, color: context.palette.muted),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Your time to finish',
-                    style: TextStyle(color: Palette.muted, fontSize: 12),
+                    style: TextStyle(color: context.palette.muted, fontSize: 12),
                   ),
                   Text(
                     '${fmtMinutes(saved.minutes)} · ${saved.category.label}',
@@ -162,7 +162,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 ],
               ),
             ),
-            const Icon(Icons.edit_rounded, size: 16, color: Palette.muted),
+            Icon(Icons.edit_rounded, size: 16, color: context.palette.muted),
           ],
         ),
       ),
@@ -188,9 +188,9 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Optional. It adds to the times other players see, without your name.',
-          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -215,7 +215,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 inputFormatters: [decimalFormatter],
                 textInputAction: TextInputAction.next,
                 onChanged: (_) => setState(() {}),
-                decoration: fieldDecoration('Hours', suffix: 'h'),
+                decoration: fieldDecoration(context, 'Hours', suffix: 'h'),
               ),
             ),
             const SizedBox(width: 10),
@@ -230,7 +230,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => save(),
-                decoration: fieldDecoration('Minutes', suffix: 'min'),
+                decoration: fieldDecoration(context, 'Minutes', suffix: 'min'),
               ),
             ),
           ],
@@ -239,13 +239,13 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
           const SizedBox(height: 6),
           Text(
             typed.error!,
-            style: const TextStyle(color: Palette.danger, fontSize: 12.5),
+            style: TextStyle(color: context.palette.danger, fontSize: 12.5),
           ),
         ] else if (minutes != null && category == null) ...[
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Pick Main Story, Main + Extras or Completionist.',
-            style: TextStyle(color: Palette.muted, fontSize: 12.5),
+            style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ],
         const SizedBox(height: 8),
@@ -254,7 +254,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
             if (saved != null)
               TextButton(
                 onPressed: _remove,
-                style: TextButton.styleFrom(foregroundColor: Palette.danger),
+                style: TextButton.styleFrom(foregroundColor: context.palette.danger),
                 child: const Text('Remove'),
               ),
             const Spacer(),

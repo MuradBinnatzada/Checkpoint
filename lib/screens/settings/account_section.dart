@@ -60,8 +60,8 @@ class AccountSection extends StatelessWidget {
                       profile.handle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Palette.accent,
+                      style: TextStyle(
+                        color: context.palette.accent,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -70,8 +70,8 @@ class AccountSection extends StatelessWidget {
                         email,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Palette.muted,
+                        style: TextStyle(
+                          color: context.palette.muted,
                           fontSize: 12.5,
                         ),
                       ),

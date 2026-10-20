@@ -63,8 +63,8 @@ class MemberTile extends StatelessWidget {
                     user.handle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Palette.accent,
+                    style: TextStyle(
+                      color: context.palette.accent,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -73,8 +73,8 @@ class MemberTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle!,
-                      style: const TextStyle(
-                        color: Palette.muted,
+                      style: TextStyle(
+                        color: context.palette.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -83,11 +83,11 @@ class MemberTile extends StatelessWidget {
               ),
             ),
             if (isSelf)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
                   'You',
-                  style: TextStyle(color: Palette.muted, fontSize: 12.5),
+                  style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
               )
             else ...[

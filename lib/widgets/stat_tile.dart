@@ -15,15 +15,15 @@ class StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final tap = onTap;
     return Material(
-      color: Palette.surface,
+      color: context.palette.surface,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        side: BorderSide(color: context.palette.hairline),
       ),
       child: InkWell(
-        splashColor: Palette.accent.withValues(alpha: 0.14),
-        highlightColor: Palette.accent.withValues(alpha: 0.06),
+        splashColor: context.palette.accent.withValues(alpha: 0.14),
+        highlightColor: context.palette.accent.withValues(alpha: 0.06),
         onTap: tap == null
             ? null
             : () {
@@ -34,9 +34,9 @@ class StatTile extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(icon, size: 20, color: Palette.accent),
+              Icon(icon, size: 20, color: context.palette.accent),
               const Spacer(),
-              if (tap != null) const Icon(Icons.chevron_right_rounded, size: 20, color: Palette.muted),
+              if (tap != null) Icon(Icons.chevron_right_rounded, size: 20, color: context.palette.muted),
             ]),
             const SizedBox(height: 10),
             FittedBox(
@@ -45,7 +45,7 @@ class StatTile extends StatelessWidget {
               child: Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 2),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: context.palette.muted)),
           ]),
         ),
       ),

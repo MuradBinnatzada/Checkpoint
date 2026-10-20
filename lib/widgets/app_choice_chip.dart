@@ -25,22 +25,22 @@ class AppChoiceChip extends StatelessWidget {
       showCheckmark: false,
       selected: selected,
       onSelected: (_) => onSelected(),
-      backgroundColor: Palette.surfaceHigh,
-      selectedColor: Palette.accent,
+      backgroundColor: context.palette.surfaceHigh,
+      selectedColor: context.palette.accent,
       shape: const StadiumBorder(),
       side: BorderSide(
-        color: selected ? Palette.accent : Colors.white.withValues(alpha: 0.18),
+        color: selected ? context.palette.accent : context.palette.outline,
         width: selected ? 1.5 : 1,
       ),
       avatar: icon == null
           ? null
-          : Icon(icon, size: 18, color: selected ? Palette.onAccent : (iconColor ?? Palette.muted)),
+          : Icon(icon, size: 18, color: selected ? context.palette.onAccent : (iconColor ?? context.palette.muted)),
       label: Text(
         label,
         style: TextStyle(
           fontSize: 13,
           fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-          color: selected ? Palette.onAccent : Colors.white70,
+          color: selected ? context.palette.onAccent : context.palette.textSoft,
         ),
       ),
     );

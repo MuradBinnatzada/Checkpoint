@@ -29,8 +29,8 @@ class CompanyLogo extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: radius,
-        gradient: const LinearGradient(
-          colors: [Palette.accent, Palette.electric],
+        gradient: LinearGradient(
+          colors: [context.palette.accent, context.palette.electric],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -38,7 +38,7 @@ class CompanyLogo extends StatelessWidget {
       child: Text(
         initials(name),
         style: TextStyle(
-          color: Palette.onAccent,
+          color: context.palette.onAccent,
           fontWeight: FontWeight.w800,
           fontSize: size * 0.34,
         ),

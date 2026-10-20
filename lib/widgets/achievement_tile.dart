@@ -20,13 +20,13 @@ class AchievementTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: a.unlocked
-            ? Palette.star.withValues(alpha: 0.07)
-            : Colors.white.withValues(alpha: 0.03),
+            ? context.palette.star.withValues(alpha: 0.07)
+            : context.palette.text.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: a.unlocked
-              ? Palette.star.withValues(alpha: 0.28)
-              : Colors.white.withValues(alpha: 0.06),
+              ? context.palette.star.withValues(alpha: 0.28)
+              : context.palette.hairline,
         ),
       ),
       child: Row(
@@ -44,7 +44,7 @@ class AchievementTile extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13.5,
-                    color: a.unlocked ? Colors.white : Colors.white70,
+                    color: a.unlocked ? context.palette.text : context.palette.textSoft,
                   ),
                 ),
                 if (a.description.isNotEmpty) ...[
@@ -53,10 +53,10 @@ class AchievementTile extends StatelessWidget {
                     a.description,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       height: 1.3,
-                      color: Palette.muted,
+                      color: context.palette.muted,
                     ),
                   ),
                 ],
@@ -69,8 +69,8 @@ class AchievementTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       color: a.globalPercent! < 10
-                          ? Palette.star.withValues(alpha: 0.85)
-                          : Colors.white38,
+                          ? context.palette.star.withValues(alpha: context.palette.isDark ? 0.85 : 1)
+                          : context.palette.muted,
                       fontWeight: a.globalPercent! < 10
                           ? FontWeight.w600
                           : FontWeight.w400,
@@ -86,19 +86,19 @@ class AchievementTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Icon(Icons.emoji_events_rounded, size: 18, color: Palette.star),
+                Icon(Icons.emoji_events_rounded, size: 18, color: context.palette.star),
                 if (a.unlockedAt != null)
                   Text(
                     timeAgo(a.unlockedAt!),
-                    style: const TextStyle(fontSize: 11, color: Palette.muted),
+                    style: TextStyle(fontSize: 11, color: context.palette.muted),
                   ),
               ],
             )
           else
-            const Icon(
+            Icon(
               Icons.lock_outline_rounded,
               size: 18,
-              color: Palette.muted,
+              color: context.palette.muted,
             ),
         ],
       ),
@@ -139,11 +139,11 @@ class _AchievementIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = achievement;
     final Widget fallback = Container(
-      color: Colors.white.withValues(alpha: 0.06),
-      child: const Icon(
+      color: context.palette.text.withValues(alpha: 0.06),
+      child: Icon(
         Icons.emoji_events_outlined,
         size: 22,
-        color: Palette.muted,
+        color: context.palette.muted,
       ),
     );
     Widget image = a.iconUrl.isEmpty

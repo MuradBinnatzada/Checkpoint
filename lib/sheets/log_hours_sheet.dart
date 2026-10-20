@@ -80,7 +80,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('Total played', suffix: 'hrs'),
+          decoration: fieldDecoration(context, 'Total played', suffix: 'hrs'),
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 8, children: [
@@ -91,7 +91,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
             ),
         ]),
         const SizedBox(height: 6),
-        Text(preview, style: TextStyle(color: valid ? Palette.muted : Palette.danger, fontSize: 12.5)),
+        Text(preview, style: TextStyle(color: valid ? context.palette.muted : context.palette.danger, fontSize: 12.5)),
         const SizedBox(height: 18),
         const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
@@ -101,7 +101,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration('Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(

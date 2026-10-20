@@ -68,7 +68,7 @@ class _FriendsPanelState extends State<FriendsPanel> {
               if (i > 0)
                 Divider(
                   height: 28,
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: context.palette.hairline,
                 ),
               _FriendGroupRow(
                 group: groups[i],
@@ -77,10 +77,10 @@ class _FriendsPanelState extends State<FriendsPanel> {
               ),
             ],
             if (friends.reviews.isNotEmpty) ...[
-              Divider(height: 28, color: Colors.white.withValues(alpha: 0.06)),
-              const Text(
+              Divider(height: 28, color: context.palette.hairline),
+              Text(
                 'Reviews',
-                style: TextStyle(color: Palette.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
+                style: TextStyle(color: context.palette.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
               ),
               for (final friend in friends.reviews) _FriendReview(friend: friend),
             ],
@@ -127,15 +127,15 @@ class _FriendGroupRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(status.icon, size: 16, color: status.color),
+            Icon(status.icon, size: 16, color: context.palette.legible(status.color)),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 friendGroupHeadline(group, count),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Palette.muted,
+                style: TextStyle(
+                  color: context.palette.muted,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                 ),
@@ -225,33 +225,45 @@ class _FriendReview extends StatelessWidget {
   Widget build(BuildContext context) {
     final member = friend.member;
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 4),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          customBorder: const CircleBorder(),
-          onTap: () => openProfile(context, userId: member.id, preview: member),
-          child: ProfileAvatar(name: member.name, size: 32, imageUrl: member.avatarUrl),
+        // The photo with room around it: 48 px to tap.
+        Semantics(
+          button: true,
+          label: "Open ${member.name}'s profile",
+          excludeSemantics: true,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => openProfile(context, userId: member.id, preview: member),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: ProfileAvatar(name: member.name, size: 32, imageUrl: member.avatarUrl),
+            ),
+          ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 2),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Flexible(
-                child: Text(
-                  member.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                  child: Text(
+                    member.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
-              ),
-              if (friend.rating > 0) ...[
-                const SizedBox(width: 8),
-                StarRating(rating: friend.rating, size: 12),
-              ],
+                if (friend.rating > 0) ...[
+                  const SizedBox(width: 8),
+                  StarRating(rating: friend.rating, size: 12),
+                ],
+              ]),
+              const SizedBox(height: 2),
+              ExpandableText(friend.review, collapsedLines: 3),
             ]),
-            const SizedBox(height: 2),
-            ExpandableText(friend.review, collapsedLines: 3),
-          ]),
+          ),
         ),
       ]),
     );
@@ -275,13 +287,13 @@ class _MoreBubble extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.06),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          color: context.palette.text.withValues(alpha: 0.06),
+          border: Border.all(color: context.palette.text.withValues(alpha: 0.1)),
         ),
         child: Text(
           '+$more',
-          style: const TextStyle(
-            color: Palette.muted,
+          style: TextStyle(
+            color: context.palette.muted,
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),

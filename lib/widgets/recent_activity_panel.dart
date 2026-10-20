@@ -20,11 +20,11 @@ class RecentActivityPanel extends StatelessWidget {
       title: 'Recent activity',
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
       child: entries.isEmpty
-          ? const Padding(
+          ? Padding(
               padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
               child: Text(
                 'No sessions logged yet.',
-                style: TextStyle(color: Palette.muted, fontSize: 13),
+                style: TextStyle(color: context.palette.muted, fontSize: 13),
               ),
             )
           : Column(
@@ -64,14 +64,18 @@ class RecentActivityPanel extends StatelessWidget {
                                     Icon(
                                       e.platform.icon,
                                       size: 13,
-                                      color: e.platform.color,
+                                      color: context.palette.legible(e.platform.color),
                                     ),
                                     const SizedBox(width: 5),
-                                    Text(
-                                      '${fmtHours(e.hours)} h · ${e.platform.label}',
-                                      style: const TextStyle(
-                                        color: Palette.muted,
-                                        fontSize: 12.5,
+                                    Flexible(
+                                      child: Text(
+                                        '${fmtHours(e.hours)} h · ${e.platform.label}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: context.palette.muted,
+                                          fontSize: 12.5,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -80,11 +84,17 @@ class RecentActivityPanel extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            timeAgo(e.at),
-                            style: const TextStyle(
-                              color: Palette.muted,
-                              fontSize: 12,
+                          // Narrow enough that large text wraps it instead of
+                          // squeezing the title out.
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 110),
+                            child: Text(
+                              timeAgo(e.at),
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                color: context.palette.muted,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ],

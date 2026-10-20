@@ -94,7 +94,7 @@ class LibraryFilterSheet extends StatelessWidget {
             options: platforms,
             labelOf: (p) => p.label,
             iconOf: (p) => p.icon,
-            iconColorOf: (p) => p.color,
+            iconColorOf: (p) => context.palette.legible(p.color),
             isSelected: view.platformFilters.contains,
             selectedCount: view.platformFilters.length,
             onToggle: view.togglePlatform,
@@ -146,11 +146,11 @@ class _DetailsStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(color: Palette.muted, fontSize: 12.5);
+    final style = TextStyle(color: context.palette.muted, fontSize: 12.5);
     final missing = withoutDetails ?? 0;
     final child = switch (status) {
       LoadStatus.idle => null,
-      LoadStatus.loading => const Row(
+      LoadStatus.loading => Row(
         children: [
           SizedBox(
             width: 14,
@@ -163,7 +163,7 @@ class _DetailsStatus extends StatelessWidget {
       ),
       LoadStatus.failed => Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Could not load themes, modes, engines and companies.',
               style: style,
@@ -248,7 +248,7 @@ class LibraryActiveFilters extends StatelessWidget {
                 '$missing ${missing == 1 ? 'game has' : 'games have'} no IGDB '
                 'details yet, so these filters leave '
                 '${missing == 1 ? 'it' : 'them'} out.',
-                style: const TextStyle(color: Palette.muted, fontSize: 12),
+                style: TextStyle(color: context.palette.muted, fontSize: 12),
               ),
             ),
         ],

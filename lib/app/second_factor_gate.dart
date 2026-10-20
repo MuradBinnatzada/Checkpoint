@@ -191,13 +191,13 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
                     child: Container(
                       width: 72,
                       height: 72,
-                      decoration: const BoxDecoration(
-                        color: Palette.surfaceHigh,
+                      decoration: BoxDecoration(
+                        color: context.palette.surfaceHigh,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.phonelink_lock_rounded,
-                        color: Palette.accent,
+                        color: context.palette.accent,
                         size: 32,
                       ),
                     ),
@@ -220,7 +220,7 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
                               'shows for Checkpoint'
                               '${email == null ? '' : ' ($email)'}.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Palette.muted, height: 1.35),
+                    style: TextStyle(color: context.palette.muted, height: 1.35),
                   ),
                   const SizedBox(height: 20),
                   if (_usingBackupCode)

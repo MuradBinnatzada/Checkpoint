@@ -60,7 +60,7 @@ class BackupCodesList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const muted = TextStyle(color: Palette.muted, height: 1.4);
+    final muted = TextStyle(color: context.palette.muted, height: 1.4);
     const codeStyle = TextStyle(
       fontFamily: 'monospace',
       fontSize: 16,
@@ -71,13 +71,13 @@ class BackupCodesList extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           'If you lose your authenticator app, one of these codes signs you in '
           'without it. Save them somewhere safe, such as a password manager.',
           style: muted,
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Each code works once, and using one turns two-factor authentication '
           'off, so you can set it up again on your new device. The codes are '
           'not shown again.',
@@ -87,7 +87,7 @@ class BackupCodesList extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Palette.surfaceHigh,
+            color: context.palette.surfaceHigh,
             borderRadius: BorderRadius.circular(12),
           ),
           child: SelectionArea(

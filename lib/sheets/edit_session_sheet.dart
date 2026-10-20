@@ -85,7 +85,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('Hours played', suffix: 'hrs').copyWith(
+          decoration: fieldDecoration(context, 'Hours played', suffix: 'hrs').copyWith(
             errorText: hours != null && !valid ? 'Enter more than 0 hours.' : null,
           ),
         ),
@@ -108,7 +108,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration('Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -133,7 +133,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
         const SizedBox(height: 8),
         Center(
           child: TextButton.icon(
-            style: TextButton.styleFrom(foregroundColor: Palette.danger),
+            style: TextButton.styleFrom(foregroundColor: context.palette.danger),
             onPressed: () {
               // Reads what it needs from the sheet before it closes.
               deleteSessionWithUndo(context, widget.session);

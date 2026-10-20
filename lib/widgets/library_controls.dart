@@ -4,6 +4,7 @@ import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
@@ -46,20 +47,20 @@ class LibrarySearchField extends StatelessWidget {
       controller: controller,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
-      cursorColor: Palette.accent,
+      cursorColor: context.palette.accent,
       style: const TextStyle(fontSize: 15),
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: Palette.surfaceHigh,
+        fillColor: context.palette.surfaceHigh,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
         hintText: 'Search in $tabLabel',
-        hintStyle: const TextStyle(color: Palette.muted),
-        prefixIcon: const Icon(Icons.search_rounded, color: Palette.muted),
+        hintStyle: TextStyle(color: context.palette.muted),
+        prefixIcon: Icon(Icons.search_rounded, color: context.palette.muted),
         suffixIcon: hasText
             ? IconButton(
                 tooltip: 'Clear search',
-                icon: const Icon(Icons.close_rounded, color: Palette.muted),
+                icon: Icon(Icons.close_rounded, color: context.palette.muted),
                 onPressed: onClear,
               )
             : null,
@@ -67,7 +68,7 @@ class LibrarySearchField extends StatelessWidget {
         enabledBorder: border,
         focusedBorder: border.copyWith(
           borderSide: BorderSide(
-            color: Palette.accent.withValues(alpha: 0.6),
+            color: context.palette.accent.withValues(alpha: 0.6),
           ),
         ),
       ),
@@ -96,25 +97,35 @@ class LibraryViewToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget cell(LibraryView v, IconData icon, String tooltip) {
       final active = v == view;
+      // A 48 px square to tap, with the highlight inside it.
       return Tooltip(
         message: tooltip,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => context.read<LibraryViewStore>().setView(v),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 38,
-            height: 34,
-            decoration: BoxDecoration(
-              color: active
-                  ? Palette.accent.withValues(alpha: 0.20)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: active ? Palette.accent : Palette.muted,
+        child: Semantics(
+          button: true,
+          selected: active,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => context.read<LibraryViewStore>().setView(v),
+            child: SizedBox.square(
+              dimension: 48,
+              child: Center(
+                child: AnimatedContainer(
+                  duration: motion(context, const Duration(milliseconds: 180)),
+                  width: 40,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? context.palette.accent.withValues(alpha: 0.20)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: active ? context.palette.accent : context.palette.muted,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -122,9 +133,8 @@ class LibraryViewToggle extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Palette.surfaceHigh,
+        color: context.palette.surfaceHigh,
         borderRadius: BorderRadius.circular(13),
       ),
       child: Row(
@@ -166,7 +176,7 @@ class LibrarySortButton extends StatelessWidget {
                       fontWeight: f == field
                           ? FontWeight.w800
                           : FontWeight.w500,
-                      color: f == field ? Palette.accent : null,
+                      color: f == field ? context.palette.accent : null,
                     ),
                   ),
                 ),
@@ -176,7 +186,7 @@ class LibrarySortButton extends StatelessWidget {
                         ? Icons.arrow_downward_rounded
                         : Icons.arrow_upward_rounded,
                     size: 16,
-                    color: Palette.accent,
+                    color: context.palette.accent,
                   ),
               ],
             ),
@@ -201,7 +211,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
       tooltip: 'Filter by platform',
       icon: Icon(
         Icons.filter_list_rounded,
-        color: selected != null ? Palette.accent : null,
+        color: selected != null ? context.palette.accent : null,
       ),
       onSelected: (v) => context.read<LibraryViewStore>().setPlatformFilter(
         v is GamePlatform ? v : null,
@@ -213,7 +223,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
             'All platforms',
             style: TextStyle(
               fontWeight: selected == null ? FontWeight.w800 : FontWeight.w500,
-              color: selected == null ? Palette.accent : null,
+              color: selected == null ? context.palette.accent : null,
             ),
           ),
         ),
@@ -222,7 +232,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
             value: p,
             child: Row(
               children: [
-                Icon(p.icon, size: 18, color: p.color),
+                Icon(p.icon, size: 18, color: context.palette.legible(p.color)),
                 const SizedBox(width: 10),
                 Text(
                   p.label,
@@ -230,7 +240,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
                     fontWeight: selected == p
                         ? FontWeight.w800
                         : FontWeight.w500,
-                    color: selected == p ? Palette.accent : null,
+                    color: selected == p ? context.palette.accent : null,
                   ),
                 ),
               ],
@@ -282,6 +292,23 @@ class _PosterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // One button for screen readers, named after the game: a cover image says
+    // nothing, and the badges alone would be read as "4.5, 12h".
+    final label = [
+      game.title,
+      if (game.rating > 0) 'rated ${fmtHours(game.rating)} out of 5',
+      if (game.hoursPlayed > 0) '${fmtHours(game.hoursPlayed)} hours played',
+    ].join(', ');
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      onTap: () => openGame(context, game.id),
+      child: _tile(context),
+    );
+  }
+
+  Widget _tile(BuildContext context) {
     return Stack(
       children: [
         Positioned.fill(child: CoverArt(game: game)),
@@ -293,11 +320,13 @@ class _PosterTile extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.star_rounded, size: 12, color: Palette.star),
+                  // The badges are dark in either theme, on the cover art.
+                  Icon(Icons.star_rounded, size: 12, color: Palette.dark.star),
                   const SizedBox(width: 2),
                   Text(
                     fmtHours(game.rating),
                     style: const TextStyle(
+                      color: Colors.white,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -314,6 +343,7 @@ class _PosterTile extends StatelessWidget {
               Text(
                 '${fmtHours(game.hoursPlayed)}h',
                 style: const TextStyle(
+                  color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
@@ -347,7 +377,7 @@ class LibraryGameList extends StatelessWidget {
       separatorBuilder: (context, index) => Divider(
         height: 1,
         indent: 82,
-        color: Colors.white.withValues(alpha: 0.06),
+        color: context.palette.hairline,
       ),
       itemBuilder: (_, i) => _LibraryListTile(game: games[i]),
     );
@@ -389,7 +419,7 @@ class _LibraryListTile extends StatelessWidget {
                   Row(
                     children: [
                       if (platform != null) ...[
-                        Icon(platform.icon, size: 14, color: platform.color),
+                        Icon(platform.icon, size: 14, color: context.palette.legible(platform.color)),
                         const SizedBox(width: 5),
                         Flexible(
                           child: Text(
@@ -398,22 +428,22 @@ class _LibraryListTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12.5,
-                              color: platform.color,
+                              color: context.palette.legible(platform.color),
                             ),
                           ),
                         ),
                       ],
                       if (platform != null && game.hasReleaseYear)
-                        const Text(
+                        Text(
                           '  ·  ',
-                          style: TextStyle(color: Palette.muted),
+                          style: TextStyle(color: context.palette.muted),
                         ),
                       if (game.hasReleaseYear)
                         Text(
                           '${game.releaseYear}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: Palette.muted,
+                            color: context.palette.muted,
                           ),
                         ),
                     ],
@@ -423,18 +453,18 @@ class _LibraryListTile extends StatelessWidget {
                     children: [
                       game.rating > 0
                           ? StarRating(rating: game.rating, size: 15)
-                          : const Text(
+                          : Text(
                               'Not rated',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Palette.muted,
+                                color: context.palette.muted,
                               ),
                             ),
                       const Spacer(),
-                      const Icon(
+                      Icon(
                         Icons.schedule_rounded,
                         size: 14,
-                        color: Palette.muted,
+                        color: context.palette.muted,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -452,7 +482,7 @@ class _LibraryListTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+            Icon(Icons.chevron_right_rounded, color: context.palette.muted),
           ],
         ),
       ),
@@ -502,17 +532,17 @@ class LibraryStatusTabBar extends StatelessWidget {
       indicatorPadding: const EdgeInsets.symmetric(vertical: 2),
       splashBorderRadius: BorderRadius.circular(20),
       labelPadding: const EdgeInsets.symmetric(horizontal: 3),
-      labelColor: Palette.accent,
-      unselectedLabelColor: Palette.muted,
+      labelColor: context.palette.accent,
+      unselectedLabelColor: context.palette.muted,
       labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
       unselectedLabelStyle: const TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 13.5,
       ),
       indicator: BoxDecoration(
-        color: Palette.accent.withValues(alpha: 0.16),
+        color: context.palette.accent.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Palette.accent.withValues(alpha: 0.5)),
+        border: Border.all(color: context.palette.accent.withValues(alpha: 0.5)),
       ),
       tabs: [
         statusTab('All', counts[0]),

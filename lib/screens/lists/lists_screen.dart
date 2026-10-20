@@ -107,7 +107,7 @@ class ListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final count = list.games.length;
     return Material(
-      color: Palette.surface,
+      color: context.palette.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -127,12 +127,12 @@ class ListCard extends StatelessWidget {
               Icon(
                 list.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded,
                 size: 16,
-                color: Palette.muted,
+                color: context.palette.muted,
                 semanticLabel: list.isPublic ? 'Public' : 'Private',
               ),
             ]),
             const SizedBox(height: 2),
-            Text('$count game${count == 1 ? '' : 's'}', style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+            Text('$count game${count == 1 ? '' : 's'}', style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
             if (count > 0) ...[
               const SizedBox(height: 10),
               SizedBox(

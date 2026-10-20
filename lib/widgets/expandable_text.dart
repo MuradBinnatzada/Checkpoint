@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/theme/palette.dart';
+
 /// [text] cut to [collapsedLines], with "Read more" when it is longer than that.
 class ExpandableText extends StatefulWidget {
   const ExpandableText(this.text, {super.key, required this.collapsedLines});
@@ -16,7 +18,7 @@ class _ExpandableTextState extends State<ExpandableText> {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(height: 1.45, color: Colors.white70);
+    final style = TextStyle(height: 1.45, color: context.palette.textSoft);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Only a text that is longer than the collapsed height gets the toggle.

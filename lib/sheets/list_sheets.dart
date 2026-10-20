@@ -70,7 +70,7 @@ class _EditListSheetState extends State<EditListSheet> {
           maxLength: GameList.titleMax,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('Title').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, 'Title').copyWith(counterText: ''),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -79,7 +79,7 @@ class _EditListSheetState extends State<EditListSheet> {
           maxLines: 5,
           maxLength: GameList.descriptionMax,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration('Description (optional)'),
+          decoration: fieldDecoration(context, 'Description (optional)'),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -90,7 +90,7 @@ class _EditListSheetState extends State<EditListSheet> {
             _public
                 ? 'Shown on your profile, and anyone signed in can open its link.'
                 : 'Only you can see it.',
-            style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+            style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ),
         const SizedBox(height: 12),
@@ -145,7 +145,7 @@ class _AddToListSheet extends StatelessWidget {
             title: Text(list.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
               '${list.games.length} game${list.games.length == 1 ? '' : 's'}${list.isPublic ? ' · Public' : ''}',
-              style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+              style: TextStyle(color: context.palette.muted, fontSize: 12.5),
             ),
           ),
         const SizedBox(height: 8),

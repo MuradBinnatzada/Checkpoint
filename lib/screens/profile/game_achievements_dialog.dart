@@ -228,12 +228,12 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
     final size = MediaQuery.sizeOf(context);
 
     return Dialog(
-      backgroundColor: Palette.surface,
+      backgroundColor: context.palette.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        side: BorderSide(color: context.palette.text.withValues(alpha: 0.08)),
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -283,7 +283,7 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
               decoration: InputDecoration(
                 isDense: true,
                 filled: true,
-                fillColor: Palette.surfaceHigh,
+                fillColor: context.palette.surfaceHigh,
                 hintText: 'Search achievements',
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _query.isEmpty
@@ -377,8 +377,8 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: Text(
               'Showing the last saved list. $error',
-              style: const TextStyle(
-                color: Palette.muted,
+              style: TextStyle(
+                color: context.palette.muted,
                 fontSize: 12,
                 height: 1.35,
               ),
@@ -435,8 +435,8 @@ class _Header extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            (complete ? Palette.star : Palette.accent).withValues(alpha: 0.16),
-            Palette.surface,
+            (complete ? context.palette.star : context.palette.accent).withValues(alpha: 0.16),
+            context.palette.surface,
           ],
         ),
       ),
@@ -476,7 +476,7 @@ class _Header extends StatelessWidget {
                 IconButton(
                   tooltip: 'Refresh from Steam',
                   onPressed: onRefresh,
-                  icon: const Icon(Icons.refresh_rounded, color: Palette.muted),
+                  icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
                 ),
               IconButton(
                 tooltip: 'Close',
@@ -493,10 +493,10 @@ class _Header extends StatelessWidget {
             child: Row(
               children: [
                 if (complete) ...[
-                  const Icon(
+                  Icon(
                     Icons.emoji_events_rounded,
                     size: 18,
-                    color: Palette.star,
+                    color: context.palette.star,
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -508,7 +508,7 @@ class _Header extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: complete ? Palette.star : Colors.white,
+                      color: complete ? context.palette.star : context.palette.text,
                     ),
                   ),
                 ),
@@ -517,7 +517,7 @@ class _Header extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: complete ? Palette.star : Palette.muted,
+                    color: complete ? context.palette.star : context.palette.muted,
                   ),
                 ),
               ],
@@ -531,8 +531,8 @@ class _Header extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: total == 0 ? 0 : unlocked / total,
                 minHeight: 8,
-                color: Palette.star,
-                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                color: context.palette.star,
+                backgroundColor: context.palette.track,
               ),
             ),
           ),
@@ -553,11 +553,11 @@ class _Cover extends StatelessWidget {
     const width = 48.0;
     const height = 64.0;
     final fallback = Container(
-      color: Palette.surfaceHigh,
-      child: const Icon(
+      color: context.palette.surfaceHigh,
+      child: Icon(
         Icons.sports_esports_rounded,
         size: 22,
-        color: Palette.muted,
+        color: context.palette.muted,
       ),
     );
     final link = url;
@@ -565,12 +565,12 @@ class _Cover extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: glow
-            ? Border.all(color: Palette.star.withValues(alpha: 0.7))
+            ? Border.all(color: context.palette.star.withValues(alpha: 0.7))
             : null,
         boxShadow: glow
             ? [
                 BoxShadow(
-                  color: Palette.star.withValues(alpha: 0.35),
+                  color: context.palette.star.withValues(alpha: 0.35),
                   blurRadius: 16,
                 ),
               ]
@@ -616,7 +616,7 @@ class _Message extends StatelessWidget {
           Text(
             text,
             style: TextStyle(
-              color: error ? Palette.danger : Palette.muted,
+              color: error ? context.palette.danger : context.palette.muted,
               fontSize: 13,
               height: 1.4,
             ),

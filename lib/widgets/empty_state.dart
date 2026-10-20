@@ -19,13 +19,13 @@ class EmptyState extends StatelessWidget {
           Container(
             width: 72,
             height: 72,
-            decoration: const BoxDecoration(color: Palette.surfaceHigh, shape: BoxShape.circle),
-            child: Icon(icon, color: Palette.accent, size: 32),
+            decoration: BoxDecoration(color: context.palette.surfaceHigh, shape: BoxShape.circle),
+            child: Icon(icon, color: context.palette.accent, size: 32),
           ),
           const SizedBox(height: 16),
           Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Palette.muted, height: 1.35)),
+          Text(message, textAlign: TextAlign.center, style: TextStyle(color: context.palette.muted, height: 1.35)),
           if (actionLabel != null) ...[
             const SizedBox(height: 16),
             FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),

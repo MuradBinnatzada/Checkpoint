@@ -104,11 +104,11 @@ class DataSection extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
-        const Panel(
+        Panel(
           title: 'Export',
           child: Text(
             'Your library and play sessions as CSV files, which any spreadsheet opens.',
-            style: TextStyle(color: Palette.muted, height: 1.4),
+            style: TextStyle(color: context.palette.muted, height: 1.4),
           ),
         ),
         const SizedBox(height: 10),
@@ -129,13 +129,13 @@ class DataSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        const Panel(
+        Panel(
           title: 'Import',
           child: Text(
             'Add games from a CSV file: a Checkpoint export, or a spreadsheet from another '
             'tracker with a "title" column, and optionally status, rating, hours, platform '
             'and review. Games already in your library are updated; hours never go down.',
-            style: TextStyle(color: Palette.muted, height: 1.4),
+            style: TextStyle(color: context.palette.muted, height: 1.4),
           ),
         ),
         const SizedBox(height: 10),
@@ -207,9 +207,9 @@ class _ImportScreenState extends State<ImportScreen> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Each game is looked up on IGDB by its title, a few a second.',
-                style: TextStyle(color: Palette.muted),
+                style: TextStyle(color: context.palette.muted),
               ),
               const SizedBox(height: 16),
               FilledButton(
@@ -241,18 +241,18 @@ class _ImportScreenState extends State<ImportScreen> {
                 FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
               if (run.searchFailed) ...[
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'IGDB couldn\'t be reached for some games. Import the file again later to add them.',
-                  style: TextStyle(color: Palette.danger, height: 1.35),
+                  style: TextStyle(color: context.palette.danger, height: 1.35),
                 ),
               ],
               if (run.unmatched.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Text('Not found (${run.unmatched.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'No game on IGDB has exactly this title. Add them from Search.',
-                  style: TextStyle(color: Palette.muted, fontSize: 12.5),
+                  style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
                 for (final row in run.unmatched)
                   Padding(
@@ -267,7 +267,7 @@ class _ImportScreenState extends State<ImportScreen> {
               for (final reason in file.skipped)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(reason, style: const TextStyle(color: Palette.muted)),
+                  child: Text(reason, style: TextStyle(color: context.palette.muted)),
                 ),
             ],
           ],

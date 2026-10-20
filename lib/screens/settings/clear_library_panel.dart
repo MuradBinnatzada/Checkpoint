@@ -34,7 +34,7 @@ class _ClearLibraryPanelState extends State<ClearLibraryPanel> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: DangerPanel.color),
+            style: TextButton.styleFrom(foregroundColor: DangerPanel.colorOf(context)),
             child: const Text('Clear library'),
           ),
         ],

@@ -8,6 +8,7 @@ import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/public_library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/library_controls.dart';
@@ -141,7 +142,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: Palette.muted),
+                  style: TextStyle(fontSize: 12.5, color: context.palette.muted),
                 ),
             ],
           ),
@@ -186,7 +187,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
           child: Text(
             'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}'
             '${view.platformFilter != null ? ' · ${view.platformFilter!.label}' : ''}',
-            style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+            style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ),
         LibraryStatusTabBar(
@@ -286,7 +287,7 @@ class _Collection extends StatelessWidget {
       );
     }
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
+      duration: motion(context, const Duration(milliseconds: 220)),
       child: view.view == LibraryView.grid
           ? LibraryPosterGrid(
               key: ValueKey('grid-${s?.name ?? 'all'}'),

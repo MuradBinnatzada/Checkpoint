@@ -17,6 +17,7 @@ import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/release_alerts_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
@@ -50,8 +51,8 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       Text(
                         '${greeting()},',
-                        style: const TextStyle(
-                          color: Palette.muted,
+                        style: TextStyle(
+                          color: context.palette.muted,
                           fontSize: 15,
                         ),
                       ),
@@ -65,10 +66,22 @@ class HomeScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                GestureDetector(
-                  onTap: () =>
-                      context.read<NavStore>().select(NavTab.profile),
-                  child: ProfileAvatar(name: profile.name, size: 44, imageUrl: profile.avatarUrl),
+                // A photo says nothing to a screen reader; 48 px to tap.
+                Semantics(
+                  button: true,
+                  label: 'Your profile',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        context.read<NavStore>().select(NavTab.profile),
+                    child: SizedBox.square(
+                      dimension: 48,
+                      child: Center(
+                        child: ProfileAvatar(name: profile.name, size: 44, imageUrl: profile.avatarUrl),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -297,12 +310,12 @@ class _HeroBannerState extends State<_HeroBanner> {
         child: Panel(
           child: Row(
             children: [
-              const Icon(Icons.hourglass_empty_rounded, color: Palette.muted),
+              Icon(Icons.hourglass_empty_rounded, color: context.palette.muted),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Nothing in progress. Pick something from your To Play list.',
-                  style: TextStyle(color: Palette.muted),
+                  style: TextStyle(color: context.palette.muted),
                 ),
               ),
               TextButton(
@@ -323,7 +336,8 @@ class _HeroBannerState extends State<_HeroBanner> {
         itemCount: games.length,
         itemBuilder: (_, i) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: _HeroCard(game: games[i]),
+          // Text on the cover art, under a dark scrim: dark in either theme.
+          child: DarkArtTheme(child: _HeroCard(game: games[i])),
         ),
       ),
     );
@@ -418,7 +432,6 @@ class _HeroCard extends StatelessWidget {
                           ),
                           IconButton.filled(
                             tooltip: 'Log a session',
-                            visualDensity: VisualDensity.compact,
                             onPressed: () =>
                                 showQuickLogSheet(context, gameId: game.id),
                             icon: const Icon(Icons.add_rounded),
@@ -434,7 +447,11 @@ class _HeroCard extends StatelessWidget {
           Positioned.fill(
             child: Material(
               color: Colors.transparent,
-              child: InkWell(onTap: () => openGame(context, game.id)),
+              child: Semantics(
+                button: true,
+                label: 'Open ${game.title}',
+                child: InkWell(onTap: () => openGame(context, game.id)),
+              ),
             ),
           ),
         ],
@@ -456,12 +473,12 @@ class _RecentActivityRow extends StatelessWidget {
         if (library.maybeGame(e.gameId) != null) e,
     ];
     if (entries.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(horizontal: 20),
         child: Panel(
           child: Text(
             'Log your first session with the Log Game button.',
-            style: TextStyle(color: Palette.muted),
+            style: TextStyle(color: context.palette.muted),
           ),
         ),
       );
@@ -601,7 +618,7 @@ class _FriendActivityCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Palette.background,
+                            color: context.palette.background,
                             width: 2,
                           ),
                         ),
@@ -631,20 +648,20 @@ class _FriendActivityCard extends StatelessWidget {
               member.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              style: TextStyle(fontSize: 12, color: context.palette.textSoft),
             ),
           ),
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(icon, size: 12, color: Palette.muted),
+              Icon(icon, size: 12, color: context.palette.muted),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   friendActivityCaption(item),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, color: Palette.muted),
+                  style: TextStyle(fontSize: 11, color: context.palette.muted),
                 ),
               ),
             ],

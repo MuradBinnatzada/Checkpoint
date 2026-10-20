@@ -8,6 +8,7 @@ import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
@@ -108,7 +109,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
             child: Text(
               'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}',
-              style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+              style: TextStyle(color: context.palette.muted, fontSize: 12.5),
             ),
           ),
           LibraryActiveFilters(library: library.libraryGames),
@@ -208,12 +209,12 @@ class _OfflineBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
         decoration: BoxDecoration(
-          color: Palette.surfaceHigh,
+          color: context.palette.surfaceHigh,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            const Icon(Icons.cloud_off_rounded, size: 18, color: Palette.muted),
+            Icon(Icons.cloud_off_rounded, size: 18, color: context.palette.muted),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -223,7 +224,7 @@ class _OfflineBanner extends StatelessWidget {
                     ? 'Can\'t reach Checkpoint. Showing your saved library.$pending'
                     : 'Can\'t reach Checkpoint. Showing your saved library, '
                           'updated ${timeAgo(synced)}.$pending',
-                style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+                style: TextStyle(color: context.palette.muted, fontSize: 12.5),
               ),
             ),
             TextButton(
@@ -326,7 +327,7 @@ class LibraryCollection extends StatelessWidget {
       );
     }
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
+      duration: motion(context, const Duration(milliseconds: 220)),
       child: view.view == LibraryView.grid
           ? LibraryPosterGrid(key: ValueKey('grid-${s?.name ?? 'all'}'), games: games)
           : LibraryGameList(key: ValueKey('list-${s?.name ?? 'all'}'), games: games),

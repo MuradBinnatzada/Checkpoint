@@ -15,9 +15,9 @@ class Panel extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: Palette.surface,
+        color: context.palette.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: context.palette.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -25,7 +25,11 @@ class Panel extends StatelessWidget {
           if (title != null) ...[
             Row(children: [
               Expanded(
-                child: Text(title!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                // A heading, so screen readers can jump from panel to panel.
+                child: Semantics(
+                  header: true,
+                  child: Text(title!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
               ),
               ?trailing,
             ]),

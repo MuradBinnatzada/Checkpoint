@@ -247,9 +247,9 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Palette.success),
+            Icon(Icons.check_circle_rounded, color: context.palette.success),
             SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -300,12 +300,12 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       );
     }
 
-    const muted = TextStyle(color: Palette.muted, height: 1.4);
+    final muted = TextStyle(color: context.palette.muted, height: 1.4);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           'Each time you sign in, Checkpoint will also ask for a code from an '
           'authenticator app such as Google Authenticator, Microsoft '
           'Authenticator or 1Password.',
@@ -327,7 +327,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           "Can't scan it? Enter this setup key instead:",
           style: muted,
         ),
@@ -385,9 +385,9 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
               : const Text('Turn on'),
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'Turning it on signs your account out on your other devices.',
-          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.4),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.4),
         ),
       ],
     );
@@ -407,11 +407,11 @@ class _Step extends StatelessWidget {
       children: [
         CircleAvatar(
           radius: 11,
-          backgroundColor: Palette.surfaceHigh,
+          backgroundColor: context.palette.surfaceHigh,
           child: Text(
             '$number',
-            style: const TextStyle(
-              color: Palette.accent,
+            style: TextStyle(
+              color: context.palette.accent,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),

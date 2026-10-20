@@ -52,13 +52,18 @@ String greeting() {
   return 'Good evening';
 }
 
+/// The largest text size the app follows from the device's setting: twice the
+/// normal size, what low-vision settings reach on most phones.
+const maxTextScale = 2.0;
+
 double textScale(BuildContext context) =>
-    MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3).toDouble();
+    MediaQuery.textScalerOf(context).scale(1).clamp(1.0, maxTextScale).toDouble();
 
 double posterCardHeight(BuildContext context, double width, {required bool subtitle}) =>
     width * 1.5 + 14 + (18 + 6 + 16 + (subtitle ? 18 : 0)) * textScale(context);
 
 InputDecoration fieldDecoration(
+  BuildContext context,
   String label, {
   String? prefix,
   String? suffix,
@@ -74,13 +79,13 @@ InputDecoration fieldDecoration(
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: Palette.surfaceHigh,
-      labelStyle: const TextStyle(color: Palette.muted),
+      fillColor: context.palette.surfaceHigh,
+      labelStyle: TextStyle(color: context.palette.muted),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Palette.accent, width: 1.5),
+        borderSide: BorderSide(color: context.palette.accent, width: 1.5),
       ),
     );
 

@@ -304,6 +304,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 onSubmitted: _submitSearch,
                 onTapOutside: (_) => _searchFocus.unfocus(),
                 decoration: fieldDecoration(
+                  context,
                   'Search',
                   hint: switch (_kind) {
                     SearchKind.games => 'Game titles…',
@@ -358,11 +359,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 }
               },
               style: SegmentedButton.styleFrom(
-                backgroundColor: Palette.surfaceHigh,
-                foregroundColor: Colors.white70,
-                selectedBackgroundColor: Palette.accent,
-                selectedForegroundColor: Palette.onAccent,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+                backgroundColor: context.palette.surfaceHigh,
+                foregroundColor: context.palette.textSoft,
+                selectedBackgroundColor: context.palette.accent,
+                selectedForegroundColor: context.palette.onAccent,
+                side: BorderSide(color: context.palette.outline),
               ),
             ),
           ),
@@ -436,9 +437,9 @@ class _SearchScreenState extends State<SearchScreen> {
         const _SectionLabel('Recent searches'),
         Expanded(
           child: recents.isEmpty
-              ? const Padding(
+              ? Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                  child: Text('No recent searches yet.', style: TextStyle(color: Palette.muted)),
+                  child: Text('No recent searches yet.', style: TextStyle(color: context.palette.muted)),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 32),
@@ -446,7 +447,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   separatorBuilder: (_, _) => const _RowDivider(),
                   itemBuilder: (_, i) => ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                    leading: const Icon(Icons.history_rounded, color: Palette.muted),
+                    leading: Icon(Icons.history_rounded, color: context.palette.muted),
                     title: Text(recents[i], maxLines: 1, overflow: TextOverflow.ellipsis),
                     onTap: () => _runRecentSearch(recents[i]),
                   ),
@@ -474,9 +475,9 @@ class _SearchScreenState extends State<SearchScreen> {
                   mode.label,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                trailing: const Icon(
+                trailing: Icon(
                   Icons.chevron_right_rounded,
-                  color: Palette.muted,
+                  color: context.palette.muted,
                 ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -502,7 +503,7 @@ class _SectionLabel extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
         child: Text(
           text.toUpperCase(),
-          style: const TextStyle(color: Palette.muted, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0),
+          style: TextStyle(color: context.palette.muted, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0),
         ),
       );
 }
@@ -511,7 +512,7 @@ class _RowDivider extends StatelessWidget {
   const _RowDivider();
 
   @override
-  Widget build(BuildContext context) => const Divider(height: 1, indent: 20, endIndent: 20, color: Colors.white10);
+  Widget build(BuildContext context) => Divider(height: 1, indent: 20, endIndent: 20, color: context.palette.text.withValues(alpha: 0.10));
 }
 
 /// "12 results", or "20+ results" while more can still be loaded.
@@ -620,11 +621,11 @@ class _StudioTile extends StatelessWidget {
               Text(company.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               if (details.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(details.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+                Text(details.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
               ],
             ]),
           ),
-          const Icon(Icons.chevron_right_rounded, color: Palette.muted),
+          Icon(Icons.chevron_right_rounded, color: context.palette.muted),
         ]),
       ),
     );
@@ -658,12 +659,12 @@ class _SearchTile extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(game.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
-              Text(game.hasReleaseYear ? '${game.publisher} · ${game.releaseYear}' : game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Palette.muted, fontSize: 12.5)),
+              Text(game.hasReleaseYear ? '${game.publisher} · ${game.releaseYear}' : game.publisher, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 4, children: [
-                for (final p in game.platforms.take(4)) Icon(p.icon, size: 16, color: p.color),
+                for (final p in game.platforms.take(4)) Icon(p.icon, size: 16, color: context.palette.legible(p.color)),
                 if (game.platforms.length > 4)
-                  Text('+${game.platforms.length - 4}', style: const TextStyle(fontSize: 11, color: Palette.muted)),
+                  Text('+${game.platforms.length - 4}', style: TextStyle(fontSize: 11, color: context.palette.muted)),
               ]),
             ]),
           ),
@@ -675,7 +676,7 @@ class _SearchTile extends StatelessWidget {
           else
             PopupMenuButton<GameStatus>(
               tooltip: 'Add to library',
-              icon: const Icon(Icons.add_circle_outline_rounded, color: Palette.accent, size: 28),
+              icon: Icon(Icons.add_circle_outline_rounded, color: context.palette.accent, size: 28),
               onSelected: (s) {
                 rememberSearch();
                 context.read<LibraryStore>().addToLibrary(game.id, s);
@@ -687,7 +688,7 @@ class _SearchTile extends StatelessWidget {
                 for (final s in const [GameStatus.playing, GameStatus.toPlay, GameStatus.wishlist, GameStatus.completed])
                   PopupMenuItem(
                     value: s,
-                    child: Row(children: [Icon(s.icon, color: s.color, size: 20), const SizedBox(width: 10), Text(s.label)]),
+                    child: Row(children: [Icon(s.icon, color: context.palette.legible(s.color), size: 20), const SizedBox(width: 10), Text(s.label)]),
                   ),
               ],
             ),

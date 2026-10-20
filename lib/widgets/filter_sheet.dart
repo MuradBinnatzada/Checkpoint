@@ -30,11 +30,11 @@ class FilterButton extends StatelessWidget {
       icon: Badge(
         isLabelVisible: count > 0,
         label: Text('$count'),
-        backgroundColor: Palette.accent,
-        textColor: Palette.onAccent,
+        backgroundColor: context.palette.accent,
+        textColor: context.palette.onAccent,
         child: Icon(
           Icons.filter_list_rounded,
-          color: count > 0 ? Palette.accent : null,
+          color: count > 0 ? context.palette.accent : null,
         ),
       ),
     );
@@ -77,30 +77,39 @@ class FilterSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: Palette.muted),
+              Icon(icon, size: 16, color: context.palette.muted),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+              // The title and the summary share what Clear leaves, and wrap
+              // with large text.
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (selected > 0) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          summary ?? '$selected picked',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: context.palette.accent,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (selected > 0) ...[
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    summary ?? '$selected picked',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Palette.accent,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ),
-              ],
-              const Spacer(),
               if (selected > 0 && onClear != null)
                 TextButton(
                   onPressed: onClear,
@@ -200,9 +209,9 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
               decoration: InputDecoration(
                 isDense: true,
                 filled: true,
-                fillColor: Palette.surfaceHigh,
+                fillColor: context.palette.surfaceHigh,
                 hintText: 'Search ${widget.title.toLowerCase()}',
-                hintStyle: const TextStyle(color: Palette.muted),
+                hintStyle: TextStyle(color: context.palette.muted),
                 prefixIcon: const Icon(Icons.search_rounded, size: 18),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -221,9 +230,9 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
             onSelected: () => widget.onToggle(o),
           ),
         if (query.isNotEmpty && listed.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 6),
-            child: Text('No match.', style: TextStyle(color: Palette.muted)),
+            child: Text('No match.', style: TextStyle(color: context.palette.muted)),
           ),
         if (folds && query.isEmpty)
           TextButton(
@@ -343,8 +352,8 @@ class ActiveFilterChips extends StatelessWidget {
         onDeleted: () => onChanged(without),
         deleteIcon: const Icon(Icons.close_rounded, size: 16),
         deleteButtonTooltipMessage: 'Remove $label',
-        backgroundColor: Palette.surfaceHigh,
-        side: BorderSide(color: Palette.accent.withValues(alpha: 0.5)),
+        backgroundColor: context.palette.surfaceHigh,
+        side: BorderSide(color: context.palette.accent.withValues(alpha: 0.5)),
         shape: const StadiumBorder(),
         visualDensity: VisualDensity.compact,
       ),
@@ -359,14 +368,14 @@ class ActiveFilterChips extends StatelessWidget {
             if (filters.platforms.contains(p))
               chip(
                 icon: p.icon,
-                color: p.color,
+                color: context.palette.legible(p.color),
                 label: p.label,
                 without: filters.togglePlatform(p),
               ),
           if (!filters.years.isAny)
             chip(
               icon: Icons.event_rounded,
-              color: Palette.muted,
+              color: context.palette.muted,
               label: filters.years.label,
               without: filters.withYears(YearRange.any),
             ),
@@ -374,7 +383,7 @@ class ActiveFilterChips extends StatelessWidget {
             for (final value in filters.valuesOf(a))
               chip(
                 icon: a.icon,
-                color: Palette.muted,
+                color: context.palette.muted,
                 label: labelOf?.call(a, value) ?? value,
                 without: filters.toggle(a, value),
               ),
@@ -465,13 +474,13 @@ class DiscoverFilterSheet extends StatelessWidget {
                             onSelected: () => edit((f) => f.withSort(s)),
                           ),
                         if (searching)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(top: 4),
                             child: Text(
                               'A search is ordered by relevance. The order '
                               'applies when you browse by filters alone.',
                               style: TextStyle(
-                                color: Palette.muted,
+                                color: context.palette.muted,
                                 fontSize: 12.5,
                               ),
                             ),
@@ -486,7 +495,7 @@ class DiscoverFilterSheet extends StatelessWidget {
                       options: GameApiService.discoverPlatforms,
                       labelOf: (p) => p.label,
                       iconOf: (p) => p.icon,
-                      iconColorOf: (p) => p.color,
+                      iconColorOf: (p) => context.palette.legible(p.color),
                       isSelected: filters.platforms.contains,
                       selectedCount: filters.platforms.length,
                       onToggle: (p) => edit((f) => f.togglePlatform(p)),
@@ -546,7 +555,7 @@ class _SheetFooter extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          top: BorderSide(color: context.palette.hairline),
         ),
       ),
       child: Padding(

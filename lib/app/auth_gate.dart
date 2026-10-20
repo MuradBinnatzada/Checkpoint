@@ -19,7 +19,7 @@ class AuthGate extends StatelessWidget {
       if (!loggedIn)
         Positioned.fill(
           child: ColoredBox(
-            color: Palette.background.withValues(alpha: 0.94),
+            color: context.palette.background.withValues(alpha: 0.94),
             child: const SafeArea(
               child: SignInPanel(
                 icon: Icons.lock_outline_rounded,

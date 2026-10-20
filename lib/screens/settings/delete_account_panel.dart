@@ -37,7 +37,7 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: DangerPanel.color),
+            style: TextButton.styleFrom(foregroundColor: DangerPanel.colorOf(context)),
             child: const Text('Delete account'),
           ),
         ],

@@ -145,8 +145,8 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                       children: [
                         Text(
                           intro,
-                          style: const TextStyle(
-                            color: Palette.muted,
+                          style: TextStyle(
+                            color: context.palette.muted,
                             height: 1.4,
                           ),
                         ),

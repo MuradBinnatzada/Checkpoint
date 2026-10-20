@@ -71,8 +71,8 @@ class ProfileHeader extends StatelessWidget {
                 handle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Palette.accent,
+                style: TextStyle(
+                  color: context.palette.accent,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -82,7 +82,7 @@ class ProfileHeader extends StatelessWidget {
                   isSelf
                       ? 'This is you'
                       : 'Member since ${fmtMonthYear(joined!)}',
-                  style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+                  style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
               ],
             ],
@@ -185,7 +185,7 @@ class ProfileLayout extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             notice!,
-            style: const TextStyle(color: Palette.muted, fontSize: 12.5),
+            style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ],
         const SizedBox(height: 14),
@@ -196,19 +196,21 @@ class ProfileLayout extends StatelessWidget {
         if (hasBio) ...[
           Text(
             text,
-            style: const TextStyle(height: 1.4, color: Colors.white70),
+            style: TextStyle(height: 1.4, color: context.palette.textSoft),
           ),
           const SizedBox(height: 16),
         ],
-        // Tapping a count opens the list behind it.
-        Row(
+        // Tapping a count opens the list behind it. With large text the second
+        // goes under the first.
+        Wrap(
+          spacing: 14,
+          runSpacing: 4,
           children: [
             CountStat(
               value: fmtCount(followers),
               label: 'Followers',
               onTap: onFollowers,
             ),
-            const SizedBox(width: 14),
             CountStat(
               value: fmtCount(following),
               label: 'Following',
@@ -223,8 +225,8 @@ class ProfileLayout extends StatelessWidget {
           Panel(
             child: Text(
               emptyFavorites,
-              style: const TextStyle(
-                color: Palette.muted,
+              style: TextStyle(
+                color: context.palette.muted,
                 fontSize: 13,
                 height: 1.35,
               ),
@@ -283,9 +285,13 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+      // A heading, so screen readers can jump from section to section.
+      child: Semantics(
+        header: true,
+        child: Text(
+          title,
+          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+        ),
       ),
     );
   }

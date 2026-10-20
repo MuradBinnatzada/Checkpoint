@@ -8,6 +8,7 @@ import 'package:checkpoint/models/game_media.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
+import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/sheet_frame.dart';
@@ -78,9 +79,9 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
-          const Text(
+          Text(
             'Could not load the art for this game.',
-            style: TextStyle(color: Palette.muted),
+            style: TextStyle(color: context.palette.muted),
           ),
           const SizedBox(height: 10),
           TextButton.icon(
@@ -119,11 +120,11 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
           _Grid(children: [for (final image in media.screenshots) tile(image)]),
         ],
         if (media.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 16),
             child: Text(
               'IGDB has no artworks or screenshots for this game yet.',
-              style: TextStyle(color: Palette.muted),
+              style: TextStyle(color: context.palette.muted),
             ),
           ),
       ],
@@ -196,14 +197,14 @@ class _Tile extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: motion(context, const Duration(milliseconds: 150)),
           padding: EdgeInsets.all(selected ? 3 : 0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius + 3),
             border: Border.all(
               color: selected
-                  ? Palette.accent
-                  : Colors.white.withValues(alpha: 0.12),
+                  ? context.palette.accent
+                  : context.palette.text.withValues(alpha: 0.12),
               width: selected ? 2 : 1,
             ),
           ),
@@ -212,7 +213,7 @@ class _Tile extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ColoredBox(color: Palette.surfaceHigh, child: child),
+                ColoredBox(color: context.palette.surfaceHigh, child: child),
                 if (label != null)
                   Align(
                     alignment: Alignment.bottomCenter,
@@ -232,6 +233,7 @@ class _Tile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -239,16 +241,16 @@ class _Tile extends StatelessWidget {
                     ),
                   ),
                 if (selected)
-                  const Positioned(
+                  Positioned(
                     top: 6,
                     right: 6,
                     child: CircleAvatar(
                       radius: 11,
-                      backgroundColor: Palette.accent,
+                      backgroundColor: context.palette.accent,
                       child: Icon(
                         Icons.check_rounded,
                         size: 15,
-                        color: Palette.onAccent,
+                        color: context.palette.onAccent,
                       ),
                     ),
                   ),
@@ -274,8 +276,8 @@ class _Thumb extends StatelessWidget {
     fadeInDuration: const Duration(milliseconds: 200),
     fadeOutDuration: Duration.zero,
     placeholder: (_, _) => const SizedBox.shrink(),
-    errorWidget: (_, _, _) => const Center(
-      child: Icon(Icons.broken_image_outlined, color: Palette.muted),
+    errorWidget: (_, _, _) => Center(
+      child: Icon(Icons.broken_image_outlined, color: context.palette.muted),
     ),
   );
 }

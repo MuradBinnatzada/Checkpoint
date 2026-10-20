@@ -26,7 +26,7 @@ class ProfileAvatar extends StatelessWidget {
     final initialsText = Text(
       initials(name),
       style: TextStyle(
-        color: Palette.onAccent,
+        color: context.palette.onAccent,
         fontWeight: FontWeight.w800,
         fontSize: size * 0.38,
       ),
@@ -37,10 +37,10 @@ class ProfileAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [Palette.accent, Palette.electric],
+          colors: [context.palette.accent, context.palette.electric],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

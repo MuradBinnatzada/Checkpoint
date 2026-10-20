@@ -35,7 +35,7 @@ class SessionsScreen extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                   child: Text(
                     '${logs.length} session${logs.length == 1 ? '' : 's'} · ${fmtHours(total)} h logged',
-                    style: const TextStyle(color: Palette.muted),
+                    style: TextStyle(color: context.palette.muted),
                   ),
                 ),
                 for (final l in logs) SessionTile(session: l, showDay: true),
@@ -59,6 +59,7 @@ class SessionTile extends StatelessWidget {
     final when = showDay
         ? '${fmtDay(l.timestamp)}, ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(l.timestamp))}'
         : timeAgo(l.timestamp);
+    final color = context.palette.legible(l.platform.color);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => showEditSessionSheet(context, l.id),
@@ -68,26 +69,32 @@ class SessionTile extends StatelessWidget {
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(color: l.platform.color.withValues(alpha: 0.16), shape: BoxShape.circle),
-            child: Icon(l.platform.icon, size: 18, color: l.platform.color),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.16), shape: BoxShape.circle),
+            child: Icon(l.platform.icon, size: 18, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('+${fmtHours(l.hours)} h on ${l.platform.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
               if (l.fromSteam)
-                const Row(children: [
-                  FaIcon(FontAwesomeIcons.steam, size: 11, color: Palette.muted),
+                Row(children: [
+                  FaIcon(FontAwesomeIcons.steam, size: 11, color: context.palette.muted),
                   SizedBox(width: 5),
-                  Text('From your Steam playtime', style: TextStyle(fontSize: 12, color: Palette.muted)),
+                  Flexible(child: Text('From your Steam playtime', style: TextStyle(fontSize: 12, color: context.palette.muted))),
                 ]),
               if (l.note.isNotEmpty)
-                Text(l.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+                Text(l.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: context.palette.muted)),
             ]),
           ),
-          Text(when, style: const TextStyle(fontSize: 12, color: Palette.muted)),
+          const SizedBox(width: 8),
+          // Narrow enough that large text wraps it instead of pushing the row
+          // off the edge.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 110),
+            child: Text(when, textAlign: TextAlign.end, style: TextStyle(fontSize: 12, color: context.palette.muted)),
+          ),
           const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: Palette.muted),
+          Icon(Icons.chevron_right_rounded, size: 18, color: context.palette.muted),
         ]),
       ),
     );

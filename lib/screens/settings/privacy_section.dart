@@ -18,7 +18,7 @@ class PrivacySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      children: const [
+      children: [
         Panel(
           title: 'Your profile',
           child: _ShowAchievementsSwitch(),
@@ -96,7 +96,7 @@ class PrivacySection extends StatelessWidget {
             'None of this is visible to people who are not signed in. You can change '
             'what your profile shows under Edit Profile, in Connected accounts and '
             'with the switch above.',
-            style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.4),
+            style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.4),
           ),
         ),
       ],
@@ -117,18 +117,18 @@ class _ShowAchievementsSwitch extends StatelessWidget {
       type: MaterialType.transparency,
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        secondary: const Icon(
+        secondary: Icon(
           Icons.emoji_events_rounded,
-          color: Palette.accent,
+          color: context.palette.accent,
         ),
         title: const Text(
           'Show Steam Achievements',
           style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'Allow other players to view your Steam achievements on your public '
           'profile.',
-          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         value: store.showSteamAchievements,
         // Waits while the last change is being saved.
@@ -165,7 +165,7 @@ class _Item extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Palette.accent),
+          Icon(icon, size: 20, color: context.palette.accent),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -181,8 +181,8 @@ class _Item extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   text,
-                  style: const TextStyle(
-                    color: Palette.muted,
+                  style: TextStyle(
+                    color: context.palette.muted,
                     fontSize: 12.5,
                     height: 1.35,
                   ),

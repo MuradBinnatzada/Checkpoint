@@ -69,7 +69,7 @@ class AboutPanel extends StatelessWidget {
         children: [
           ...text,
           if (text.isNotEmpty && rows.isNotEmpty)
-            Divider(height: 28, color: Colors.white.withValues(alpha: 0.06)),
+            Divider(height: 28, color: context.palette.hairline),
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0) const SizedBox(height: 14),
             _Label(rows[i].$1),
@@ -217,8 +217,8 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Palette.muted,
+      style: TextStyle(
+        color: context.palette.muted,
         fontSize: 12.5,
         fontWeight: FontWeight.w600,
       ),
@@ -300,23 +300,23 @@ class _TimeToBeatPanel extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   category.label,
-                  style: const TextStyle(fontSize: 12, color: Palette.muted),
+                  style: TextStyle(fontSize: 12, color: context.palette.muted),
                 ),
               ),
               if (ours != null)
                 Text(
                   '${fmtThousands(ours.count)} Checkpoint players',
-                  style: sourceStyle.copyWith(color: Palette.accent),
+                  style: sourceStyle.copyWith(color: context.palette.accent),
                 )
               else if (value != null)
-                Text('IGDB', style: sourceStyle.copyWith(color: Palette.muted)),
+                Text('IGDB', style: sourceStyle.copyWith(color: context.palette.muted)),
             ],
           ),
         ),
       );
     }
 
-    const caption = TextStyle(color: Palette.muted, fontSize: 12, height: 1.35);
+    final caption = TextStyle(color: context.palette.muted, fontSize: 12, height: 1.35);
     const categories = CompletionCategory.values;
     final showsOurs = community.hasShown;
     final showsIgdb = categories.any(
@@ -329,7 +329,7 @@ class _TimeToBeatPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!showsOurs && !showsIgdb)
-            const Text('IGDB has no times for this game yet.', style: caption)
+            Text('IGDB has no times for this game yet.', style: caption)
           else ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,7 +337,7 @@ class _TimeToBeatPanel extends StatelessWidget {
             ),
             if (showsOurs) ...[
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Checkpoint players: the median of the times reported here.',
                 style: caption,
               ),

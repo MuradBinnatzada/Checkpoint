@@ -56,11 +56,11 @@ class _ReviewSheetState extends State<ReviewSheet> {
           maxLength: Db.reviewMaxLength,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration('What did you think?'),
+          decoration: fieldDecoration(context, 'What did you think?'),
         ),
-        const Text(
+        Text(
           'Members who follow you see it on the game\'s page, with your rating.',
-          style: TextStyle(color: Palette.muted, fontSize: 12.5, height: 1.35),
+          style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 18),
         SizedBox(
@@ -75,7 +75,7 @@ class _ReviewSheetState extends State<ReviewSheet> {
           const SizedBox(height: 8),
           Center(
             child: TextButton(
-              style: TextButton.styleFrom(foregroundColor: Palette.danger),
+              style: TextButton.styleFrom(foregroundColor: context.palette.danger),
               onPressed: () => _save(''),
               child: const Text('Remove review'),
             ),

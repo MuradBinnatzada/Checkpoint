@@ -29,9 +29,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   static const _bioMax = 160;
   static const _bioMaxLines = 4;
   static const _debounceDelay = Duration(milliseconds: 500);
-  static const _errorColor = Colors.redAccent;
-  static const _errorStyle = TextStyle(color: _errorColor);
   static final _handlePattern = RegExp(r'^[a-z0-9_]+$');
+
+  /// Red, deep enough to read on the light theme.
+  Color get _errorColor => context.palette.legible(Colors.redAccent);
+  TextStyle get _errorStyle => TextStyle(color: _errorColor);
 
   final _formKey = GlobalKey<FormState>();
   final _handleFieldKey = GlobalKey<FormFieldState<String>>();
@@ -284,7 +286,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 final typed = _name.text.trim();
                 return CircleAvatar(
                   radius: radius,
-                  backgroundColor: Palette.accent,
+                  backgroundColor: context.palette.accent,
                   // Drawn over the initials; if it fails to load, the
                   // initials underneath stay visible.
                   foregroundImage: url != null ? CachedNetworkImageProvider(url, imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet) : null,
@@ -294,7 +296,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Text(
                     initials(typed.isEmpty ? _profileName : typed),
                     style: TextStyle(
-                      color: Palette.onAccent,
+                      color: context.palette.onAccent,
                       fontWeight: FontWeight.w800,
                       fontSize: radius * 0.76,
                     ),
@@ -325,7 +327,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Palette.accent,
+                  color: context.palette.accent,
                   border: Border.all(
                     color: Theme.of(context).scaffoldBackgroundColor,
                     width: 3,
@@ -334,7 +336,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Icon(
                   Icons.camera_alt_rounded,
                   size: 16,
-                  color: Palette.onAccent,
+                  color: context.palette.onAccent,
                 ),
               ),
             ),
@@ -355,9 +357,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     ),
     _HandleStatus.available => Icon(
       Icons.check_circle_rounded,
-      color: Palette.success,
+      color: context.palette.success,
     ),
-    _HandleStatus.taken => const Icon(Icons.cancel_rounded, color: _errorColor),
+    _HandleStatus.taken => Icon(Icons.cancel_rounded, color: _errorColor),
     _ => null,
   };
 
@@ -396,7 +398,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         textInputAction: TextInputAction.next,
                         textCapitalization: TextCapitalization.words,
                         maxLength: _nameMax,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Display name',
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                           counterText: '',
@@ -425,15 +427,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           // while the field is empty and unfocused.
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                           prefixText: '@',
-                          prefixStyle: const TextStyle(
-                            color: Palette.accent,
+                          prefixStyle: TextStyle(
+                            color: context.palette.accent,
                             fontWeight: FontWeight.w700,
                           ),
                           suffixIcon: _handleSuffix(),
                           helperText: _handleHelper(),
                           helperMaxLines: 2,
                           helperStyle: _handleStatus == _HandleStatus.available
-                              ? TextStyle(color: Palette.success)
+                              ? TextStyle(color: context.palette.success)
                               : null,
                           errorStyle: _errorStyle,
                           counterText: '',

@@ -144,12 +144,12 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
       const SizedBox(height: 14),
     ],
     if (r.completed.isNotEmpty) _CompletedPanel(review: r),
-    const Padding(
+    Padding(
       padding: EdgeInsets.fromLTRB(4, 14, 4, 0),
       child: Text(
         'Hours come from the sessions you logged, the timer and your Steam playtime. '
         'Hours a Steam import added without a session count in no year.',
-        style: TextStyle(color: Palette.muted, fontSize: 12, height: 1.4),
+        style: TextStyle(color: context.palette.muted, fontSize: 12, height: 1.4),
       ),
     ),
   ];
@@ -170,7 +170,7 @@ class _Headline extends StatelessWidget {
         Text(
           'played in ${r.year}, over ${r.sessionCount} session${r.sessionCount == 1 ? '' : 's'} '
           'of ${r.gamesPlayed} game${r.gamesPlayed == 1 ? '' : 's'}',
-          style: const TextStyle(color: Palette.muted),
+          style: TextStyle(color: context.palette.muted),
         ),
         if (busiest != null) ...[
           const SizedBox(height: 10),
@@ -249,7 +249,7 @@ class _MonthsPanelState extends State<_MonthsPanel> {
               Row(children: [
                 for (final letter in _monthLetters)
                   Expanded(
-                    child: Text(letter, textAlign: TextAlign.center, style: const TextStyle(color: Palette.muted, fontSize: 11)),
+                    child: Text(letter, textAlign: TextAlign.center, style: TextStyle(color: context.palette.muted, fontSize: 11)),
                   ),
               ]),
             ]),
@@ -297,9 +297,9 @@ class _MonthBar extends StatelessWidget {
                     child: ConstrainedBox(
                       // A month with a little play still shows.
                       constraints: const BoxConstraints(minHeight: 3),
-                      child: const DecoratedBox(
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Palette.accent,
+                          color: context.palette.accent,
                           // Rounded at the data end, square on the baseline.
                           borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
                         ),
@@ -309,7 +309,7 @@ class _MonthBar extends StatelessWidget {
           ),
         ),
         // The baseline.
-        Container(height: 1, color: Colors.white.withValues(alpha: 0.12)),
+        Container(height: 1, color: context.palette.text.withValues(alpha: 0.12)),
       ]),
     );
   }
@@ -350,8 +350,8 @@ class _HoursList extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: most <= 0 ? 0 : row.hours / most,
                       minHeight: 6,
-                      color: Palette.accent,
-                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      color: context.palette.accent,
+                      backgroundColor: context.palette.track,
                     ),
                   ),
                 ]),

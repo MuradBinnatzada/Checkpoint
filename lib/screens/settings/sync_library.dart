@@ -77,14 +77,14 @@ class _SyncDelayedNotice extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Palette.star.withValues(alpha: 0.12),
+          color: context.palette.star.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Palette.star.withValues(alpha: 0.35)),
+          border: Border.all(color: context.palette.star.withValues(alpha: 0.35)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.schedule_rounded, size: 18, color: Palette.star),
+            Icon(Icons.schedule_rounded, size: 18, color: context.palette.star),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -101,8 +101,8 @@ class _SyncDelayedNotice extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       message,
-                      style: const TextStyle(
-                        color: Palette.muted,
+                      style: TextStyle(
+                        color: context.palette.muted,
                         fontSize: 12.5,
                       ),
                     ),
