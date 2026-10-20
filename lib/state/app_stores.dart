@@ -21,6 +21,7 @@ import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/lists_store.dart';
+import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -76,7 +77,12 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///  * [CommunityTimesStore] holds how long the members took to finish a game
 ///    (the medians, never one member's time). It follows [AuthStore] only;
 ///    [LibraryStore] tells it (a callback set here) when the member's own time
-///    for a game reached the server, so it reads that game's again.
+///    for a game reached the server, so it reads that game's again;
+///  * [MilestonesStore] holds the signed-in member's own milestones. It reads
+///    [LibraryStore], [ListsStore], [ProfileStore] and [AuthStore] to tell how
+///    far they are and when to have the server award new ones; nothing depends
+///    on it. Other members' milestones come with their profile
+///    ([PublicProfileStore]).
 class AppStores {
   AppStores({
     required CheckpointRepository repository,
@@ -162,6 +168,14 @@ class AppStores {
       ensureInCatalog: library.ensureInCatalog,
     );
     releaseAlerts = ReleaseAlertsStore(auth: auth, library: library);
+    milestones = MilestonesStore(
+      repository: repository,
+      auth: auth,
+      library: library,
+      profile: profile,
+      lists: lists,
+      cache: localCache,
+    );
   }
 
   factory AppStores.supabase(SupabaseClient client) => AppStores(
@@ -194,6 +208,7 @@ class AppStores {
   late final PlayTimerStore playTimer;
   late final ListsStore lists;
   late final ReleaseAlertsStore releaseAlerts;
+  late final MilestonesStore milestones;
 
   /// Starts following the session and loads each store. [AuthStore] goes first:
   /// the others read the signed-in user from it.
@@ -208,6 +223,7 @@ class AppStores {
     publicAchievements.initialize();
     libraryAttributes.initialize();
     lists.initialize();
+    milestones.initialize();
     await Future.wait([
       profile.initialize(),
       library.initialize(),
@@ -218,6 +234,7 @@ class AppStores {
   }
 
   void dispose() {
+    milestones.dispose();
     links.dispose();
     releaseAlerts.dispose();
     lists.dispose();

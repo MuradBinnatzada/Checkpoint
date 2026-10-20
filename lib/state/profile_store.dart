@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connection_failure.dart';
@@ -987,6 +988,52 @@ class ProfileStore extends ChangeNotifier {
     _profile = _profile.copyWith(
       showSteamAchievements: error == null ? value : previous,
     );
+    notifyListeners();
+    if (error == null) unawaited(_writeProfileCache());
+    return error;
+  }
+
+  // ---- Flair ----
+
+  /// The frame, title and showcased milestones on the signed-in user's profile.
+  ProfileFlair get flair => _profile.flair;
+
+  bool _savingFlair = false;
+
+  /// A [setFlair] is on its way to the server.
+  bool get savingFlair => _savingFlair;
+
+  /// Saves the frame, title and showcase the signed-in user picked (Edit
+  /// Profile). Shown at once; put back when the server refuses it (they haven't
+  /// unlocked it) or can't be reached, since it is what other members see.
+  /// Returns null on success, or a message that is safe to show.
+  Future<String?> setFlair(ProfileFlair flair) async {
+    final current = _user;
+    if (current == null) return 'Sign in to change your profile.';
+    final previous = _profile.flair;
+    if (_savingFlair || flair == previous) return null;
+
+    _savingFlair = true;
+    _profile = _profile.copyWith(flair: flair);
+    notifyListeners();
+    String? error;
+    try {
+      _auth.requireSession();
+      await _repository.setProfileFlair(flair);
+    } on PostgrestException catch (e, st) {
+      debugPrint('Saving the profile flair failed: $e\n$st');
+      error = e.code == '23514'
+          ? 'You haven\'t unlocked that yet.'
+          : 'Could not save your profile. Please try again.';
+    } catch (e, st) {
+      debugPrint('Saving the profile flair failed: $e\n$st');
+      error = isConnectionFailure(e)
+          ? 'Could not reach the server, so your profile was not changed.'
+          : 'Could not save your profile. Please try again.';
+    }
+    _savingFlair = false;
+    if (_user?.id != current.id) return null;
+    _profile = _profile.copyWith(flair: error == null ? flair : previous);
     notifyListeners();
     if (error == null) unawaited(_writeProfileCache());
     return error;

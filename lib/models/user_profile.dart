@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/milestone.dart';
 
 @immutable
 class UserProfile {
@@ -17,6 +18,7 @@ class UserProfile {
     this.instagramId,
     this.twitchId,
     this.showSteamAchievements = true,
+    this.flair = ProfileFlair.none,
     required this.joined,
     this.followers = 248,
     this.following = 120,
@@ -36,6 +38,7 @@ class UserProfile {
         twitchId: json['twitchId'] as String?,
         // A copy saved before the setting existed: the default.
         showSteamAchievements: json['showSteamAchievements'] as bool? ?? true,
+        flair: profileFlairFromJson(json['flair']),
         joined: DateTime.parse(json['joined'] as String).toLocal(),
         followers: (json['followers'] as num).toInt(),
         following: (json['following'] as num).toInt(),
@@ -67,6 +70,10 @@ class UserProfile {
   /// (`profiles.show_steam_achievements`, Settings > Privacy). The member always
   /// sees their own.
   final bool showSteamAchievements;
+
+  /// The frame, title and showcased milestones they picked in Edit Profile
+  /// (`profiles.avatar_frame`, `title_milestone`, `showcased_milestones`).
+  final ProfileFlair flair;
   final DateTime joined;
   final int followers; // mock
   final int following; // mock base; the store adds people followed in Search
@@ -86,6 +93,7 @@ class UserProfile {
         'instagramId': instagramId,
         'twitchId': twitchId,
         'showSteamAchievements': showSteamAchievements,
+        'flair': profileFlairToJson(flair),
         'joined': joined.toUtc().toIso8601String(),
         'followers': followers,
         'following': following,
@@ -100,6 +108,7 @@ class UserProfile {
     // copyWith can't tell "leave it" from "set to null", so clearing is explicit.
     bool clearSteamId = false,
     bool? showSteamAchievements,
+    ProfileFlair? flair,
   }) =>
       UserProfile(
         name: name ?? this.name,
@@ -115,6 +124,7 @@ class UserProfile {
         twitchId: twitchId,
         showSteamAchievements:
             showSteamAchievements ?? this.showSteamAchievements,
+        flair: flair ?? this.flair,
         joined: joined,
         followers: followers,
         following: following,

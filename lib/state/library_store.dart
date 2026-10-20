@@ -1120,7 +1120,7 @@ class LibraryStore extends ChangeNotifier {
         _refreshQueued = true; // Revert to server truth once writes settle
       }
     } finally {
-      _pendingSaves--;
+      _saveDone();
       if (_pendingSaves == 0 && _refreshQueued) {
         _refreshQueued = false;
         await _refreshLibrary(current);
@@ -1505,6 +1505,25 @@ class LibraryStore extends ChangeNotifier {
   /// send is, and never fails ([_saveUserGame] handles that).
   final Map<String, Future<void>> _gameSaves = {};
 
+  /// Completed when the last save on its way is done.
+  Completer<void>? _saved;
+
+  /// Done once no library row is on its way to the server: at once when none
+  /// is. Never fails. (A save the server refused, or that was kept for later,
+  /// is done too.)
+  Future<void> whenSaved() {
+    if (_pendingSaves == 0) return Future.value();
+    return (_saved ??= Completer<void>()).future;
+  }
+
+  void _saveDone() {
+    _pendingSaves--;
+    if (_pendingSaves == 0) {
+      _saved?.complete();
+      _saved = null;
+    }
+  }
+
   Future<void> _saveUserGame(Game game) async {
     final current = _user;
     if (current == null || game.status == null) return;
@@ -1534,7 +1553,7 @@ class LibraryStore extends ChangeNotifier {
         _gameSaves.remove(game.id);
       }
       sent.complete();
-      _pendingSaves--;
+      _saveDone();
       if (_pendingSaves == 0 && _refreshQueued) {
         _refreshQueued = false;
         await _refreshLibrary(current);

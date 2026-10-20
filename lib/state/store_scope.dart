@@ -12,6 +12,7 @@ import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/lists_store.dart';
+import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -99,7 +100,10 @@ class AppStoresScope extends StatelessWidget {
                                             store: stores.links,
                                             child: StoreScope<CommunityTimesStore>(
                                               store: stores.communityTimes,
-                                              child: child,
+                                              child: StoreScope<MilestonesStore>(
+                                                store: stores.milestones,
+                                                child: child,
+                                              ),
                                             ),
                                           ),
                                         ),

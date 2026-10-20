@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/models/milestone.dart';
+
 /// Another Checkpoint member, as listed in search and in follower lists.
 /// [gamesLogged], [followers] and [startsFollowed] are read for the Users tab
 /// only; the other lists leave them at 0 / false.
@@ -15,6 +17,7 @@ class SocialUser {
     required this.followers,
     this.startsFollowed = false,
     this.avatarUrl,
+    this.flair = ProfileFlair.none,
   });
   final String id;
   final String name;
@@ -27,6 +30,10 @@ class SocialUser {
 
   /// Public URL of the member's photo; null shows their initials.
   final String? avatarUrl;
+
+  /// Their frame and showcased milestones (no title: lists have no room for
+  /// it). Empty where the list doesn't read them.
+  final ProfileFlair flair;
 
   /// [followers] with the signed-in member's own follow or unfollow since the
   /// list was read applied, so the count moves as soon as the button does.

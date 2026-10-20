@@ -19,6 +19,7 @@ import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -194,6 +195,26 @@ class FakeRepository implements CheckpointRepository {
   /// Holds [setShowSteamAchievements] until completed.
   Completer<void>? privacyGate;
 
+  /// `profiles.avatar_frame`, `title_milestone` and `showcased_milestones`.
+  ProfileFlair profileFlair = ProfileFlair.none;
+
+  /// Holds [setProfileFlair] until completed.
+  Completer<void>? flairGate;
+
+  /// `user_milestones`: what each member has earned, with when.
+  final Map<String, Map<String, DateTime>> memberMilestones = {};
+
+  /// What the next [awardMilestones] finds the signed-in member ([awardTo])
+  /// has reached, as the function works it out from their rows. Those not
+  /// earned yet are recorded and returned.
+  Map<String, DateTime> reachable = {};
+  String awardTo = 'u1';
+
+  /// The UTC offset of each [awardMilestones] call, in order.
+  final List<int> awardCalls = [];
+  Completer<void>? awardGate;
+  bool failAwards = false;
+
   /// `profiles.connected_services`: the services saved for the signed-in user, as
   /// other members see them (Steam is never in it), and the account names saved
   /// with them (`psn_id`, `xbox_id`, `discord_id`, `instagram_id`, `twitch_id`).
@@ -304,6 +325,7 @@ class FakeRepository implements CheckpointRepository {
       instagramId: savedInstagramId,
       twitchId: savedTwitchId,
       showSteamAchievements: showSteamAchievements,
+      flair: profileFlair,
       joined: DateTime.utc(2026, 1, 1),
       followers: 0,
       following: 0,
@@ -350,6 +372,48 @@ class FakeRepository implements CheckpointRepository {
     _checkWrite();
     showSteamAchievements = show;
     writes.add('show-achievements:$show');
+  }
+
+  /// Like the trigger, refuses what the signed-in member hasn't earned.
+  @override
+  Future<void> setProfileFlair(ProfileFlair flair) async {
+    await flairGate?.future;
+    _checkWrite();
+    final earned = memberMilestones[awardTo] ?? const {};
+    final frameEarned = flair.frame == null || earned.containsKey(flair.frame!.milestone.id);
+    final titleEarned = flair.titleId == null || earned.containsKey(flair.titleId);
+    final showcaseEarned = flair.showcaseIds.length <= ProfileFlair.maxShowcase &&
+        flair.showcaseIds.every(earned.containsKey);
+    if (!frameEarned || !titleEarned || !showcaseEarned) {
+      throw const PostgrestException(message: 'not unlocked', code: '23514');
+    }
+    profileFlair = flair;
+    writes.add('flair:${flair.frameId}:${flair.titleId}:${flair.showcaseIds.join(',')}');
+  }
+
+  @override
+  Future<Map<String, DateTime>> awardMilestones(int utcOffsetMinutes) async {
+    awardCalls.add(utcOffsetMinutes);
+    await awardGate?.future;
+    _checkOnline();
+    if (failAwards) throw Exception('award failed');
+    final earned = memberMilestones.putIfAbsent(awardTo, () => {});
+    final fresh = {
+      for (final MapEntry(:key, :value) in reachable.entries)
+        if (!earned.containsKey(key)) key: value,
+    };
+    earned.addAll(fresh);
+    return fresh;
+  }
+
+  /// Whose milestones were read, in order.
+  final List<String> milestoneReads = [];
+
+  @override
+  Future<Map<String, DateTime>> fetchMilestones(String userId) async {
+    milestoneReads.add(userId);
+    _checkOnline();
+    return Map.of(memberMilestones[userId] ?? const {});
   }
 
   @override

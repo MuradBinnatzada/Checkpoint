@@ -22,6 +22,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/widgets/connected_account_icons.dart';
 import 'package:checkpoint/widgets/count_stat.dart';
+import 'package:checkpoint/widgets/stat_tile.dart';
 
 import 'support/fakes.dart';
 
@@ -267,8 +268,9 @@ void main() {
 
         expect(find.text('Total Playtime: 52 hours'), findsOneWidget);
         // Playing 1, Completed 1, To Play 1, Dropped 0.
-        expect(find.text('1'), findsWidgets);
-        expect(find.text('0'), findsOneWidget);
+        final boxes = find.byType(StatTile);
+        expect(find.descendant(of: boxes, matching: find.text('1')), findsNWidgets(3));
+        expect(find.descendant(of: boxes, matching: find.text('0')), findsOneWidget);
         expect(find.text('52 h'), findsOneWidget); // all on PC
         // Average of 5 and 3, and how many are rated.
         expect(find.text('4.0'), findsOneWidget);

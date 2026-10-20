@@ -7,6 +7,7 @@ import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/company/company_screen.dart';
 import 'package:checkpoint/screens/game_detail/game_detail_screen.dart';
 import 'package:checkpoint/screens/profile/follows_screen.dart';
+import 'package:checkpoint/screens/profile/milestones_screen.dart';
 import 'package:checkpoint/screens/profile/public_library_screen.dart';
 import 'package:checkpoint/screens/profile/public_profile_screen.dart';
 import 'package:checkpoint/state/library_state.dart';
@@ -61,3 +62,12 @@ void openPublicLibrary(
     builder: (_) => PublicLibraryScreen(userId: userId, ownerName: ownerName, initialStatus: status, sortBy: sortBy),
   ),
 );
+
+/// Opens every milestone of [userId], with how far along they are on your own;
+/// [ownerName] is the title on someone else's.
+void openMilestones(BuildContext context, {required String userId, String? ownerName}) =>
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MilestonesScreen(userId: userId, ownerName: ownerName),
+      ),
+    );

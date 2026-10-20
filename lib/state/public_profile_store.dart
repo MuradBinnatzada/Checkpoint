@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/library_stats.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/state/account_scoped_store.dart';
@@ -33,6 +34,7 @@ class PublicProfileView {
     this.library = const LibraryStats(),
     this.favorites = const [],
     this.activity = const [],
+    this.milestones = const EarnedMilestones(),
     this.refreshFailed = false,
     this.loadedAt,
   });
@@ -53,6 +55,10 @@ class PublicProfileView {
 
   /// Their latest sessions, one per game, newest first.
   final List<ActivityEntry> activity;
+
+  /// The milestones they earned. Empty when they have none, or when they could
+  /// not be read (the rest of the profile still shows).
+  final EarnedMilestones milestones;
 
   /// The last refresh failed, so what is shown may be out of date.
   final bool refreshFailed;
@@ -75,6 +81,7 @@ class PublicProfileView {
     library: library,
     favorites: favorites,
     activity: activity,
+    milestones: milestones,
     refreshFailed: refreshFailed ?? this.refreshFailed,
     loadedAt: loadedAt,
   );
@@ -173,12 +180,13 @@ class PublicProfileStore extends AccountScopedStore {
     }
 
     try {
-      final (profile, stats, library, favorites, activity) = await (
+      final (profile, stats, library, favorites, activity, milestones) = await (
         _repository.fetchPublicProfile(userId),
         _repository.fetchPublicProfileStats(userId),
         _repository.fetchPublicLibraryStats(userId),
         _repository.fetchPublicFavorites(userId),
         _repository.fetchPublicActivity(userId),
+        _fetchMilestones(userId),
       ).wait;
       if (isStale(epoch)) return;
       _views[userId] = profile == null
@@ -193,6 +201,7 @@ class PublicProfileStore extends AccountScopedStore {
               library: library,
               favorites: favorites,
               activity: activity,
+              milestones: milestones,
               loadedAt: _now(),
             );
     } catch (e, st) {
@@ -203,5 +212,16 @@ class PublicProfileStore extends AccountScopedStore {
           : const PublicProfileView(status: PublicProfileStatus.failed);
     }
     notifyIfAlive();
+  }
+
+  /// Their milestones, or none when they can't be read: a profile is worth
+  /// showing without them.
+  Future<EarnedMilestones> _fetchMilestones(String userId) async {
+    try {
+      return EarnedMilestones(await _repository.fetchMilestones(userId));
+    } catch (e) {
+      debugPrint('Milestones of $userId could not be read: $e');
+      return const EarnedMilestones();
+    }
   }
 }

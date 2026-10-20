@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/user_profile.dart';
 
 /// A value read back from [LocalCache], with when it was saved.
@@ -64,6 +65,7 @@ class LocalCache {
   static String _logsKey(String userId) => '$_prefix.logs.$userId';
   static String _profileKey(String userId) => '$_prefix.profile.$userId';
   static String _socialKey(String userId) => '$_prefix.social.$userId';
+  static String _milestonesKey(String userId) => '$_prefix.milestones.$userId';
   static const _popularKey = '$_prefix.popular';
 
   Future<Cached<List<Game>>?> readLibrary(String userId) =>
@@ -101,6 +103,13 @@ class LocalCache {
         'following': social.followingIds.toList(),
         'followers': social.followersCount,
       });
+
+  /// The milestones [userId] has earned, as last read from the server.
+  Future<Cached<EarnedMilestones>?> readMilestones(String userId) =>
+      _read(_milestonesKey(userId), EarnedMilestones.fromJson);
+
+  Future<void> writeMilestones(String userId, EarnedMilestones earned) =>
+      _write(_milestonesKey(userId), earned.toJson);
 
   /// The Home carousels' games. Not tied to an account: the catalog is the same
   /// for everyone, including a signed-out visitor.
@@ -140,6 +149,7 @@ class LocalCache {
         _logsKey(userId),
         _profileKey(userId),
         _socialKey(userId),
+        _milestonesKey(userId),
       ]) {
         await prefs.remove(key);
       }

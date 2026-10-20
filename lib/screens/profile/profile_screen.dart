@@ -6,6 +6,7 @@ import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/lists/lists_screen.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
+import 'package:checkpoint/screens/profile/milestones_section.dart';
 import 'package:checkpoint/screens/profile/profile_layout.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/screens/stats/year_review_screen.dart';
@@ -14,6 +15,7 @@ import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
+import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -33,6 +35,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final profileStore = context.watch<ProfileStore>();
     final library = context.watch<LibraryStore>();
+    final milestones = context.watch<MilestonesStore>();
     final userId = context.watch<AuthStore>().user?.id;
     if (userId == null) return const SizedBox.shrink();
 
@@ -69,6 +72,8 @@ class ProfileScreen extends StatelessWidget {
               handle: p.handle,
               avatarUrl: p.avatarUrl,
               joined: p.joined,
+              flair: p.flair,
+              milestones: milestones.earned,
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 ShareLinkButton(target: MemberLink(userId)),
                 IconButton(
@@ -124,6 +129,12 @@ class ProfileScreen extends StatelessWidget {
             // Your own achievements show whatever the privacy setting says; that
             // only hides them from others.
             showAchievements: profileStore.steamConnected,
+            milestones: MilestonesSection(
+              earned: milestones.earned,
+              progress: milestones.progress,
+              own: true,
+              onSeeAll: () => openMilestones(context, userId: userId),
+            ),
             links: [
               ProfileLink(
                 icon: Icons.collections_bookmark_rounded,
@@ -149,6 +160,12 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const ListsScreen()),
                 ),
+              ),
+              ProfileLink(
+                icon: Icons.emoji_events_rounded,
+                label: 'Milestones',
+                count: milestones.earned.count,
+                onTap: () => openMilestones(context, userId: userId),
               ),
               ProfileLink(
                 icon: Icons.insights_rounded,

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/library_stats.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/screens/profile/achievements_section.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -11,6 +14,7 @@ import 'package:checkpoint/widgets/connected_account_icons.dart';
 import 'package:checkpoint/widgets/count_stat.dart';
 import 'package:checkpoint/widgets/favorite_games_row.dart';
 import 'package:checkpoint/widgets/hours_by_platform_panel.dart';
+import 'package:checkpoint/widgets/milestone_badge.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
 import 'package:checkpoint/widgets/profile_link_rows.dart';
@@ -19,7 +23,9 @@ import 'package:checkpoint/widgets/recent_activity_panel.dart';
 import 'package:checkpoint/widgets/stat_tile.dart';
 
 /// Photo, name, @handle and, once known, when they joined. [trailing] sits at the
-/// top right, level with the name.
+/// top right, level with the name. With [flair] and [milestones], the photo is
+/// in their frame with their level on it, their title is under the name and
+/// the milestones they show off are under the date.
 class ProfileHeader extends StatelessWidget {
   const ProfileHeader({
     super.key,
@@ -29,6 +35,8 @@ class ProfileHeader extends StatelessWidget {
     this.joined,
     this.isSelf = false,
     this.trailing,
+    this.flair = ProfileFlair.none,
+    this.milestones,
   });
 
   final String name;
@@ -40,12 +48,23 @@ class ProfileHeader extends StatelessWidget {
   final bool isSelf;
 
   final Widget? trailing;
+  final ProfileFlair flair;
+
+  /// What they earned, for the level; null while it isn't known.
+  final EarnedMilestones? milestones;
 
   @override
   Widget build(BuildContext context) {
+    final titled = milestoneById(flair.titleId);
+    final showcase = flair.showcase;
     return Row(
       children: [
-        ProfileAvatar(name: name, size: 76, imageUrl: avatarUrl),
+        FramedAvatar(
+          size: 76,
+          frame: flair.frame,
+          level: milestones?.level.level,
+          child: ProfileAvatar(name: name, size: 76, imageUrl: avatarUrl),
+        ),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
@@ -67,6 +86,7 @@ class ProfileHeader extends StatelessWidget {
                   ?trailing,
                 ],
               ),
+              if (titled != null) ProfileTitleText(milestone: titled),
               Text(
                 handle,
                 maxLines: 1,
@@ -85,6 +105,28 @@ class ProfileHeader extends StatelessWidget {
                   style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
               ],
+              if (showcase.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    for (final m in showcase)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => unawaited(
+                            showMilestoneSheet(
+                              context,
+                              m,
+                              unlockedAt: milestones?.unlockedAt[m.id],
+                            ),
+                          ),
+                          child: MilestoneBadge(milestone: m, size: 28),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -96,8 +138,9 @@ class ProfileHeader extends StatelessWidget {
 /// One profile page for everyone, yours included: who they are, icons of the
 /// accounts they connected, their bio, who follows them, then their favorites,
 /// latest sessions, playtime, library numbers (each box opens a library), hours per
-/// platform, ratings, their achievements (when [showAchievements]), and last of
-/// all a short menu into their library and follow lists.
+/// platform, ratings, their milestones, their achievements (when
+/// [showAchievements]), and last of all a short menu into their library and
+/// follow lists.
 ///
 /// It only lays things out. Where the numbers come from, and what a tap does,
 /// differ between your own profile (your live library, the Library tab) and
@@ -118,6 +161,7 @@ class ProfileLayout extends StatelessWidget {
     required this.onStatus,
     required this.links,
     required this.showAchievements,
+    this.milestones,
     this.notice,
     this.bio,
     this.actions,
@@ -158,6 +202,9 @@ class ProfileLayout extends StatelessWidget {
   /// on someone else's page only when they share them (Settings > Privacy); the
   /// callers decide.
   final bool showAchievements;
+
+  /// The Milestones card ([MilestonesSection]), just above the achievements.
+  final Widget? milestones;
 
   final String emptyFavorites;
   final String emptyHours;
@@ -264,6 +311,7 @@ class ProfileLayout extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         RatingsPanel(stats: library),
+        if (milestones != null) ...[const SizedBox(height: 14), milestones!],
         // The count shows at once; the games and their achievements are fetched
         // only when asked for.
         if (showAchievements) ...[

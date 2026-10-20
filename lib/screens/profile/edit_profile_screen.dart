@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:checkpoint/screens/profile/profile_flair_sheet.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -480,6 +481,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 20),
+                // Saved on its own, from its sheet.
+                OutlinedButton.icon(
+                  onPressed: () => showProfileFlairSheet(context),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('Profile flair: frame, title and showcase'),
                 ),
               ],
             ),

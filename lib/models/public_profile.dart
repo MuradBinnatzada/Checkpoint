@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/milestone.dart';
 
 /// Another member's profile header: what `public_profiles` exposes to signed-in
 /// members. That is the name, handle, photo, bio, which services they linked and
@@ -24,6 +25,7 @@ class PublicProfile {
     this.instagramId,
     this.twitchId,
     this.joined,
+    this.flair = ProfileFlair.none,
   });
 
   final String id;
@@ -57,6 +59,9 @@ class PublicProfile {
 
   /// When they joined.
   final DateTime? joined;
+
+  /// The frame, title and milestones they show off.
+  final ProfileFlair flair;
 
   /// Every service the member has connected, Steam (derived from [steamConnected])
   /// included.

@@ -18,6 +18,7 @@ import 'package:checkpoint/models/game_friends.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/models/log_entry.dart';
+import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -206,6 +207,21 @@ class CheckpointRepository {
     await _client
         .from(Db.profiles)
         .update({Db.showSteamAchievements: show})
+        .eq(Db.id, userId);
+  }
+
+  /// Saves the frame, title and showcased milestones the signed-in user shows
+  /// on their profile. The server refuses (a check violation) anything they
+  /// have not unlocked.
+  Future<void> setProfileFlair(ProfileFlair flair) async {
+    final userId = _requireUserId();
+    await _client
+        .from(Db.profiles)
+        .update({
+          Db.avatarFrame: flair.frameId,
+          Db.titleMilestone: flair.titleId,
+          Db.showcasedMilestones: flair.showcaseIds,
+        })
         .eq(Db.id, userId);
   }
 
@@ -643,7 +659,8 @@ class CheckpointRepository {
 
   /// Columns of a member row: `public_profiles`, `public_followers` and
   /// `public_following` all have them, under the same names.
-  static const String _memberColumns = 'id, handle, display_name, avatar_url';
+  static const String _memberColumns =
+      'id, handle, display_name, avatar_url, ${Db.avatarFrame}, ${Db.showcasedMilestones}';
 
   /// [_memberColumns] plus the counts under each member in the Users tab; only
   /// `public_profiles` has them (20261018180000_member_list_counts.sql).
@@ -673,6 +690,9 @@ class CheckpointRepository {
     Db.twitchId,
     Db.joinedAt,
     Db.showSteamAchievements,
+    Db.avatarFrame,
+    Db.titleMilestone,
+    Db.showcasedMilestones,
   ].join(', ');
 
   /// The header of [userId]'s profile, or null when no such member exists.
@@ -957,6 +977,35 @@ class CheckpointRepository {
     }
     return List.unmodifiable(items);
   }
+
+  /// Records every milestone the signed-in member has reached, worked out by
+  /// the server from everything they have done, and returns the ones that are
+  /// new, with when each was reached (often in the past: the 10th game's date
+  /// for "10 games"). [utcOffsetMinutes] is the device's offset from UTC, for
+  /// the streaks.
+  Future<Map<String, DateTime>> awardMilestones(int utcOffsetMinutes) async {
+    final data = await _client.rpc(
+      Db.rpcAwardMilestones,
+      params: {'utc_offset_minutes': utcOffsetMinutes},
+    );
+    return _milestonesFromRows(data);
+  }
+
+  /// Every milestone [userId] has earned, with when.
+  Future<Map<String, DateTime>> fetchMilestones(String userId) async {
+    final rows = await _client
+        .from(Db.userMilestones)
+        .select('${Db.milestoneId}, ${Db.unlockedAt}')
+        .eq(Db.userId, userId);
+    return _milestonesFromRows(rows);
+  }
+
+  static Map<String, DateTime> _milestonesFromRows(Object? rows) => {
+    if (rows is List)
+      for (final row in rows)
+        if (row is Map && _date(row[Db.unlockedAt]) != null)
+          '${row[Db.milestoneId]}': _date(row[Db.unlockedAt])!,
+  };
 
   /// [userId]'s achievements added up: unlocked, total, games with any and games
   /// finished. Counted in the database and one small row, so it is fine to load
@@ -1363,6 +1412,7 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     instagramId: _firstText([row[Db.instagramId]]),
     twitchId: _firstText([row[Db.twitchId]]),
     showSteamAchievements: row[Db.showSteamAchievements] != false,
+    flair: _flairFromRow(row),
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,
@@ -1382,8 +1432,17 @@ SocialUser _socialUserFromProfile(Map<String, dynamic> row) {
     followers: _int(row[Db.followersCount]),
     startsFollowed: row[Db.viewerFollows] == true,
     avatarUrl: _firstText([row[Db.avatarUrl]]),
+    flair: _flairFromRow(row),
   );
 }
+
+/// The frame, title and showcase of a `profiles` or `public_profiles` row, or
+/// of a member list's (which has no title).
+ProfileFlair _flairFromRow(Map<String, dynamic> row) => ProfileFlair(
+  frameId: _firstText([row[Db.avatarFrame]]),
+  titleId: _firstText([row[Db.titleMilestone]]),
+  showcaseIds: _strings(row[Db.showcasedMilestones]),
+);
 
 PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
   final name = _firstText([row[Db.displayName], row[Db.handle]]) ?? 'Player';
@@ -1406,6 +1465,7 @@ PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
     instagramId: _firstText([row[Db.instagramId]]),
     twitchId: _firstText([row[Db.twitchId]]),
     joined: _date(row[Db.joinedAt]),
+    flair: _flairFromRow(row),
   );
 }
 

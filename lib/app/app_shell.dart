@@ -16,6 +16,7 @@ import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/lists_store.dart';
+import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/release_alerts_store.dart';
 import 'package:checkpoint/state/shared_link_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
@@ -45,6 +46,7 @@ class _AppShellState extends State<AppShell> {
   late final ListsStore _lists;
   late final ReleaseAlertsStore _releases;
   late final SharedLinkStore _links;
+  late final MilestonesStore _milestones;
 
   /// A shared link is being opened, or sign-in was asked for to open it.
   bool _openingLink = false;
@@ -68,11 +70,14 @@ class _AppShellState extends State<AppShell> {
     _releases.addListener(_announceReleases);
     _links = context.read<SharedLinkStore>();
     _auth.addListener(_openLinkAfterFrame);
+    _milestones = context.read<MilestonesStore>();
+    _milestones.addListener(_announceMilestones);
     // The link may have been handled before the shell was built, and the
     // library loaded.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _askForNewPassword();
       _announceReleases();
+      _announceMilestones();
       _openLink();
     });
   }
@@ -85,6 +90,7 @@ class _AppShellState extends State<AppShell> {
     _lists.removeListener(_showNotices);
     _releases.removeListener(_announceReleases);
     _auth.removeListener(_openLinkAfterFrame);
+    _milestones.removeListener(_announceMilestones);
     super.dispose();
   }
 
@@ -172,6 +178,40 @@ class _AppShellState extends State<AppShell> {
         action: out.length == 1
             ? SnackBarAction(label: 'Open', onPressed: () => openGame(context, game.id))
             : null,
+      ));
+  }
+
+  /// Celebrates milestones the server just awarded; those earned long ago (the
+  /// first time this device sees the member's) are summed up instead.
+  void _announceMilestones() {
+    if (!mounted) return;
+    final unlock = _milestones.takeAnnouncement();
+    if (unlock == null) return;
+    final earned = unlock.milestones;
+    final count = earned.length;
+    final String message;
+    if (unlock.fromHistory) {
+      message = 'You\'ve earned $count ${count == 1 ? 'milestone' : 'milestones'} from your history';
+    } else {
+      final names = count == 1 ? earned.first.title : '${earned.first.title} and ${count - 1} more';
+      final reward = earned.any((m) => m.frame != null)
+          ? ' · New frame unlocked'
+          : earned.any((m) => m.rewardTitle != null)
+          ? ' · New title unlocked'
+          : '';
+      message = 'Milestone unlocked: $names$reward';
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'View',
+          onPressed: () {
+            final userId = _auth.user?.id;
+            if (userId != null) openMilestones(context, userId: userId);
+          },
+        ),
       ));
   }
 

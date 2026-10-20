@@ -44,6 +44,18 @@ abstract final class Db {
   /// how many there are (`category`, `median_minutes`, `submissions`).
   static const rpcCompletionTimeStats = 'completion_time_stats';
 
+  /// Records every milestone the signed-in member has reached and returns the
+  /// new ones (`milestone_id`, `unlocked_at`). Takes the device's
+  /// `utc_offset_minutes`, for streaks (20261020120100_milestones.sql).
+  static const rpcAwardMilestones = 'award_milestones';
+
+  /// The milestones each member has earned (`user_id`, `milestone_id`,
+  /// `unlocked_at`), readable by every signed-in member; written only by
+  /// [rpcAwardMilestones].
+  static const userMilestones = 'user_milestones';
+  static const milestoneId = 'milestone_id';
+  static const unlockedAt = 'unlocked_at';
+
   static const games = 'games';
   static const userGames = 'user_games';
   static const logEntries = 'log_entries';
@@ -89,6 +101,14 @@ abstract final class Db {
   /// Whether other members may see the member's Steam achievements (Settings >
   /// Privacy). Written on your own `profiles` row, readable in `public_profiles`.
   static const showSteamAchievements = 'show_steam_achievements';
+
+  /// What the member shows off: a frame id, the milestone whose title shows
+  /// under their name, and up to three milestones. Written on your own
+  /// `profiles` row (a trigger refuses what you haven't unlocked), readable in
+  /// `public_profiles`; the follower lists have the frame and the showcase.
+  static const avatarFrame = 'avatar_frame';
+  static const titleMilestone = 'title_milestone';
+  static const showcasedMilestones = 'showcased_milestones';
 
   static const weeklyGoalHours = 'weekly_goal_hours';
 

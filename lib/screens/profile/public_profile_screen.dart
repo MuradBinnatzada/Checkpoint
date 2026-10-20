@@ -6,10 +6,12 @@ import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/screens/lists/lists_screen.dart';
+import 'package:checkpoint/screens/profile/milestones_section.dart';
 import 'package:checkpoint/widgets/share_link_button.dart';
 import 'package:checkpoint/screens/profile/profile_layout.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_profile_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
@@ -154,6 +156,12 @@ class _Loaded extends StatelessWidget {
       kind: kind,
       ownerName: profile.name,
     );
+    // Your own are the live ones; someone else's came with their profile.
+    final milestones = isSelf
+        ? context.watch<MilestonesStore>().earned
+        : view.milestones;
+    void openAllMilestones() =>
+        openMilestones(context, userId: userId, ownerName: profile.name);
     void openLibrary({GameStatus? status, SortField? sortBy}) =>
         openPublicLibrary(
           context,
@@ -171,6 +179,8 @@ class _Loaded extends StatelessWidget {
         avatarUrl: profile.avatarUrl,
         joined: profile.joined,
         isSelf: isSelf,
+        flair: isSelf ? own.flair : profile.flair,
+        milestones: milestones,
       ),
       notice: view.refreshFailed
           ? 'Could not refresh. Showing the last copy.'
@@ -199,6 +209,11 @@ class _Loaded extends StatelessWidget {
       library: library,
       onStatus: (status) => openLibrary(status: status),
       showAchievements: showAchievements,
+      milestones: MilestonesSection(
+        earned: milestones,
+        own: isSelf,
+        onSeeAll: openAllMilestones,
+      ),
       services: profile.connectedServices,
       accountNames: profile.accountNames,
       links: [
@@ -228,6 +243,12 @@ class _Loaded extends StatelessWidget {
               builder: (_) => ListsScreen(userId: userId, ownerName: profile.name),
             ),
           ),
+        ),
+        ProfileLink(
+          icon: Icons.emoji_events_rounded,
+          label: 'Milestones',
+          count: milestones.count,
+          onTap: openAllMilestones,
         ),
         ProfileLink(
           icon: Icons.people_alt_rounded,
