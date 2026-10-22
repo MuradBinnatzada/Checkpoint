@@ -1,7 +1,7 @@
 // supabase/functions/discussions/index.ts
 //
 // Posts to the discussions: a new thread, or a reply. The only way to write them
-// (members have no privileges on the tables, see 20261023120000_discussions.sql),
+// (members have no privileges on the tables, see 20261022165000_discussions.sql),
 // so everything that must hold for every post holds here: the member is signed in
 // and past two-factor, within their rate limit, the text is the right length, has
 // none of the words the chat rules refuse and not too many links, and is not the

@@ -19,7 +19,7 @@
 --    that column, and no function with a `public` search_path compares a handle.
 --
 -- 3. Indexes for the foreign keys the advisor lists (and two it will list for
---    discussion_reports once 20261023120000 is applied). Each is what an
+--    discussion_reports once 20261022165000 is applied). Each is what an
 --    `on delete cascade` / `set null` (an account or a library row going away)
 --    scans to find the rows that depend on it.
 --
@@ -103,7 +103,7 @@ create index if not exists steam_app_relinks_into_idx
 create index if not exists user_milestones_milestone_idx
   on public.user_milestones (milestone_id);
 
--- discussion_reports (20261023120000) would be listed next: its once-per-member
+-- discussion_reports (20261022165000) would be listed next: its once-per-member
 -- indexes are partial and lead with reporter_id, so the thread and the reply a
 -- report points at are not covered.
 create index if not exists discussion_reports_thread_idx

@@ -36,7 +36,7 @@ abstract final class Db {
   static const rpcGameReviews = 'game_reviews';
   static const rpcGameReviewStats = 'game_review_stats';
 
-  /// The discussions (20261023120000_discussions.sql): boards, one page of
+  /// The discussions (20261022165000_discussions.sql): boards, one page of
   /// threads, one thread, a page of its replies and the members the caller
   /// blocked are read through functions; a member deletes their own thread or
   /// reply with two more. Threads and replies are written by the `discussions`

@@ -1,6 +1,6 @@
 -- discussion_posts_track() is a trigger function, not an API.
 --
--- 20261023120000 revokes EXECUTE on every function it makes except this one, so
+-- 20261022165000 revokes EXECUTE on every function it makes except this one, so
 -- it kept the default grant to `public`: `anon` and every signed-in member could
 -- see it as /rest/v1/rpc/discussion_posts_track, as a SECURITY DEFINER function
 -- (the advisor's "Public can execute" and "Signed-in users can execute"

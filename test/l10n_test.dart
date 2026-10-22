@@ -86,8 +86,9 @@ void main() {
           final translated = arb[key];
           if (translated is! String) continue;
           for (final name in names) {
-            if (uses(template[key] as String, name) != uses(translated, name))
+            if (uses(template[key] as String, name) != uses(translated, name)) {
               wrong.add('$key: {$name}');
+            }
           }
         }
         expect(wrong, isEmpty);
