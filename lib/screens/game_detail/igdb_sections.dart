@@ -166,9 +166,10 @@ class _CompanyChip extends StatelessWidget {
 
 /// The time to beat and similar games, under About on a game's screen. Asks
 /// IGDB for the game's details (see [GameDetailsStore]) and Checkpoint for its
-/// members' times (see [CommunityTimesStore]) when the screen opens; until one
-/// of them is here, or when neither can be loaded, nothing is drawn, as
-/// everything else on the screen works without them.
+/// members' times (see [CommunityTimesStore]) when the screen opens. The time to
+/// beat is the members' times and a link to HowLongToBeat, so it is there at
+/// once; the similar games join it when IGDB answers, and are left out when it
+/// can't be reached, as everything else on the screen works without them.
 class GameInfoSections extends StatefulWidget {
   const GameInfoSections({super.key, required this.game});
 
@@ -210,14 +211,9 @@ class _GameInfoSectionsState extends State<GameInfoSections> {
         .watch<CommunityTimesStore>()
         .viewOf(widget.game.id)
         .times;
-    if (details == null && !community.hasShown) return const SizedBox.shrink();
 
     final sections = <Widget>[
-      _TimeToBeatPanel(
-        title: widget.game.title,
-        timeToBeat: details?.timeToBeat,
-        community: community,
-      ),
+      _TimeToBeatPanel(title: widget.game.title, community: community),
       if (details != null && details.similarGames.isNotEmpty)
         _SimilarGames(games: details.similarGames),
     ];
@@ -257,9 +253,6 @@ String fmtDuration(Duration d) => d.inMinutes < 60
     ? L10n.current.minutesShort(d.inMinutes)
     : L10n.current.hoursShort(fmtHours(d.inMinutes / 60));
 
-/// Fewer reports than this and IGDB's times are flagged as rough.
-const _fewTimeToBeatReports = 10;
-
 /// Where HowLongToBeat lists [title]: its search page, opened in the browser.
 /// Only a link: HowLongToBeat does not allow its data to be fetched by apps.
 Uri howLongToBeatSearch(String title) =>
@@ -267,30 +260,14 @@ Uri howLongToBeatSearch(String title) =>
 
 /// The time to beat in each [CompletionCategory]: Checkpoint's median where
 /// enough members reported a time ([CommunityTimes.shown]), labelled with how
-/// many did ("37 Checkpoint players"), and IGDB's figure otherwise, labelled
-/// "IGDB".
+/// many did ("37 Checkpoint players"), and a link to HowLongToBeat for the rest.
 class _TimeToBeatPanel extends StatelessWidget {
-  const _TimeToBeatPanel({
-    required this.title,
-    required this.timeToBeat,
-    required this.community,
-  });
+  const _TimeToBeatPanel({required this.title, required this.community});
 
   final String title;
 
-  /// IGDB's times; null when IGDB has none for the game (or didn't answer).
-  final TimeToBeat? timeToBeat;
-
   /// What Checkpoint's members reported.
   final CommunityTimes community;
-
-  /// IGDB's figure for [category]: its hastily, normally and completely are
-  /// the main story, main + extras and completionist runs.
-  Duration? _igdb(CompletionCategory category) => switch (category) {
-    CompletionCategory.mainStory => timeToBeat?.hastily,
-    CompletionCategory.mainExtras => timeToBeat?.normally,
-    CompletionCategory.completionist => timeToBeat?.completely,
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +280,6 @@ class _TimeToBeatPanel extends StatelessWidget {
 
     Widget figure(CompletionCategory category) {
       final ours = community.shown(category);
-      final value = ours?.median ?? _igdb(category);
       return Expanded(
         child: Padding(
           // A gap between the columns, none after the last.
@@ -317,7 +293,7 @@ class _TimeToBeatPanel extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 alignment: AlignmentDirectional.centerStart,
                 child: Text(
-                  value == null ? '–' : fmtDuration(value),
+                  ours == null ? '–' : fmtDuration(ours.median),
                   style: figureStyle,
                 ),
               ),
@@ -334,9 +310,7 @@ class _TimeToBeatPanel extends StatelessWidget {
                 Text(
                   context.l10n.checkpointPlayers(ours.count, fmtThousands(ours.count)),
                   style: sourceStyle.copyWith(color: context.palette.accent),
-                )
-              else if (value != null)
-                Text('IGDB', style: sourceStyle.copyWith(color: context.palette.muted)),
+                ),
             ],
           ),
         ),
@@ -344,42 +318,20 @@ class _TimeToBeatPanel extends StatelessWidget {
     }
 
     final caption = TextStyle(color: context.palette.muted, fontSize: 12, height: 1.35);
-    const categories = CompletionCategory.values;
-    final showsOurs = community.hasShown;
-    final showsIgdb = categories.any(
-      (c) => community.shown(c) == null && _igdb(c) != null,
-    );
-    final count = timeToBeat?.count ?? 0;
     return Panel(
       title: context.l10n.timeToBeat,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!showsOurs && !showsIgdb)
-            Text(context.l10n.timeToBeatNone, style: caption)
-          else ...[
+          if (community.hasShown) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (final c in categories) figure(c)],
+              children: [for (final c in CompletionCategory.values) figure(c)],
             ),
-            if (showsOurs) ...[
-              const SizedBox(height: 10),
-              Text(
-                context.l10n.timeToBeatOursCaption,
-                style: caption,
-              ),
-            ],
-            if (showsIgdb && count > 0) ...[
-              SizedBox(height: showsOurs ? 4 : 10),
-              Text(
-                count < _fewTimeToBeatReports
-                    ? context.l10n.timeToBeatFromIgdbFew(count, fmtThousands(count))
-                    : context.l10n.timeToBeatFromIgdb(count, fmtThousands(count)),
-                style: caption,
-              ),
-            ],
+            const SizedBox(height: 10),
+            Text(context.l10n.timeToBeatOursCaption, style: caption),
+            const SizedBox(height: 4),
           ],
-          const SizedBox(height: 4),
           TextButton.icon(
             onPressed: () => launchUrl(
               howLongToBeatSearch(title),
@@ -391,7 +343,7 @@ class _TimeToBeatPanel extends StatelessWidget {
               alignment: AlignmentDirectional.centerStart,
             ),
             icon: const Icon(Icons.open_in_new_rounded, size: 16),
-            label: Text(context.l10n.compareOnHowLongToBeat),
+            label: Text(context.l10n.viewOnHowLongToBeat),
           ),
         ],
       ),

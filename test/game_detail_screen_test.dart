@@ -98,14 +98,13 @@ void main() {
       }
       expect(find.text('Story'), findsOneWidget);
       expect(find.text('The Empire of Tamriel is on the edge.'), findsOneWidget);
+      // Only a link to HowLongToBeat: IGDB's times are not shown.
       expect(find.text('Time to beat'), findsOneWidget);
-      expect(find.text('25 h'), findsOneWidget);
-      expect(find.text('50 h'), findsOneWidget);
-      expect(find.text('150 h'), findsOneWidget);
-      expect(find.text('Main Story'), findsOneWidget);
-      expect(find.text('IGDB'), findsNWidgets(3));
-      expect(find.text('From 4,358 players on IGDB'), findsOneWidget);
-      expect(find.text('Compare on HowLongToBeat'), findsOneWidget);
+      expect(find.text('View on HowLongToBeat'), findsOneWidget);
+      for (final text in ['25 h', '50 h', '150 h', 'Main Story', 'IGDB']) {
+        expect(find.text(text), findsNothing, reason: text);
+      }
+      expect(find.textContaining('on IGDB'), findsNothing);
       expect(find.text('Similar games'), findsOneWidget);
       expect(find.text('Oblivion'), findsOneWidget);
     });
@@ -132,8 +131,10 @@ void main() {
       expect(detailsApi.calls, [472]);
       expect(find.text('Main developers'), findsNothing);
       expect(find.text('Story'), findsNothing);
-      expect(find.text('Time to beat'), findsNothing);
       expect(find.text('Similar games'), findsNothing);
+      // The link to HowLongToBeat does not need IGDB.
+      expect(find.text('Time to beat'), findsOneWidget);
+      expect(find.text('View on HowLongToBeat'), findsOneWidget);
       // About still has what the library holds: genres and the developer.
       expect(find.text('About'), findsOneWidget);
       expect(find.text('Genres'), findsOneWidget);
@@ -145,36 +146,32 @@ void main() {
     testWidgets('a panel with nothing to show is left out', (tester) async {
       await openWithDetails(
         tester,
-        details: GameDetails(igdbId: 472, platforms: const [GamePlatform.pc], timeToBeat: const TimeToBeat(normally: Duration(minutes: 45))),
+        details: GameDetails(igdbId: 472, platforms: const [GamePlatform.pc]),
       );
 
-      expect(find.text('Time to beat'), findsOneWidget);
-      expect(find.text('45 min'), findsOneWidget);
-      expect(find.text('–'), findsNWidgets(2)); // no hastily, no completely figure
       expect(find.text('Main developers'), findsNothing);
       expect(find.text('Story'), findsNothing);
       expect(find.text('Similar games'), findsNothing);
     });
 
-    testWidgets('time to beat says when IGDB has little or nothing, and links to HowLongToBeat', (tester) async {
-      await openWithDetails(
-        tester,
-        details: testDetails(igdbId: 472, timeToBeat: const TimeToBeat(normally: Duration(hours: 10), count: 7)),
-      );
-      expect(find.text('From 7 players on IGDB, so it may be off'), findsOneWidget);
-      expect(find.text('Compare on HowLongToBeat'), findsOneWidget);
+    testWidgets('time to beat is only a link to HowLongToBeat', (tester) async {
+      await openWithDetails(tester, details: testDetails(igdbId: 472));
+
+      expect(find.text('Time to beat'), findsOneWidget);
+      expect(find.text('View on HowLongToBeat'), findsOneWidget);
+      expect(find.textContaining('IGDB'), findsNothing);
       expect(
         howLongToBeatSearch('Metro 2033: Redux').toString(),
         'https://howlongtobeat.com/?q=Metro%202033%3A%20Redux',
       );
     });
 
-    testWidgets('time to beat without any IGDB times still links to HowLongToBeat', (tester) async {
-      await openWithDetails(tester, details: testDetails(igdbId: 472, timeToBeat: null));
+    testWidgets('has no play timer button, signed in or not', (tester) async {
+      await openWithDetails(tester, details: testDetails(igdbId: 472));
 
-      expect(find.text('Time to beat'), findsOneWidget);
-      expect(find.text('IGDB has no times for this game yet.'), findsOneWidget);
-      expect(find.text('Compare on HowLongToBeat'), findsOneWidget);
+      expect(find.text('Start timer'), findsNothing);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+      expect(find.text('Log Hours'), findsOneWidget);
     });
 
     testWidgets('tapping a similar game opens its screen', (tester) async {

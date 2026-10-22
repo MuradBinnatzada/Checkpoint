@@ -1395,19 +1395,12 @@ class FakeBackfillApi extends GameApiService {
 }
 
 /// IGDB's details for a game, as [FakeDetailsApi] answers by default: Skyrim's
-/// exact platforms, some attributes, a storyline, one similar game and a time to
-/// beat.
+/// exact platforms, some attributes, a storyline and one similar game.
 GameDetails testDetails({
   int igdbId = 7,
   List<GamePlatform> platforms = const [GamePlatform.pc, GamePlatform.ps3, GamePlatform.xbox360],
   List<Game>? similarGames,
   Map<String, int> companyIds = const {},
-  TimeToBeat? timeToBeat = const TimeToBeat(
-    hastily: Duration(hours: 25),
-    normally: Duration(hours: 50),
-    completely: Duration(hours: 150),
-    count: 4358,
-  ),
 }) => GameDetails(
   igdbId: igdbId,
   platforms: platforms,
@@ -1421,7 +1414,6 @@ GameDetails testDetails({
   companyIds: companyIds,
   storyline: 'The Empire of Tamriel is on the edge.',
   similarGames: similarGames ?? [testGame('similar-1', title: 'Oblivion', status: null, cover: false, igdbId: 306)],
-  timeToBeat: timeToBeat,
 );
 
 /// The browser and Steam, for "Sign in through Steam": [open] asks the server to

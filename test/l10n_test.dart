@@ -10,9 +10,11 @@ import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/checkpoint_app.dart';
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/l10n/l10n.dart';
+import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/milestone.dart';
+import 'package:checkpoint/screens/company/company_screen.dart';
 import 'package:checkpoint/screens/game_detail/game_detail_screen.dart';
 import 'package:checkpoint/screens/settings/settings_screen.dart';
 import 'package:checkpoint/state/app_stores.dart';
@@ -233,6 +235,33 @@ void main() {
         expect(find.text('Показать перевод'), findsOneWidget);
       },
     );
+
+    testWidgets("a company's page is About the company, not the game", (
+      tester,
+    ) async {
+      stores = AppStores(
+        repository: repo,
+        authService: authService,
+        connectivity: FakeConnectivity(),
+        apiService: FakeCompanyApi()
+          ..company = (id) => Company(
+            id: id,
+            name: 'Bethesda Softworks',
+            description: 'Publisher of The Elder Scrolls.',
+            publishedCount: 120,
+            developedCount: 0,
+          ),
+      );
+      await start(tester);
+      await push(
+        tester,
+        const CompanyScreen(companyId: 1, name: 'Bethesda Softworks'),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('О компании'), findsOneWidget);
+      expect(find.text('Об игре'), findsNothing);
+    });
 
     testWidgets('every section of Settings fits', (tester) async {
       await start(tester);

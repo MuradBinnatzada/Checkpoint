@@ -482,7 +482,7 @@ class _CompanyInfo extends StatelessWidget {
         if (description != null) ...[
           const SizedBox(height: 16),
           Panel(
-            title: context.l10n.about,
+            title: context.l10n.aboutCompany,
             child: _Description(
               original: description,
               translation: company?.translatedDescription,

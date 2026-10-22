@@ -54,33 +54,10 @@ export function detailsQuery(igdbId: number): string {
   return `fields ${DETAIL_FIELDS}; where id = ${igdbId}; limit 1;`
 }
 
-/** IGDB's "time to beat" for one game: seconds for a rushed, a normal and a complete run. */
-export function timeToBeatQuery(igdbId: number): string {
-  return `fields hastily, normally, completely, count; where game_id = ${igdbId}; limit 1;`
-}
-
 /** The first row of an IGDB answer, or null when it is empty or not a list. */
 export function firstRow(rows: unknown): Record<string, unknown> | null {
   const row = Array.isArray(rows) ? rows[0] : null
   return row !== null && typeof row === 'object' ? (row as Record<string, unknown>) : null
-}
-
-/**
- * The time to beat as the app wants it, or null when IGDB has none: only figures
- * that are positive numbers of seconds are kept, so a game with a "normally" time
- * but no "completely" one still shows what it has.
- */
-export function timeToBeat(
-  row: Record<string, unknown> | null,
-): { hastily: number | null; normally: number | null; completely: number | null; count: number } | null {
-  if (!row) return null
-  const seconds = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null)
-  const hastily = seconds(row.hastily)
-  const normally = seconds(row.normally)
-  const completely = seconds(row.completely)
-  if (hastily === null && normally === null && completely === null) return null
-  const count = typeof row.count === 'number' && Number.isFinite(row.count) && row.count > 0 ? Math.floor(row.count) : 0
-  return { hastily, normally, completely, count }
 }
 
 /** The `name` of each entry of an IGDB expanded list, once each, in order. */
@@ -218,7 +195,7 @@ export function parseIgdbIds(value: unknown): number[] | null {
 
 /**
  * What the catalog keeps of each of [igdbIds] (at most [MAX_BACKFILL_IDS]), in one
- * query: no storyline, similar games or time to beat, which are only for the
+ * query: no storyline or similar games, which are only for the
  * details screen. The limit is spelled out because IGDB's default is 10.
  */
 export function backfillQuery(igdbIds: number[]): string {

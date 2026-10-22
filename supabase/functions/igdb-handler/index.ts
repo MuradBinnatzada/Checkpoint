@@ -40,8 +40,7 @@
 //                        { "mode": "details", "igdb_id": 472, "lang": "ru" }
 //                          answers { "game": <the IGDB game, with platforms, genres,
 //                          themes, game modes, perspectives, engines, companies,
-//                          storyline and similar games>, "time_to_beat": { hastily,
-//                          normally, completely (seconds, or null), count } | null,
+//                          storyline and similar games>,
 //                          "translations"?: { lang, summary?, storyline? } }.
 //                          `lang` is optional: the app's language when it is not
 //                          English. The summary and storyline are then translated
@@ -72,8 +71,8 @@
 //                          refuses the request). Makes ONE IGDB /games request for
 //                          the ids whose rows are due (the same weekly rule as
 //                          `details`; none due, no IGDB request), asking only for
-//                          what the catalog keeps (no storyline, similar games or
-//                          time to beat), and writes each due row the way
+//                          what the catalog keeps (no storyline or similar games),
+//                          and writes each due row the way
 //                          `details` does. Answers what each row holds afterwards:
 //                          { "games": [{ "igdb_id": 472, "platforms": ["pc",
 //                          "ps3", "xbox360"], "genres": [...] }, ...],
@@ -187,8 +186,6 @@ import {
   parseIgdbId,
   parseIgdbIds,
   planBackfill,
-  timeToBeat,
-  timeToBeatQuery,
 } from "../_shared/game_details.ts";
 import {
   type DiscoverSort,
@@ -228,7 +225,6 @@ import {
 const TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 const IGDB_GAMES_URL = "https://api.igdb.com/v4/games";
 const IGDB_POPULARITY_URL = "https://api.igdb.com/v4/popularity_primitives";
-const IGDB_TIME_TO_BEAT_URL = "https://api.igdb.com/v4/game_time_to_beats";
 const IGDB_COMPANIES_URL = "https://api.igdb.com/v4/companies";
 
 // The Apicalypse query is built here, not by the client, so this function can't
@@ -634,20 +630,12 @@ async function browseGames(
 // Details: one game's whole page
 // ---------------------------------------------------------------------------
 
-// One game with everything the details screen shows, and its time to beat. The
-// time to beat is a nicety: when only that request fails, the rest is still sent.
+// One game with everything the details screen shows.
 async function gameDetails(
   igdbId: number,
   lang: string | null,
 ): Promise<unknown> {
-  const [games, timeToBeatRows] = await Promise.all([
-    queryIgdb(IGDB_GAMES_URL, detailsQuery(igdbId)),
-    queryIgdb(IGDB_TIME_TO_BEAT_URL, timeToBeatQuery(igdbId)).catch((err) => {
-      console.error("time to beat unavailable:", err);
-      return null;
-    }),
-  ]);
-  const game = firstRow(games);
+  const game = firstRow(await queryIgdb(IGDB_GAMES_URL, detailsQuery(igdbId)));
   if (!game) throw new HttpError(404, "NOT_FOUND", "No such game");
 
   const [, translations] = await Promise.all([
@@ -656,7 +644,6 @@ async function gameDetails(
   ]);
   return {
     game,
-    time_to_beat: timeToBeat(firstRow(timeToBeatRows)),
     ...(translations ? { translations } : {}),
   };
 }

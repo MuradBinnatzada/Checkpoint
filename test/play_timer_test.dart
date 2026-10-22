@@ -136,10 +136,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('Start timer shows the bar; Stop logs the time as a session', (tester) async {
+    testWidgets('a running timer shows the bar; Stop logs the time as a session', (tester) async {
       await openGame(tester);
+      // The game's screen has no button for it: it starts from "What to play next".
+      expect(find.text('Start timer'), findsNothing);
 
-      await tester.tap(find.text('Start timer'));
+      stores.playTimer.start('g1');
       await tester.pump();
       expect(stores.playTimer.isRunningFor('g1'), isTrue);
       expect(find.byType(PlayTimerBar), findsOneWidget);
@@ -164,7 +166,7 @@ void main() {
 
     testWidgets('Discard timer stops it without logging anything', (tester) async {
       await openGame(tester);
-      await tester.tap(find.text('Start timer'));
+      stores.playTimer.start('g1');
       await tester.pump();
       await tester.tap(find.text('Stop'));
       await tester.pumpAndSettle();

@@ -307,7 +307,6 @@ class GameApiService {
             // A bare id (IGDB did not expand it) has no name to show.
             if (hit is Map && hit['name'] != null) ?gameFromHit(hit),
       ],
-      timeToBeat: TimeToBeat.fromJson(response['time_to_beat']),
     );
   }
 

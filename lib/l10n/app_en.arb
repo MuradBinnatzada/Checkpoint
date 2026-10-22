@@ -1096,6 +1096,7 @@
   "gameEngine": "Game engine",
   "story": "Story",
   "about": "About",
+  "aboutCompany": "About",
   "browseTagGames": "Browse {tag} games",
   "@browseTagGames": {
     "placeholders": {
@@ -1133,31 +1134,8 @@
     }
   },
   "timeToBeat": "Time to beat",
-  "timeToBeatNone": "IGDB has no times for this game yet.",
   "timeToBeatOursCaption": "Checkpoint players: the median of the times reported here.",
-  "timeToBeatFromIgdb": "{count, plural, =1{From {formatted} player on IGDB} other{From {formatted} players on IGDB}}",
-  "@timeToBeatFromIgdb": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "formatted": {
-        "type": "String"
-      }
-    }
-  },
-  "timeToBeatFromIgdbFew": "{count, plural, =1{From {formatted} player on IGDB, so it may be off} other{From {formatted} players on IGDB, so it may be off}}",
-  "@timeToBeatFromIgdbFew": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "formatted": {
-        "type": "String"
-      }
-    }
-  },
-  "compareOnHowLongToBeat": "Compare on HowLongToBeat",
+  "viewOnHowLongToBeat": "View on HowLongToBeat",
   "similarGames": "Similar games",
   "completionHoursInvalid": "Enter the hours as a number, like {example}.",
   "@completionHoursInvalid": {
@@ -2558,7 +2536,6 @@
     }
   },
   "replace": "Replace",
-  "startTimer": "Start timer",
   "openServiceProfile": "Open {service} profile",
   "@openServiceProfile": {
     "placeholders": {

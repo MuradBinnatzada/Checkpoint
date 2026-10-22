@@ -625,7 +625,7 @@ void main() {
     });
 
     testWidgets(
-      'the time to beat is Checkpoint\'s where $minCommunityTimes members reported one, IGDB\'s elsewhere',
+      'the time to beat is Checkpoint\'s where $minCommunityTimes members reported one, and IGDB\'s are not shown',
       (tester) async {
         repo.communityTimes['g1'] = CommunityTimes({
           CompletionCategory.mainStory: _times(24, 37),
@@ -636,18 +636,21 @@ void main() {
         expect(find.text('Time to beat'), findsOneWidget);
         expect(find.text('24 h'), findsOneWidget);
         expect(find.text('37 Checkpoint players'), findsOneWidget);
-        expect(find.text('25 h'), findsNothing); // IGDB's main story
         expect(find.text('40 h'), findsNothing); // too few of ours
-        expect(find.text('50 h'), findsOneWidget);
-        expect(find.text('150 h'), findsOneWidget);
-        expect(find.text('IGDB'), findsNWidgets(2));
+        // None of IGDB's: the main story, main + extras and completionist runs.
+        for (final igdb in ['25 h', '50 h', '150 h']) {
+          expect(find.text(igdb), findsNothing, reason: igdb);
+        }
+        expect(find.text('–'), findsNWidgets(2));
+        expect(find.text('IGDB'), findsNothing);
+        expect(find.textContaining('on IGDB'), findsNothing);
         expect(
           find.text(
             'Checkpoint players: the median of the times reported here.',
           ),
           findsOneWidget,
         );
-        expect(find.text('From 4,358 players on IGDB'), findsOneWidget);
+        expect(find.text('View on HowLongToBeat'), findsOneWidget);
       },
     );
 
@@ -666,7 +669,6 @@ void main() {
       );
       expect(find.text('IGDB'), findsNothing);
       expect(find.textContaining('on IGDB'), findsNothing);
-      expect(find.text('IGDB has no times for this game yet.'), findsNothing);
     });
 
     testWidgets('saving your time reads the members\' times again', (

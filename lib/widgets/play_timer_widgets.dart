@@ -73,33 +73,6 @@ Future<void> startPlayTimer(BuildContext context, Game game) async {
   timers.start(game.id);
 }
 
-/// The timer on a game's screen: "Start timer", or how long it has run with
-/// Stop, which opens the session to log.
-class PlayTimerButton extends StatelessWidget {
-  const PlayTimerButton({super.key, required this.game});
-  final Game game;
-
-  @override
-  Widget build(BuildContext context) {
-    final timers = context.watch<PlayTimerStore>();
-    if (!timers.isRunningFor(game.id)) {
-      return OutlinedButton.icon(
-        onPressed: () => startPlayTimer(context, game),
-        icon: const Icon(Icons.play_arrow_rounded, size: 18),
-        label: Text(context.l10n.startTimer),
-      );
-    }
-    return FilledButton.icon(
-      onPressed: () => showTimerLogSheet(context),
-      icon: const Icon(Icons.stop_rounded, size: 18),
-      label: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('${context.l10n.stop} · '),
-        const ElapsedText(),
-      ]),
-    );
-  }
-}
-
 /// While the play timer runs: a bar above the tabs with the game and the time,
 /// from any tab. Tapping it opens the game; Stop opens the session to log.
 class PlayTimerBar extends StatelessWidget {

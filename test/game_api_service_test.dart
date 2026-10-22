@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/game.dart';
-import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 
 /// An IGDB hit with every field the app reads, with [overrides] on top.
@@ -433,7 +432,6 @@ void main() {
           {'id': 999}, // not expanded: no name to show
         ],
       },
-      'time_to_beat': {'hastily': 90000, 'normally': 180000, 'completely': 540000, 'count': 12},
       ...overrides,
     };
 
@@ -496,26 +494,15 @@ void main() {
       expect(oblivion.inLibrary, isFalse);
     });
 
-    test('the time to beat comes in seconds', () {
-      final ttb = GameApiService.detailsFromResponse(skyrim())!.timeToBeat!;
-
-      expect(ttb.hastily, const Duration(hours: 25));
-      expect(ttb.normally, const Duration(hours: 50));
-      expect(ttb.completely, const Duration(hours: 150));
-      expect(ttb.count, 12);
-    });
-
     test('a sparse game gives a sparse result, not a failure', () {
       final details = GameApiService.detailsFromResponse({
         'game': {'id': 5},
-        'time_to_beat': null,
       })!;
 
       expect(details.platforms, isEmpty);
       expect(details.hasInfo, isFalse);
       expect(details.storyline, isNull);
       expect(details.similarGames, isEmpty);
-      expect(details.timeToBeat, isNull);
     });
 
     test('an answer without a game is no details', () {
@@ -587,23 +574,6 @@ void main() {
     test('a hit that is not a game is left out', () {
       expect(GameApiService.companyGameFromHit({'name': 'No id'}, valve, CompanyRole.any), isNull);
       expect(GameApiService.companyGameFromHit(null, valve, CompanyRole.any), isNull);
-    });
-  });
-
-  group('TimeToBeat.fromJson', () {
-    test('keeps the figures it has', () {
-      final ttb = TimeToBeat.fromJson({'normally': 3600, 'count': 2})!;
-
-      expect(ttb.hastily, isNull);
-      expect(ttb.normally, const Duration(hours: 1));
-      expect(ttb.completely, isNull);
-      expect(ttb.count, 2);
-    });
-
-    test('is null when there is no usable figure', () {
-      expect(TimeToBeat.fromJson({'hastily': 0, 'normally': -3, 'completely': 'x'}), isNull);
-      expect(TimeToBeat.fromJson(null), isNull);
-      expect(TimeToBeat.fromJson([1, 2]), isNull);
     });
   });
 

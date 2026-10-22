@@ -30,7 +30,6 @@ import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/platform_widgets.dart';
 import 'package:checkpoint/widgets/share_link_button.dart';
-import 'package:checkpoint/widgets/play_timer_widgets.dart';
 import 'package:checkpoint/widgets/star_rating.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
 
@@ -415,10 +414,7 @@ class _ProgressPanel extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: 16),
-        Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
-          stat(context.l10n.hoursShort(fmtHours(game.hoursPlayed)), context.l10n.played),
-          if (context.watch<AuthStore>().isLoggedIn) PlayTimerButton(game: game),
-        ]),
+        stat(context.l10n.hoursShort(fmtHours(game.hoursPlayed)), context.l10n.played),
       ]),
     );
   }

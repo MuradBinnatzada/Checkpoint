@@ -2,8 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:checkpoint/l10n/l10n.dart';
 
-/// Which run of a game a completion time is for: HowLongToBeat's three, which
-/// are also IGDB's time to beat (hastily, normally, completely).
+/// Which run of a game a completion time is for: HowLongToBeat's three.
 enum CompletionCategory {
   mainStory('main'),
   mainExtras('main_extra'),

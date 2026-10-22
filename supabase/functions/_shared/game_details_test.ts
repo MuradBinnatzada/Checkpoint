@@ -18,8 +18,6 @@ import {
   planBackfill,
   releaseDate,
   REFRESH_AFTER_DAYS,
-  timeToBeat,
-  timeToBeatQuery,
 } from './game_details.ts'
 
 const NOW_ISO = '2026-10-18T12:00:00.000Z'
@@ -53,27 +51,11 @@ Deno.test('the queries splice in only the number', () => {
   for (const field of ['storyline', 'themes.name', 'game_modes.name', 'game_engines.name', 'similar_games.name']) {
     assertStringIncludes(detailsQuery(472), field)
   }
-  assertEquals(
-    timeToBeatQuery(472),
-    'fields hastily, normally, completely, count; where game_id = 472; limit 1;',
-  )
 })
 
 Deno.test('firstRow is the first object of a list, else null', () => {
   assertEquals(firstRow([{ a: 1 }, { a: 2 }]), { a: 1 })
   for (const other of [[], null, undefined, 'x', {}, [null], [3]]) assertEquals(firstRow(other), null, String(other))
-})
-
-Deno.test('timeToBeat keeps the positive figures and drops a row with none', () => {
-  assertEquals(timeToBeat({ hastily: 90000, normally: 180000.4, completely: 540000, count: 12 }), {
-    hastily: 90000,
-    normally: 180000,
-    completely: 540000,
-    count: 12,
-  })
-  assertEquals(timeToBeat({ normally: 3600 }), { hastily: null, normally: 3600, completely: null, count: 0 })
-  assertEquals(timeToBeat({ hastily: 0, normally: -5, completely: 'x', count: 3 }), null)
-  assertEquals(timeToBeat(null), null)
 })
 
 Deno.test('names lists each IGDB name once, in order', () => {
