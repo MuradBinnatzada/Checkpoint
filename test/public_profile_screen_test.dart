@@ -26,6 +26,12 @@ import 'package:checkpoint/widgets/stat_tile.dart';
 
 import 'support/fakes.dart';
 
+/// An account icon, by the first line of its tooltip; the rest says whether the
+/// account is verified.
+Finder accountIcon(String name) => find.byWidgetPredicate(
+  (w) => w is Tooltip && w.message?.split('\n').first == name,
+);
+
 /// Another member's profile, their follower lists, their library and their
 /// achievements, on the real screens over fake data sources.
 void main() {
@@ -199,14 +205,14 @@ void main() {
         await openProfile(tester);
 
         // Tapping an icon opens the account (Discord copies the username).
-        expect(find.byTooltip('Open Steam profile'), findsOneWidget);
-        expect(find.byTooltip('Copy Discord username'), findsOneWidget);
-        expect(find.byTooltip('Open Instagram profile'), findsOneWidget);
-        expect(find.byTooltip('Open Twitch channel'), findsOneWidget);
+        expect(accountIcon('Open Steam profile'), findsOneWidget);
+        expect(accountIcon('Copy Discord username'), findsOneWidget);
+        expect(accountIcon('Open Instagram profile'), findsOneWidget);
+        expect(accountIcon('Open Twitch channel'), findsOneWidget);
         // Nintendo is connected but has nothing to open; PSN and Xbox are not connected.
-        expect(find.byTooltip('Nintendo'), findsOneWidget);
-        expect(find.byTooltip('PSN'), findsNothing);
-        expect(find.byTooltip('Xbox'), findsNothing);
+        expect(accountIcon('Nintendo'), findsOneWidget);
+        expect(accountIcon('PSN'), findsNothing);
+        expect(accountIcon('Xbox'), findsNothing);
         // Icons only: no box, no names, nothing to change.
         expect(find.text('Connected accounts'), findsNothing);
         expect(find.text('GAME PROFILES'), findsNothing);
@@ -216,11 +222,11 @@ void main() {
 
         // One row, game profiles first.
         final icons = [
-          find.byTooltip('Open Steam profile'),
-          find.byTooltip('Nintendo'),
-          find.byTooltip('Copy Discord username'),
-          find.byTooltip('Open Instagram profile'),
-          find.byTooltip('Open Twitch channel'),
+          accountIcon('Open Steam profile'),
+          accountIcon('Nintendo'),
+          accountIcon('Copy Discord username'),
+          accountIcon('Open Instagram profile'),
+          accountIcon('Open Twitch channel'),
         ];
         final lefts = [for (final i in icons) tester.getTopLeft(i).dx];
         expect(lefts, orderedEquals([...lefts]..sort()));
@@ -311,7 +317,7 @@ void main() {
         expect(find.text('No rated games yet.'), findsOneWidget);
         expect(find.text('Total Playtime: 0 hours'), findsOneWidget);
         expect(find.byType(ConnectedAccountIcons), findsNothing);
-        expect(find.byTooltip('Open Steam profile'), findsNothing);
+        expect(accountIcon('Open Steam profile'), findsNothing);
       },
     );
 
@@ -334,7 +340,7 @@ void main() {
       );
       await openProfile(tester);
 
-      await tester.tap(find.byTooltip('Copy Discord username'));
+      await tester.tap(accountIcon('Copy Discord username'));
       await tester.pump();
 
       expect(copied, 'member#1');
@@ -352,8 +358,8 @@ void main() {
       );
       await openProfile(tester);
 
-      expect(find.byTooltip('PSN'), findsOneWidget);
-      expect(find.byTooltip('Open PSN profile'), findsNothing);
+      expect(accountIcon('PSN'), findsOneWidget);
+      expect(accountIcon('Open PSN profile'), findsNothing);
     });
 
     testWidgets('a name that is not one Instagram allows gets no link', (
@@ -368,8 +374,8 @@ void main() {
       );
       await openProfile(tester);
 
-      expect(find.byTooltip('Instagram'), findsOneWidget);
-      expect(find.byTooltip('Open Instagram profile'), findsNothing);
+      expect(accountIcon('Instagram'), findsOneWidget);
+      expect(accountIcon('Open Instagram profile'), findsNothing);
     });
 
     testWidgets('shows the name from the tapped row while it loads', (

@@ -16,6 +16,12 @@ import 'package:checkpoint/theme/app_theme.dart';
 
 import 'support/fakes.dart';
 
+/// An account icon, by the first line of its tooltip; the rest says whether the
+/// account is verified.
+Finder accountIcon(String name) => find.byWidgetPredicate(
+  (w) => w is Tooltip && w.message?.split('\n').first == name,
+);
+
 /// The Profile tab: laid out like another member's page, with Edit Profile and
 /// Settings under the counts, Sign out beside your name and your connected
 /// accounts as icons above the bio.
@@ -243,18 +249,18 @@ void main() {
         await open(tester);
 
         final icons = [
-          find.byTooltip('Open Steam profile'),
-          find.byTooltip('Open PSN profile'),
-          find.byTooltip('Copy Discord username'),
-          find.byTooltip('Open Twitch channel'),
+          accountIcon('Open Steam profile'),
+          accountIcon('Open PSN profile'),
+          accountIcon('Copy Discord username'),
+          accountIcon('Open Twitch channel'),
         ];
         for (final i in icons) {
           expect(i, findsOneWidget);
         }
         // Services that are not connected are not shown.
-        expect(find.byTooltip('Xbox'), findsNothing);
-        expect(find.byTooltip('Nintendo'), findsNothing);
-        expect(find.byTooltip('Instagram'), findsNothing);
+        expect(accountIcon('Xbox'), findsNothing);
+        expect(accountIcon('Nintendo'), findsNothing);
+        expect(accountIcon('Instagram'), findsNothing);
 
         // One row, game profiles before social media.
         final lefts = [for (final i in icons) tester.getTopLeft(i).dx];
@@ -281,7 +287,7 @@ void main() {
       await open(tester);
 
       expect(
-        top(tester, find.byTooltip('Open Steam profile')),
+        top(tester, accountIcon('Open Steam profile')),
         lessThan(top(tester, find.text('Collector of platinum trophies.'))),
       );
     });
