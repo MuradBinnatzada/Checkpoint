@@ -252,26 +252,37 @@ class LibraryPlatformFilterButton extends StatelessWidget {
   }
 }
 
+/// [list] pulled down to refresh when [onRefresh] says how; as it is when null.
+Widget _pullable(Widget list, Future<void> Function()? onRefresh) =>
+    onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh, child: list);
+
 class LibraryPosterGrid extends StatelessWidget {
-  const LibraryPosterGrid({super.key, required this.games});
+  const LibraryPosterGrid({super.key, required this.games, this.onRefresh});
   final List<Game> games;
+
+  /// Reads the games again when the grid is pulled down; none: it isn't.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, c) {
         final cols = c.maxWidth >= 900 ? 6 : (c.maxWidth >= 600 ? 5 : 3);
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 2 / 3,
+        return _pullable(
+          GridView.builder(
+            physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 2 / 3,
+            ),
+            itemCount: games.length,
+            itemBuilder: (_, i) => _PosterTile(game: games[i]),
           ),
-          itemCount: games.length,
-          itemBuilder: (_, i) => _PosterTile(game: games[i]),
+          onRefresh,
         );
       },
     );
@@ -379,21 +390,28 @@ class _PosterTile extends StatelessWidget {
 }
 
 class LibraryGameList extends StatelessWidget {
-  const LibraryGameList({super.key, required this.games});
+  const LibraryGameList({super.key, required this.games, this.onRefresh});
   final List<Game> games;
+
+  /// Reads the games again when the list is pulled down; none: it isn't.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: games.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        indent: 82,
-        color: context.palette.hairline,
+    return _pullable(
+      ListView.separated(
+        physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 32),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        itemCount: games.length,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          indent: 82,
+          color: context.palette.hairline,
+        ),
+        itemBuilder: (_, i) => _LibraryListTile(game: games[i]),
       ),
-      itemBuilder: (_, i) => _LibraryListTile(game: games[i]),
+      onRefresh,
     );
   }
 }

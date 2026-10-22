@@ -59,37 +59,41 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-            children: [
-              // The one filter, above everything it changes.
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (final y in years)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 8),
-                      child: AppChoiceChip(
-                        label: '$y',
-                        selected: y == _year,
-                        onSelected: () => setState(() => _year = y),
+          child: RefreshIndicator(
+            onRefresh: library.refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+              children: [
+                // The one filter, above everything it changes.
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (final y in years)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: AppChoiceChip(
+                          label: '$y',
+                          selected: y == _year,
+                          onSelected: () => setState(() => _year = y),
+                        ),
                       ),
+                  ]),
+                ),
+                const SizedBox(height: 18),
+                if (review.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 40),
+                    child: EmptyState(
+                      icon: Icons.insights_rounded,
+                      title: context.l10n.yearNothingLogged(_year),
+                      message: context.l10n.yearNothingLoggedMessage,
                     ),
-                ]),
-              ),
-              const SizedBox(height: 18),
-              if (review.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 40),
-                  child: EmptyState(
-                    icon: Icons.insights_rounded,
-                    title: context.l10n.yearNothingLogged(_year),
-                    message: context.l10n.yearNothingLoggedMessage,
-                  ),
-                )
-              else
-                ..._sections(context, review),
-            ],
+                  )
+                else
+                  ..._sections(context, review),
+              ],
+            ),
           ),
         ),
       ),

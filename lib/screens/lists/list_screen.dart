@@ -36,6 +36,17 @@ class _ListScreenState extends State<ListScreen> {
     });
   }
 
+  /// Pull to refresh: reads the list again, the way the screen got it.
+  Future<void> _refresh(GameList list) {
+    final store = context.read<ListsStore>();
+    bool isThis(GameList l) => l.id == list.id;
+    if (store.lists.any(isThis)) return store.load(force: true);
+    if (store.publicListsOf(list.ownerId).any(isThis)) {
+      return store.loadPublic(list.ownerId);
+    }
+    return store.open(list.id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = context.watch<ListsStore>();
@@ -99,24 +110,30 @@ class _ListScreenState extends State<ListScreen> {
                   message: own
                       ? context.l10n.listEmptyOwn
                       : context.l10n.listEmptyOther,
+                  onRefresh: () => _refresh(list),
                 )
-              : own
-              ? ReorderableListView.builder(
-                  buildDefaultDragHandles: false,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 32),
-                  itemCount: list.games.length,
-                  onReorderItem: (from, to) => store.move(list.id, from, to),
-                  itemBuilder: (context, i) => _GameRow(
-                    key: ValueKey(list.games[i].id),
-                    index: i,
-                    game: list.games[i],
-                    onRemove: () => store.toggleGame(list.id, list.games[i]),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 32),
-                  itemCount: list.games.length,
-                  itemBuilder: (context, i) => _GameRow(index: i, game: list.games[i]),
+              : RefreshIndicator(
+                  onRefresh: () => _refresh(list),
+                  child: own
+                      ? ReorderableListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          buildDefaultDragHandles: false,
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 32),
+                          itemCount: list.games.length,
+                          onReorderItem: (from, to) => store.move(list.id, from, to),
+                          itemBuilder: (context, i) => _GameRow(
+                            key: ValueKey(list.games[i].id),
+                            index: i,
+                            game: list.games[i],
+                            onRemove: () => store.toggleGame(list.id, list.games[i]),
+                          ),
+                        )
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 32),
+                          itemCount: list.games.length,
+                          itemBuilder: (context, i) => _GameRow(index: i, game: list.games[i]),
+                        ),
                 ),
         ),
       ]),

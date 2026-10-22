@@ -139,7 +139,8 @@ class ListsStore extends AccountScopedStore {
     } catch (e, st) {
       debugPrint('Opening list $listId failed: $e\n$st');
       if (isStale(epoch)) return;
-      _opened.remove(listId);
+      // A copy already held stays on screen; pull to refresh asks again.
+      if (_opened[listId] == null) _opened.remove(listId);
       _setNotice(L10n.current.listOpenFailed);
     }
     notifyIfAlive();

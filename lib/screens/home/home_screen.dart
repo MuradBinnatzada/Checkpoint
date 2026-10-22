@@ -23,6 +23,7 @@ import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/utils/navigation.dart';
+import 'package:checkpoint/utils/refresh.dart';
 import 'package:checkpoint/widgets/cover_art.dart';
 import 'package:checkpoint/widgets/cover_backdrop.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
@@ -34,123 +35,139 @@ import 'package:checkpoint/widgets/stat_tile.dart';
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  /// Pull to refresh: everything on the page is read again, the library the
+  /// rest of it is made from first among them.
+  Future<void> _refresh(BuildContext context) {
+    final loggedIn = context.read<AuthStore>().isLoggedIn;
+    return Future.wait([
+      refreshMyData(context),
+      context.read<FriendsFeedStore>().load(force: true),
+      // IGDB answers signed-in members only; a visitor sees the catalog.
+      if (loggedIn) context.read<BrowseStore>().refresh(BrowseMode.popular),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final library = context.watch<LibraryStore>();
     final profile = context.watch<ProfileStore>().profile;
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 112),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${greeting()},',
-                        style: TextStyle(
-                          color: context.palette.muted,
-                          fontSize: 15,
-                        ),
-                      ),
-                      Text(
-                        profile.name.split(' ').first,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // A photo says nothing to a screen reader; 48 px to tap.
-                Semantics(
-                  button: true,
-                  label: context.l10n.yourProfile,
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () =>
-                        context.read<NavStore>().select(NavTab.profile),
-                    child: SizedBox.square(
-                      dimension: 48,
-                      child: Center(
-                        child: ProfileAvatar(name: profile.name, size: 44, imageUrl: profile.avatarUrl),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const _NewsButton(),
-          SectionHeader(
-            context.l10n.currentlyPlaying,
-            actionLabel: context.l10n.seeAllShort,
-            onAction: () => context.read<LibraryViewStore>().openTab(GameStatus.playing),
-          ),
-          _HeroBanner(games: library.playingNow()),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: StatTile(
-                    icon: Icons.schedule_rounded,
-                    value: fmtHours(library.totalHours),
-                    label: context.l10n.hoursLoggedLabel,
-                    onTap: () => context.read<LibraryViewStore>().openTab(
-                      GameStatus.playing,
-                      sortBy: SortField.hoursPlayed,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatTile(
-                    icon: Icons.verified_rounded,
-                    value: '${library.count(GameStatus.completed)}',
-                    label: GameStatus.completed.label,
-                    onTap: () =>
-                        context.read<LibraryViewStore>().openTab(GameStatus.completed),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatTile(
-                    icon: Icons.inventory_2_rounded,
-                    value: '${library.count(GameStatus.toPlay)}',
-                    label: GameStatus.toPlay.label,
-                    onTap: () =>
-                        context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (context.watch<AuthStore>().isLoggedIn &&
-              library.count(GameStatus.toPlay) + library.count(GameStatus.playing) >= 2)
+      child: RefreshIndicator(
+        onRefresh: () => _refresh(context),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 112),
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: OutlinedButton.icon(
-                onPressed: () => showPickNextSheet(context),
-                style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                icon: const Icon(Icons.casino_rounded, size: 18),
-                label: Text(context.l10n.pickMyNextGame),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${greeting()},',
+                          style: TextStyle(
+                            color: context.palette.muted,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Text(
+                          profile.name.split(' ').first,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // A photo says nothing to a screen reader; 48 px to tap.
+                  Semantics(
+                    button: true,
+                    label: context.l10n.yourProfile,
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          context.read<NavStore>().select(NavTab.profile),
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Center(
+                          child: ProfileAvatar(name: profile.name, size: 44, imageUrl: profile.avatarUrl),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          const _ReleasesRow(),
-          SectionHeader(context.l10n.recentActivity),
-          const _RecentActivityRow(),
-          const _FriendsFeedRow(),
-          const _PopularRow(),
-        ],
+            const _NewsButton(),
+            SectionHeader(
+              context.l10n.currentlyPlaying,
+              actionLabel: context.l10n.seeAllShort,
+              onAction: () => context.read<LibraryViewStore>().openTab(GameStatus.playing),
+            ),
+            _HeroBanner(games: library.playingNow()),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: StatTile(
+                      icon: Icons.schedule_rounded,
+                      value: fmtHours(library.totalHours),
+                      label: context.l10n.hoursLoggedLabel,
+                      onTap: () => context.read<LibraryViewStore>().openTab(
+                        GameStatus.playing,
+                        sortBy: SortField.hoursPlayed,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatTile(
+                      icon: Icons.verified_rounded,
+                      value: '${library.count(GameStatus.completed)}',
+                      label: GameStatus.completed.label,
+                      onTap: () =>
+                          context.read<LibraryViewStore>().openTab(GameStatus.completed),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatTile(
+                      icon: Icons.inventory_2_rounded,
+                      value: '${library.count(GameStatus.toPlay)}',
+                      label: GameStatus.toPlay.label,
+                      onTap: () =>
+                          context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (context.watch<AuthStore>().isLoggedIn &&
+                library.count(GameStatus.toPlay) + library.count(GameStatus.playing) >= 2)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: OutlinedButton.icon(
+                  onPressed: () => showPickNextSheet(context),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  icon: const Icon(Icons.casino_rounded, size: 18),
+                  label: Text(context.l10n.pickMyNextGame),
+                ),
+              ),
+            const _ReleasesRow(),
+            SectionHeader(context.l10n.recentActivity),
+            const _RecentActivityRow(),
+            const _FriendsFeedRow(),
+            const _PopularRow(),
+          ],
+        ),
       ),
     );
   }

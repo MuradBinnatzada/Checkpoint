@@ -12,6 +12,7 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/app_theme.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
+import 'package:checkpoint/utils/refresh.dart';
 import 'package:checkpoint/widgets/empty_state.dart';
 import 'package:checkpoint/widgets/library_controls.dart';
 import 'package:checkpoint/widgets/library_filters.dart';
@@ -322,13 +323,23 @@ class LibraryCollection extends StatelessWidget {
         onAction: () => filtered
             ? context.read<LibraryViewStore>().clearFilters()
             : context.read<NavStore>().select(NavTab.search),
+        // Games added on another device show up with a pull, not only a retry.
+        onRefresh: () => refreshMyData(context),
       );
     }
     return AnimatedSwitcher(
       duration: motion(context, const Duration(milliseconds: 220)),
       child: view.view == LibraryView.grid
-          ? LibraryPosterGrid(key: ValueKey('grid-${s?.name ?? 'all'}'), games: games)
-          : LibraryGameList(key: ValueKey('list-${s?.name ?? 'all'}'), games: games),
+          ? LibraryPosterGrid(
+              key: ValueKey('grid-${s?.name ?? 'all'}'),
+              games: games,
+              onRefresh: () => refreshMyData(context),
+            )
+          : LibraryGameList(
+              key: ValueKey('list-${s?.name ?? 'all'}'),
+              games: games,
+              onRefresh: () => refreshMyData(context),
+            ),
     );
   }
 }

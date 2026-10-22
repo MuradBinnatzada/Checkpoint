@@ -28,19 +28,24 @@ class SessionsScreen extends StatelessWidget {
               icon: Icons.timer_outlined,
               title: context.l10n.noSessions,
               message: context.l10n.noSessionsMessage,
+              onRefresh: store.refresh,
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                  child: Text(
-                    '${context.l10n.sessionCount(logs.length)} · ${context.l10n.hoursLogged(fmtHours(total))}',
-                    style: TextStyle(color: context.palette.muted),
+          : RefreshIndicator(
+              onRefresh: store.refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: Text(
+                      '${context.l10n.sessionCount(logs.length)} · ${context.l10n.hoursLogged(fmtHours(total))}',
+                      style: TextStyle(color: context.palette.muted),
+                    ),
                   ),
-                ),
-                for (final l in logs) SessionTile(session: l, showDay: true),
-              ],
+                  for (final l in logs) SessionTile(session: l, showDay: true),
+                ],
+              ),
             ),
     );
   }

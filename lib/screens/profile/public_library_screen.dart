@@ -215,6 +215,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
                 status: null,
                 searchQuery: _searchQuery,
                 onClearSearch: _clearSearch,
+                onRefresh: () => _load(force: true),
               ),
               for (final s in GameStatus.values)
                 _Collection(
@@ -222,6 +223,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
                   status: s,
                   searchQuery: _searchQuery,
                   onClearSearch: _clearSearch,
+                  onRefresh: () => _load(force: true),
                 ),
             ],
           ),
@@ -239,6 +241,7 @@ class _Collection extends StatelessWidget {
     required this.status,
     required this.searchQuery,
     required this.onClearSearch,
+    required this.onRefresh,
   });
 
   final List<Game> games;
@@ -247,6 +250,9 @@ class _Collection extends StatelessWidget {
   final GameStatus? status;
   final String searchQuery;
   final VoidCallback onClearSearch;
+
+  /// Reads the member's library again (pull to refresh).
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +291,7 @@ class _Collection extends StatelessWidget {
         onAction: p != null
             ? () => context.read<LibraryViewStore>().setPlatformFilter(null)
             : null,
+        onRefresh: onRefresh,
       );
     }
     return AnimatedSwitcher(
@@ -293,10 +300,12 @@ class _Collection extends StatelessWidget {
           ? LibraryPosterGrid(
               key: ValueKey('grid-${s?.name ?? 'all'}'),
               games: shown,
+              onRefresh: onRefresh,
             )
           : LibraryGameList(
               key: ValueKey('list-${s?.name ?? 'all'}'),
               games: shown,
+              onRefresh: onRefresh,
             ),
     );
   }

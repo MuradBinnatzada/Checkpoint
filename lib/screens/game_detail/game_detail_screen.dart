@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/discussion.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/game_detail/completion_time_field.dart';
@@ -18,7 +19,11 @@ import 'package:checkpoint/sheets/list_sheets.dart';
 import 'package:checkpoint/sheets/log_hours_sheet.dart';
 import 'package:checkpoint/sheets/review_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
+import 'package:checkpoint/state/community_times_store.dart';
+import 'package:checkpoint/state/discussions_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
+import 'package:checkpoint/state/game_friends_store.dart';
+import 'package:checkpoint/state/game_reviews_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -41,6 +46,25 @@ class GameDetailScreen extends StatelessWidget {
 
   static const double _expanded = 372;
 
+  /// Pull to refresh: the game as the library holds it, then what the screen
+  /// reads about it from the catalog and from the community.
+  Future<void> _refresh(BuildContext context, Game game) {
+    final loggedIn = context.read<AuthStore>().isLoggedIn;
+    return Future.wait([
+      context.read<GameDetailsStore>().load(game, force: true),
+      if (loggedIn) ...[
+        context.read<LibraryStore>().refresh(),
+        context.read<GameFriendsStore>().load(game.id),
+        context.read<CommunityTimesStore>().load(game.id),
+        context.read<GameReviewsStore>().load(game.id),
+        context.read<DiscussionsStore>().loadThreads(
+          DiscussionScope(gameId: game.id),
+          force: true,
+        ),
+      ],
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = context.watch<LibraryStore>().maybeGame(gameId);
@@ -50,164 +74,169 @@ class GameDetailScreen extends StatelessWidget {
     }
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      body: CustomScrollView(slivers: [
-        SliverAppBar(
-          pinned: true,
-          expandedHeight: _expanded,
-          backgroundColor: context.palette.background,
-          surfaceTintColor: Colors.transparent,
-          leadingWidth: 68,
-          leading: Padding(
-            padding: const EdgeInsetsDirectional.only(start: 12),
-            child: Center(
-              child: _RoundIconButton(
-                icon: Icons.arrow_back_ios_new_rounded,
-                tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onTap: () => Navigator.maybePop(context),
+      body: RefreshIndicator(
+        onRefresh: () => _refresh(context, game),
+        // Under the header's buttons, not behind them.
+        edgeOffset: MediaQuery.paddingOf(context).top + kToolbarHeight,
+        child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [
+          SliverAppBar(
+            pinned: true,
+            expandedHeight: _expanded,
+            backgroundColor: context.palette.background,
+            surfaceTintColor: Colors.transparent,
+            leadingWidth: 68,
+            leading: Padding(
+              padding: const EdgeInsetsDirectional.only(start: 12),
+              child: Center(
+                child: _RoundIconButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                  onTap: () => Navigator.maybePop(context),
+                ),
               ),
             ),
-          ),
-          actions: [
-            // Wishlist and favorite are always side by side, whatever the game's
-            // status. Favoriting a game that is not in the library adds it. The
-            // backdrop is saved on the library row, so it needs one.
-            if (isLoggedIn) ...[
-              if (canChangeBackdrop(game))
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 2),
-                  child: Center(
-                    child: _RoundIconButton(
-                      icon: Icons.wallpaper_rounded,
-                      tooltip: context.l10n.changeBackdrop,
-                      onTap: () => showGameBackdropSheet(context, game.id),
-                    ),
-                  ),
-                ),
-              if (canShareLinks && game.igdbId != null)
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 2),
-                  child: Center(
-                    child: _RoundIconButton(
-                      icon: Icons.share_rounded,
-                      tooltip: context.l10n.copyLink,
-                      // The link finds the game in the catalog, so it goes there first.
-                      onTap: () => copyShareLink(
-                        context,
-                        GameLink(game.igdbId!),
-                        before: () => context.read<LibraryStore>().ensureInCatalog(game),
+            actions: [
+              // Wishlist and favorite are always side by side, whatever the game's
+              // status. Favoriting a game that is not in the library adds it. The
+              // backdrop is saved on the library row, so it needs one.
+              if (isLoggedIn) ...[
+                if (canChangeBackdrop(game))
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 2),
+                    child: Center(
+                      child: _RoundIconButton(
+                        icon: Icons.wallpaper_rounded,
+                        tooltip: context.l10n.changeBackdrop,
+                        onTap: () => showGameBackdropSheet(context, game.id),
                       ),
                     ),
                   ),
-                ),
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 2),
-                child: Center(
-                  child: _RoundIconButton(
-                    icon: Icons.playlist_add_rounded,
-                    tooltip: context.l10n.addToList,
-                    onTap: () => showAddToListSheet(context, game),
+                if (canShareLinks && game.igdbId != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 2),
+                    child: Center(
+                      child: _RoundIconButton(
+                        icon: Icons.share_rounded,
+                        tooltip: context.l10n.copyLink,
+                        // The link finds the game in the catalog, so it goes there first.
+                        onTap: () => copyShareLink(
+                          context,
+                          GameLink(game.igdbId!),
+                          before: () => context.read<LibraryStore>().ensureInCatalog(game),
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 2),
+                  child: Center(
+                    child: _RoundIconButton(
+                      icon: Icons.playlist_add_rounded,
+                      tooltip: context.l10n.addToList,
+                      onTap: () => showAddToListSheet(context, game),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 2),
-                child: Center(child: _WishlistButton(game: game)),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 12),
-                child: Center(
-                  child: _RoundIconButton(
-                    icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    color: game.isFavorite ? Palette.dark.danger : Colors.white,
-                    tooltip: game.isFavorite ? context.l10n.removeFromFavorites : context.l10n.addToFavorites,
-                    onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 2),
+                  child: Center(child: _WishlistButton(game: game)),
+                ),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 12),
+                  child: Center(
+                    child: _RoundIconButton(
+                      icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      color: game.isFavorite ? Palette.dark.danger : Colors.white,
+                      tooltip: game.isFavorite ? context.l10n.removeFromFavorites : context.l10n.addToFavorites,
+                      onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
-          flexibleSpace: LayoutBuilder(builder: (context, c) {
-            final top = MediaQuery.paddingOf(context).top;
-            final collapsed = kToolbarHeight + top;
-            final t = ((c.maxHeight - collapsed) / (_expanded - kToolbarHeight)).clamp(0.0, 1.0).toDouble();
-            // The header art is always laid out at its full expanded size and anchored
-            // to the bottom, then clipped. That way the title/year column is never
-            // squeezed into the shrinking app bar (the source of the bottom overflow).
-            // The status bar's icons are light on the art, and the theme's once
-            // the header has collapsed onto the page.
-            return AnnotatedRegion<SystemUiOverlayStyle>(
-              value: systemBarsStyle(t > 0.5 ? Palette.dark : context.palette),
-              child: ClipRect(
-                child: Stack(fit: StackFit.expand, children: [
-                  Opacity(
-                    opacity: t,
-                    child: OverflowBox(
-                      alignment: Alignment.bottomCenter,
-                      minHeight: _expanded + top,
-                      maxHeight: _expanded + top,
-                      // Text on the cover art, under a dark scrim: dark in either theme.
-                      child: DarkArtTheme(child: _DetailHeaderArt(game: game, topInset: top)),
-                    ),
-                  ),
-                  PositionedDirectional(
-                    start: 68,
-                    end: 20,
-                    bottom: 0,
-                    height: kToolbarHeight,
-                    child: Opacity(
-                      opacity: 1 - t,
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            flexibleSpace: LayoutBuilder(builder: (context, c) {
+              final top = MediaQuery.paddingOf(context).top;
+              final collapsed = kToolbarHeight + top;
+              final t = ((c.maxHeight - collapsed) / (_expanded - kToolbarHeight)).clamp(0.0, 1.0).toDouble();
+              // The header art is always laid out at its full expanded size and anchored
+              // to the bottom, then clipped. That way the title/year column is never
+              // squeezed into the shrinking app bar (the source of the bottom overflow).
+              // The status bar's icons are light on the art, and the theme's once
+              // the header has collapsed onto the page.
+              return AnnotatedRegion<SystemUiOverlayStyle>(
+                value: systemBarsStyle(t > 0.5 ? Palette.dark : context.palette),
+                child: ClipRect(
+                  child: Stack(fit: StackFit.expand, children: [
+                    Opacity(
+                      opacity: t,
+                      child: OverflowBox(
+                        alignment: Alignment.bottomCenter,
+                        minHeight: _expanded + top,
+                        maxHeight: _expanded + top,
+                        // Text on the cover art, under a dark scrim: dark in either theme.
+                        child: DarkArtTheme(child: _DetailHeaderArt(game: game, topInset: top)),
                       ),
                     ),
-                  ),
-                ]),
-              ),
-            );
-          }),
-        ),
-        SliverToBoxAdapter(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, bottom + 32),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _ProgressPanel(game: game),
-                  const SizedBox(height: 14),
-                  _RatingPanel(game: game),
-                  const SizedBox(height: 14),
-                  Panel(
-                    title: context.l10n.playedOn,
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      PlatformChips(
-                        platforms: game.playedOnOptions,
-                        selected: game.playedOn,
-                        onSelected: (p) => context.read<LibraryStore>().setPlayedOn(game.id, p),
+                    PositionedDirectional(
+                      start: 68,
+                      end: 20,
+                      bottom: 0,
+                      height: kToolbarHeight,
+                      child: Opacity(
+                        opacity: 1 - t,
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        ),
                       ),
-                      if (game.playedOn == null) ...[
-                        const SizedBox(height: 10),
-                        Text(context.l10n.playedOnHelp, style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35)),
-                      ],
-                    ]),
-                  ),
-                  const SizedBox(height: 14),
-                  Panel(title: context.l10n.updateStatus, child: _StatusActions(game: game)),
-                  const SizedBox(height: 14),
-                  _SessionsPanel(gameId: game.id),
-                  _AchievementsPanel(game: game),
-                  FriendsPanel(game: game),
-                  ReviewsPanel(game: game),
-                  DiscussionsPanel(game: game),
-                  AboutPanel(game: game),
-                  GameInfoSections(game: game),
-                ]),
+                    ),
+                  ]),
+                ),
+              );
+            }),
+          ),
+          SliverToBoxAdapter(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, bottom + 32),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _ProgressPanel(game: game),
+                    const SizedBox(height: 14),
+                    _RatingPanel(game: game),
+                    const SizedBox(height: 14),
+                    Panel(
+                      title: context.l10n.playedOn,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        PlatformChips(
+                          platforms: game.playedOnOptions,
+                          selected: game.playedOn,
+                          onSelected: (p) => context.read<LibraryStore>().setPlayedOn(game.id, p),
+                        ),
+                        if (game.playedOn == null) ...[
+                          const SizedBox(height: 10),
+                          Text(context.l10n.playedOnHelp, style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35)),
+                        ],
+                      ]),
+                    ),
+                    const SizedBox(height: 14),
+                    Panel(title: context.l10n.updateStatus, child: _StatusActions(game: game)),
+                    const SizedBox(height: 14),
+                    _SessionsPanel(gameId: game.id),
+                    _AchievementsPanel(game: game),
+                    FriendsPanel(game: game),
+                    ReviewsPanel(game: game),
+                    DiscussionsPanel(game: game),
+                    AboutPanel(game: game),
+                    GameInfoSections(game: game),
+                  ]),
+                ),
               ),
             ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 }
