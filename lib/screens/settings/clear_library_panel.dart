@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/settings/danger_panel.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -21,21 +22,17 @@ class _ClearLibraryPanelState extends State<ClearLibraryPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear your library?'),
-        content: const Text(
-          'This removes every game from your library, along with your '
-          'ratings, favorites, play logs and achievements. Your profile and '
-          'connected accounts stay. It can\'t be undone.',
-        ),
+        title: Text(context.l10n.clearLibraryTitle),
+        content: Text(context.l10n.clearLibraryBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: DangerPanel.colorOf(context)),
-            child: const Text('Clear library'),
+            child: Text(context.l10n.clearLibrary),
           ),
         ],
       ),
@@ -47,6 +44,7 @@ class _ClearLibraryPanelState extends State<ClearLibraryPanel> {
   Future<void> _clear() async {
     final library = context.read<LibraryStore>();
     final messenger = ScaffoldMessenger.of(context);
+    final cleared = context.l10n.libraryCleared;
 
     setState(() => _clearing = true);
     final error = await library.clearLibrary();
@@ -55,7 +53,7 @@ class _ClearLibraryPanelState extends State<ClearLibraryPanel> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(error ?? 'Your library was cleared')),
+        SnackBar(content: Text(error ?? cleared)),
       );
   }
 
@@ -63,12 +61,9 @@ class _ClearLibraryPanelState extends State<ClearLibraryPanel> {
   Widget build(BuildContext context) {
     final syncing = context.watch<LibraryStore>().isSyncing;
     return DangerPanel(
-      title: 'Clear library',
-      description:
-          'Removes every game, rating and play log from your library, e.g. to '
-          'start over with another Steam account. Your profile and connected '
-          'accounts stay. This can\'t be undone.',
-      buttonLabel: 'Clear library',
+      title: context.l10n.clearLibrary,
+      description: context.l10n.clearLibraryDescription,
+      buttonLabel: context.l10n.clearLibrary,
       icon: Icons.layers_clear_rounded,
       busy: _clearing,
       // A sync is running; clearing waits for it, but only Sync shows progress.

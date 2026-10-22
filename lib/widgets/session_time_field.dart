@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 
@@ -29,13 +30,13 @@ class SessionTimeField extends StatelessWidget {
       initialDate: initial,
       firstDate: DateTime(2000),
       lastDate: now,
-      helpText: 'Day played',
+      helpText: context.l10n.dayPlayed,
     );
     if (day == null || !context.mounted) return;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initial),
-      helpText: 'Time played',
+      helpText: context.l10n.timePlayed,
     );
     if (time == null) return;
     final picked = DateTime(day.year, day.month, day.day, time.hour, time.minute);
@@ -46,7 +47,7 @@ class SessionTimeField extends StatelessWidget {
   Widget build(BuildContext context) {
     final at = value;
     final label = at == null
-        ? 'Now'
+        ? context.l10n.now
         : '${fmtDay(at)}, ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(at))}';
     return Material(
       color: context.palette.surfaceHigh,
@@ -55,19 +56,19 @@ class SessionTimeField extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: () => _pick(context),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 6, 6),
           child: Row(children: [
             Icon(Icons.event_rounded, size: 20, color: context.palette.muted),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('When', style: TextStyle(color: context.palette.muted, fontSize: 12)),
+                Text(context.l10n.when, style: TextStyle(color: context.palette.muted, fontSize: 12)),
                 Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
               ]),
             ),
             if (at != null && allowNow)
               IconButton(
-                tooltip: 'Played just now',
+                tooltip: context.l10n.playedJustNow,
                 onPressed: () => onChanged(null),
                 icon: const Icon(Icons.close_rounded, size: 20),
               )

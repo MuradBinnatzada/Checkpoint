@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
@@ -44,7 +45,7 @@ class GameDetailScreen extends StatelessWidget {
     final game = context.watch<LibraryStore>().maybeGame(gameId);
     final isLoggedIn = context.watch<AuthStore>().isLoggedIn;
     if (game == null) {
-      return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.error_outline_rounded, title: 'Game not found', message: 'It may have been removed.'));
+      return Scaffold(appBar: AppBar(), body: EmptyState(icon: Icons.error_outline_rounded, title: context.l10n.gameNotFoundTitle, message: context.l10n.gameNotFoundMessage));
     }
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
@@ -56,7 +57,7 @@ class GameDetailScreen extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           leadingWidth: 68,
           leading: Padding(
-            padding: const EdgeInsets.only(left: 12),
+            padding: const EdgeInsetsDirectional.only(start: 12),
             child: Center(
               child: _RoundIconButton(
                 icon: Icons.arrow_back_ios_new_rounded,
@@ -72,22 +73,22 @@ class GameDetailScreen extends StatelessWidget {
             if (isLoggedIn) ...[
               if (canChangeBackdrop(game))
                 Padding(
-                  padding: const EdgeInsets.only(right: 2),
+                  padding: const EdgeInsetsDirectional.only(end: 2),
                   child: Center(
                     child: _RoundIconButton(
                       icon: Icons.wallpaper_rounded,
-                      tooltip: 'Change backdrop',
+                      tooltip: context.l10n.changeBackdrop,
                       onTap: () => showGameBackdropSheet(context, game.id),
                     ),
                   ),
                 ),
               if (canShareLinks && game.igdbId != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: 2),
+                  padding: const EdgeInsetsDirectional.only(end: 2),
                   child: Center(
                     child: _RoundIconButton(
                       icon: Icons.share_rounded,
-                      tooltip: 'Copy link',
+                      tooltip: context.l10n.copyLink,
                       // The link finds the game in the catalog, so it goes there first.
                       onTap: () => copyShareLink(
                         context,
@@ -98,26 +99,26 @@ class GameDetailScreen extends StatelessWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.only(right: 2),
+                padding: const EdgeInsetsDirectional.only(end: 2),
                 child: Center(
                   child: _RoundIconButton(
                     icon: Icons.playlist_add_rounded,
-                    tooltip: 'Add to list',
+                    tooltip: context.l10n.addToList,
                     onTap: () => showAddToListSheet(context, game),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(right: 2),
+                padding: const EdgeInsetsDirectional.only(end: 2),
                 child: Center(child: _WishlistButton(game: game)),
               ),
               Padding(
-                padding: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsetsDirectional.only(end: 12),
                 child: Center(
                   child: _RoundIconButton(
                     icon: game.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     color: game.isFavorite ? Palette.dark.danger : Colors.white,
-                    tooltip: game.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                    tooltip: game.isFavorite ? context.l10n.removeFromFavorites : context.l10n.addToFavorites,
                     onTap: () => context.read<LibraryStore>().toggleFavorite(game.id),
                   ),
                 ),
@@ -147,15 +148,15 @@ class GameDetailScreen extends StatelessWidget {
                       child: DarkArtTheme(child: _DetailHeaderArt(game: game, topInset: top)),
                     ),
                   ),
-                  Positioned(
-                    left: 68,
-                    right: 20,
+                  PositionedDirectional(
+                    start: 68,
+                    end: 20,
                     bottom: 0,
                     height: kToolbarHeight,
                     child: Opacity(
                       opacity: 1 - t,
                       child: Align(
-                        alignment: Alignment.centerLeft,
+                        alignment: AlignmentDirectional.centerStart,
                         child: Text(game.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                       ),
                     ),
@@ -177,7 +178,7 @@ class GameDetailScreen extends StatelessWidget {
                   _RatingPanel(game: game),
                   const SizedBox(height: 14),
                   Panel(
-                    title: 'Played on',
+                    title: context.l10n.playedOn,
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       PlatformChips(
                         platforms: game.playedOnOptions,
@@ -186,12 +187,12 @@ class GameDetailScreen extends StatelessWidget {
                       ),
                       if (game.playedOn == null) ...[
                         const SizedBox(height: 10),
-                        Text('Pick the platform you play this on. It is used in your session log and profile stats.', style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35)),
+                        Text(context.l10n.playedOnHelp, style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35)),
                       ],
                     ]),
                   ),
                   const SizedBox(height: 14),
-                  Panel(title: 'Update status', child: _StatusActions(game: game)),
+                  Panel(title: context.l10n.updateStatus, child: _StatusActions(game: game)),
                   const SizedBox(height: 14),
                   _SessionsPanel(gameId: game.id),
                   _AchievementsPanel(game: game),
@@ -257,10 +258,10 @@ class _WishlistButton extends StatelessWidget {
               ? Colors.white38
               : Colors.white,
       tooltip: wishlisted
-          ? 'Remove from wishlist'
+          ? context.l10n.removeFromWishlist
           : movedPast
-              ? 'Already in your library'
-              : 'Add to wishlist',
+              ? context.l10n.alreadyInLibrary
+              : context.l10n.addToWishlist,
       onTap: () => toggleWishlist(context, game),
     );
   }
@@ -281,7 +282,7 @@ void toggleWishlist(BuildContext context, Game game) {
   if (game.inLibrary && !wishlisted) {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('${game.title} is already in your library as ${game.status!.label}')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.alreadyInLibraryAs(game.title, game.status!.label))));
     return;
   }
   if (wishlisted) {
@@ -293,11 +294,11 @@ void toggleWishlist(BuildContext context, Game game) {
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text(wishlisted ? 'Removed ${game.title} from your wishlist' : 'Added ${game.title} to your wishlist'),
+      content: Text(wishlisted ? context.l10n.removedFromWishlist(game.title) : context.l10n.addedToWishlist(game.title)),
       duration: undoSnackBarDuration,
       persist: false,
       action: SnackBarAction(
-        label: 'Undo',
+        label: context.l10n.undo,
         onPressed: () => wishlisted ? store.addToLibrary(game.id, GameStatus.wishlist) : store.removeFromLibrary(game.id),
       ),
     ));
@@ -317,7 +318,7 @@ class _DetailHeaderArt extends StatelessWidget {
       Padding(
         padding: EdgeInsets.fromLTRB(20, topInset + kToolbarHeight, 20, 20),
         child: Align(
-          alignment: Alignment.bottomLeft,
+          alignment: AlignmentDirectional.bottomStart,
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Container(
               width: 118,
@@ -340,7 +341,7 @@ class _DetailHeaderArt extends StatelessWidget {
                       if (game.hasReleaseYear) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'Released ${game.releaseYear}',
+                          context.l10n.releasedYear(game.releaseYear),
                           style: const TextStyle(
                             color: Colors.white60,
                             fontSize: 13,
@@ -401,7 +402,7 @@ class _ProgressPanel extends StatelessWidget {
         // off the edge.
         Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 10, children: [
           game.status == null
-              ? Text('Not in your library', style: TextStyle(color: context.palette.muted))
+              ? Text(context.l10n.notInYourLibrary, style: TextStyle(color: context.palette.muted))
               : Wrap(spacing: 6, runSpacing: 6, children: [
                   StatusPill(game.status!),
                   if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
@@ -410,12 +411,12 @@ class _ProgressPanel extends StatelessWidget {
           FilledButton.tonalIcon(
             onPressed: () => showLogHoursSheet(context, game.id),
             icon: const Icon(Icons.timer_outlined, size: 18),
-            label: const Text('Log Hours'),
+            label: Text(context.l10n.logHours),
           ),
         ]),
         const SizedBox(height: 16),
         Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
-          stat('${fmtHours(game.hoursPlayed)} h', 'Played'),
+          stat(context.l10n.hoursShort(fmtHours(game.hoursPlayed)), context.l10n.played),
           if (context.watch<AuthStore>().isLoggedIn) PlayTimerButton(game: game),
         ]),
       ]),
@@ -430,15 +431,15 @@ class _RatingPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Panel(
-      title: 'Your rating',
+      title: context.l10n.yourRating,
       trailing: game.rating > 0
-          ? TextButton(onPressed: () => context.read<LibraryStore>().setRating(game.id, 0), child: const Text('Clear'))
+          ? TextButton(onPressed: () => context.read<LibraryStore>().setRating(game.id, 0), child: Text(context.l10n.clear))
           : null,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         StarRating(rating: game.rating, size: 44, onChanged: (v) => context.read<LibraryStore>().setRating(game.id, v)),
         const SizedBox(height: 8),
         Text(
-          game.rating > 0 ? '${fmtHours(game.rating)} / 5' : 'Tap or drag across the stars (half-stars supported)',
+          game.rating > 0 ? '${fmtHours(game.rating)} / 5' : context.l10n.ratingHint,
           style: TextStyle(color: game.rating > 0 ? context.palette.star : context.palette.muted, fontWeight: FontWeight.w600, fontSize: 13),
         ),
         if (context.watch<AuthStore>().isLoggedIn) ...[
@@ -448,7 +449,7 @@ class _RatingPanel extends StatelessWidget {
               onPressed: () => showReviewSheet(context, game.id),
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               icon: const Icon(Icons.rate_review_outlined, size: 18),
-              label: const Text('Add a short review'),
+              label: Text(context.l10n.addShortReview),
             )
           else
             InkWell(
@@ -481,6 +482,7 @@ class _StatusActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.read<LibraryStore>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
 
     void change(GameStatus next, String message) {
       final prev = game.status;
@@ -495,7 +497,7 @@ class _StatusActions extends StatelessWidget {
           persist: false,
           action: prev == null
               ? null
-              : SnackBarAction(label: 'Undo', onPressed: () => store.setStatus(game.id, prev, stillPlaying: prevStillPlaying)),
+              : SnackBarAction(label: l10n.undo, onPressed: () => store.setStatus(game.id, prev, stillPlaying: prevStillPlaying)),
         ));
     }
 
@@ -505,10 +507,10 @@ class _StatusActions extends StatelessWidget {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text(value ? 'Listed under Playing too' : 'No longer under Playing'),
+          content: Text(value ? l10n.stillPlayingOn : l10n.stillPlayingOff),
           duration: undoSnackBarDuration,
           persist: false,
-          action: SnackBarAction(label: 'Undo', onPressed: () => store.setStillPlaying(game.id, !value)),
+          action: SnackBarAction(label: l10n.undo, onPressed: () => store.setStillPlaying(game.id, !value)),
         ));
     }
 
@@ -519,38 +521,38 @@ class _StatusActions extends StatelessWidget {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text(value ? mark.done : 'No longer marked ${mark.title}'),
+          content: Text(value ? mark.done : l10n.noLongerMarked(mark.title)),
           duration: undoSnackBarDuration,
           persist: false,
-          action: SnackBarAction(label: 'Undo', onPressed: () => store.setPerfected(game.id, !value)),
+          action: SnackBarAction(label: l10n.undo, onPressed: () => store.setPerfected(game.id, !value)),
         ));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 10, runSpacing: 10, children: [
         FilledButton.icon(
-          onPressed: game.status == GameStatus.completed ? null : () => change(GameStatus.completed, 'Marked as completed'),
+          onPressed: game.status == GameStatus.completed ? null : () => change(GameStatus.completed, l10n.markedAsCompleted),
           icon: const Icon(Icons.verified_rounded, size: 18),
-          label: const Text('Mark as Completed'),
+          label: Text(l10n.markAsCompleted),
         ),
         FilledButton.tonalIcon(
-          onPressed: game.status == GameStatus.toPlay ? null : () => change(GameStatus.toPlay, 'Moved to To Play'),
+          onPressed: game.status == GameStatus.toPlay ? null : () => change(GameStatus.toPlay, l10n.movedToToPlay),
           icon: const Icon(Icons.inventory_2_rounded, size: 18),
-          label: const Text('Move to To Play'),
+          label: Text(l10n.moveToToPlay),
         ),
         OutlinedButton.icon(
-          onPressed: game.status == GameStatus.dropped ? null : () => change(GameStatus.dropped, 'Dropped'),
+          onPressed: game.status == GameStatus.dropped ? null : () => change(GameStatus.dropped, l10n.droppedNotice),
           style: OutlinedButton.styleFrom(foregroundColor: context.palette.danger, side: BorderSide(color: context.palette.danger.withValues(alpha: 0.6))),
           icon: const Icon(Icons.block_rounded, size: 18),
-          label: const Text('Drop'),
+          label: Text(l10n.drop),
         ),
         // A completed game is played on with the switch below instead, so it
         // stays Completed.
         if (game.status != GameStatus.playing && game.status != GameStatus.completed)
           TextButton.icon(
-            onPressed: () => change(GameStatus.playing, 'Started playing'),
+            onPressed: () => change(GameStatus.playing, l10n.startedPlaying),
             icon: const Icon(Icons.play_circle_rounded, size: 18),
-            label: const Text('Start Playing'),
+            label: Text(l10n.startPlaying),
           ),
       ]),
       if (game.status == GameStatus.completed) ...[
@@ -560,8 +562,8 @@ class _StatusActions extends StatelessWidget {
           onChanged: setStillPlaying,
           icon: GameStatus.playing.icon,
           color: GameStatus.playing.color,
-          title: 'Still playing',
-          subtitle: 'Keep it under Playing too, for online, post-game or DLC',
+          title: l10n.stillPlaying,
+          subtitle: l10n.stillPlayingSubtitle,
         ),
       ],
       // Named by where it is played: pick PS5 above and it is the Platinum.
@@ -585,7 +587,7 @@ class _StatusActions extends StatelessWidget {
           onPressed: () => _confirmRemove(context, game),
           style: TextButton.styleFrom(foregroundColor: context.palette.danger),
           icon: const Icon(Icons.delete_outline_rounded, size: 18),
-          label: const Text('Remove from Library'),
+          label: Text(l10n.removeFromLibrary),
         ),
       ]
     ]);
@@ -626,7 +628,7 @@ class _FlagSwitch extends StatelessWidget {
         value: value,
         onChanged: onChanged,
         dense: true,
-        contentPadding: const EdgeInsets.only(left: 14, right: 8),
+        contentPadding: const EdgeInsetsDirectional.only(start: 14, end: 8),
         secondary: Icon(icon, color: value ? color : context.palette.muted),
         title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
         subtitle: Text(
@@ -643,23 +645,23 @@ class _FlagSwitch extends StatelessWidget {
 Future<void> _confirmRemove(BuildContext context, Game game) async {
   final store = context.read<LibraryStore>();
   final messenger = ScaffoldMessenger.of(context);
+  final removedMessage = context.l10n.removedFromLibrary(game.title);
   final sessions = store.logsFor(game.id).length;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Remove ${game.title}?'),
+      title: Text(context.l10n.removeGameTitle(game.title)),
       content: Text(
         sessions == 0
-            ? 'Your status, rating and hours for it are removed. It can\'t be undone.'
-            : 'Your status, rating and hours for it are removed, along with '
-                '$sessions play session${sessions == 1 ? '' : 's'}. It can\'t be undone.',
+            ? context.l10n.removeGameBody
+            : context.l10n.removeGameBodyWithSessions(sessions),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.l10n.cancel)),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           style: TextButton.styleFrom(foregroundColor: context.palette.danger),
-          child: const Text('Remove'),
+          child: Text(context.l10n.remove),
         ),
       ],
     ),
@@ -669,7 +671,7 @@ Future<void> _confirmRemove(BuildContext context, Game game) async {
   Navigator.maybePop(context);
   messenger
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text('Removed ${game.title} from library')));
+    ..showSnackBar(SnackBar(content: Text(removedMessage)));
 }
 
 class _SessionsPanel extends StatelessWidget {
@@ -685,13 +687,13 @@ class _SessionsPanel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Panel(
-        title: 'Recent sessions',
+        title: context.l10n.recentSessions,
         trailing: logs.length > _shown
             ? TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => SessionsScreen(gameId: gameId)),
                 ),
-                child: Text('See all ${logs.length}'),
+                child: Text(context.l10n.seeAll(logs.length)),
               )
             : null,
         child: Column(children: [
@@ -776,7 +778,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
   Widget _prompt() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(
-        'Pull your unlocked achievements for this game from Steam.',
+        context.l10n.loadSteamAchievementsHelp,
         style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
       ),
       const SizedBox(height: 12),
@@ -787,7 +789,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
           icon: _loading
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.emoji_events_rounded, size: 18),
-          label: Text(_loading ? 'Loading achievements…' : 'Load Steam Achievements'),
+          label: Text(_loading ? context.l10n.loadingAchievements : context.l10n.loadSteamAchievements),
         ),
       ),
       if (_error != null) _errorText(),
@@ -825,7 +827,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
         child: FilledButton.tonalIcon(
           onPressed: () => showOwnGameAchievementsDialog(context, gameId: widget.game.id, canRefresh: canLoad),
           icon: const Icon(Icons.emoji_events_rounded, size: 18),
-          label: const Text('Show achievements'),
+          label: Text(context.l10n.showAchievements),
         ),
       ),
       if (_error != null) _errorText(),
@@ -848,7 +850,7 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
               child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             )
           : IconButton(
-              tooltip: 'Refresh from Steam',
+              tooltip: context.l10n.refreshFromSteam,
               visualDensity: VisualDensity.compact,
               onPressed: _load,
               icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
@@ -860,13 +862,13 @@ class _AchievementsPanelState extends State<_AchievementsPanel> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Panel(
-        title: 'Achievements',
+        title: context.l10n.achievements,
         trailing: trailing,
         child: achievements == null
             ? (_checking ? _checkingIndicator() : _prompt())
             : achievements.isEmpty
                 ? Text(
-                    'Steam lists no achievements for this game.',
+                    context.l10n.noSteamAchievements,
                     style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
                   )
                 : _summary(achievements, canLoad: canLoad),

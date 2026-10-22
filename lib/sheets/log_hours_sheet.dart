@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -15,7 +16,7 @@ bool _blockedByReadOnly(BuildContext context) {
   if (context.read<AuthStore>().isLoggedIn) return false;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('Log in to track games')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.logInToTrackGames)));
   return true;
 }
 
@@ -58,21 +59,24 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
     final valid = total != null && total >= 0 && total <= maxTotalHours;
     final delta = total == null ? null : total - _game.hoursPlayed;
 
+    final l10n = context.l10n;
     String preview;
     if (delta == null) {
-      preview = 'Enter a valid number of hours.';
+      preview = l10n.hoursInvalid;
     } else if (!valid) {
-      preview = 'The total can be at most ${fmtThousands(maxTotalHours.round())} hours.';
+      preview = l10n.totalHoursMax(fmtThousands(maxTotalHours.round()));
     } else if (delta > 0.04) {
-      preview = 'Adds a ${fmtHours(delta)} h session on ${_platform?.label ?? 'your platform'}.';
+      preview = _platform == null
+          ? l10n.addsSession(fmtHours(delta))
+          : l10n.addsSessionOn(fmtHours(delta), _platform!.label);
     } else if (delta < -0.04) {
-      preview = 'Corrects your total by ${fmtHours(delta)} h.';
+      preview = l10n.correctsTotal(fmtHours(delta));
     } else {
-      preview = 'No change to your total time.';
+      preview = l10n.noChangeToTotal;
     }
 
     return SheetFrame(
-      title: 'Log hours',
+      title: l10n.logHoursTitle,
       subtitle: _game.title,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         TextField(
@@ -80,20 +84,20 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration(context, 'Total played', suffix: 'hrs'),
+          decoration: fieldDecoration(context, l10n.totalPlayed, suffix: l10n.hrsUnit),
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 8, children: [
           for (final h in const <double>[0.5, 1, 2, 5])
             ActionChip(
-              label: Text('+${fmtHours(h)}h'),
+              label: Text('+${l10n.hoursCompact(fmtHours(h))}'),
               onPressed: () => setState(() => _total.text = fmtHours((parseNum(_total.text) ?? 0) + h)),
             ),
         ]),
         const SizedBox(height: 6),
         Text(preview, style: TextStyle(color: valid ? context.palette.muted : context.palette.danger, fontSize: 12.5)),
         const SizedBox(height: 18),
-        const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
+        Text(l10n.playedOn, style: const TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         PlatformChips(platforms: _availablePlatforms, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
         const SizedBox(height: 18),
@@ -101,7 +105,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, l10n.noteOptional).copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -119,7 +123,7 @@ class _LogHoursSheetState extends State<LogHoursSheet> {
                     );
                     Navigator.pop(context);
                   },
-            child: const Text('Save'),
+            child: Text(l10n.save),
           ),
         ),
       ]),

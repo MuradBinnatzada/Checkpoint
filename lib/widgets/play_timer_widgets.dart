@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -55,18 +56,15 @@ Future<void> startPlayTimer(BuildContext context, Game game) async {
   final timers = context.read<PlayTimerStore>();
   final running = timers.running;
   if (running != null && running.gameId != game.id) {
-    final other = context.read<LibraryStore>().maybeGame(running.gameId)?.title ?? 'another game';
+    final other = context.read<LibraryStore>().maybeGame(running.gameId)?.title ?? context.l10n.anotherGame;
     final replace = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Replace the running timer?'),
-        content: Text(
-          'A timer is running for $other. Starting one for ${game.title} '
-          'throws its time away. To keep it, stop it and log it first.',
-        ),
+        title: Text(context.l10n.replaceTimerTitle),
+        content: Text(context.l10n.replaceTimerBody(other, game.title)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Replace')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.l10n.cancel)),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.l10n.replace)),
         ],
       ),
     );
@@ -88,14 +86,14 @@ class PlayTimerButton extends StatelessWidget {
       return OutlinedButton.icon(
         onPressed: () => startPlayTimer(context, game),
         icon: const Icon(Icons.play_arrow_rounded, size: 18),
-        label: const Text('Start timer'),
+        label: Text(context.l10n.startTimer),
       );
     }
     return FilledButton.icon(
       onPressed: () => showTimerLogSheet(context),
       icon: const Icon(Icons.stop_rounded, size: 18),
       label: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Stop · '),
+        Text('${context.l10n.stop} · '),
         const ElapsedText(),
       ]),
     );
@@ -117,14 +115,14 @@ class PlayTimerBar extends StatelessWidget {
       child: InkWell(
         onTap: game == null ? null : () => openGame(context, game.id),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
           child: Row(children: [
             Icon(Icons.timer_rounded, color: context.palette.accent, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
-                  game?.title ?? 'Playing',
+                  game?.title ?? GameStatus.playing.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700),
@@ -135,7 +133,7 @@ class PlayTimerBar extends StatelessWidget {
             FilledButton.tonalIcon(
               onPressed: () => showTimerLogSheet(context),
               icon: const Icon(Icons.stop_rounded, size: 18),
-              label: const Text('Stop'),
+              label: Text(context.l10n.stop),
             ),
           ]),
         ),

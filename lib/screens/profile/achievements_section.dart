@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/screens/profile/game_achievements_dialog.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -81,7 +82,7 @@ class _AchievementsSectionState extends State<AchievementsSection> {
         ),
       ),
       LoadStatus.ready || LoadStatus.failed => IconButton(
-        tooltip: 'Refresh achievements',
+        tooltip: context.l10n.refreshAchievements,
         visualDensity: VisualDensity.compact,
         onPressed: () => _load(force: true),
         icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
@@ -113,7 +114,7 @@ class _AchievementsSectionState extends State<AchievementsSection> {
     };
 
     return Panel(
-      title: 'Achievements',
+      title: context.l10n.achievements,
       trailing: trailing,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,7 +156,7 @@ class _AchievementsSectionState extends State<AchievementsSection> {
                   child: TextButton(
                     onPressed: () => setState(() => _visible += _pageSize),
                     child: Text(
-                      'Show $nextPage more ($remaining left)',
+                      context.l10n.showMoreLeft(nextPage, remaining),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -166,7 +167,7 @@ class _AchievementsSectionState extends State<AchievementsSection> {
               if (_visible > _initialGames)
                 TextButton(
                   onPressed: () => setState(() => _visible = _initialGames),
-                  child: const Text('Show less'),
+                  child: Text(context.l10n.showLess),
                 ),
             ],
           ),
@@ -185,9 +186,8 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       own
-          ? 'No achievements yet. Sync your Steam library (Settings > Account) '
-                'to list every game you unlocked achievements in.'
-          : 'No Steam achievements to show yet.',
+          ? context.l10n.noAchievementsOwn
+          : context.l10n.noAchievementsOther,
       style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
     );
   }
@@ -244,16 +244,16 @@ class _TotalsHeader extends StatelessWidget {
     final done = totals.allUnlocked;
     // Floor, so 99.6% never reads as 100% while something is still locked.
     final percent = done ? 100 : (totals.progress * 100).floor();
-    final games = '${totals.games} ${totals.games == 1 ? 'game' : 'games'}';
+    final l10n = context.l10n;
+    final games = l10n.gamesCount(totals.games);
     final detail = done
-        ? 'Every achievement unlocked · $games'
+        ? '${l10n.everyAchievementUnlocked} · $games'
         : '$percent% · $games'
-              '${totals.completedGames > 0 ? ' · ${totals.completedGames} completed' : ''}';
+              '${totals.completedGames > 0 ? ' · ${l10n.completedCount(totals.completedGames)}' : ''}';
 
     return Semantics(
       container: true,
-      label:
-          '${totals.unlocked} of ${totals.total} achievements unlocked. $detail',
+      label: '${l10n.achievementsUnlockedOf(totals.unlocked, totals.total)}. $detail',
       excludeSemantics: true,
       child: _Glow(
         active: done,
@@ -276,7 +276,7 @@ class _TotalsHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '/ ${totals.total} unlocked',
+                  l10n.slashUnlocked(totals.total),
                   style: TextStyle(
                     color: context.palette.muted,
                     fontSize: 14,
@@ -321,14 +321,14 @@ class _Failed extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Could not load achievements. Check your connection and try again.',
+          context.l10n.achievementsLoadFailedOffline,
           style: TextStyle(color: context.palette.danger, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: onRetry,
           icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: const Text('Try again'),
+          label: Text(context.l10n.tryAgain),
         ),
       ],
     );

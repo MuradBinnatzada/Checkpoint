@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:checkpoint/app/auth_gate.dart';
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/app/new_password_screen.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/lists/lists_screen.dart';
@@ -146,7 +147,7 @@ class _AppShellState extends State<AppShell> {
           if (!mounted) return;
           if (game == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('That game isn\'t in Checkpoint yet.')),
+              SnackBar(content: Text(context.l10n.linkGameNotFound)),
             );
           } else {
             openGame(context, game.id);
@@ -172,11 +173,11 @@ class _AppShellState extends State<AppShell> {
       ..showSnackBar(SnackBar(
         content: Text(
           out.length == 1
-              ? '${game.title} from your wishlist is out now'
-              : '${out.length} games from your wishlist are out now',
+              ? context.l10n.wishlistGameOut(game.title)
+              : context.l10n.wishlistGamesOut(out.length),
         ),
         action: out.length == 1
-            ? SnackBarAction(label: 'Open', onPressed: () => openGame(context, game.id))
+            ? SnackBarAction(label: context.l10n.open, onPressed: () => openGame(context, game.id))
             : null,
       ));
   }
@@ -189,24 +190,25 @@ class _AppShellState extends State<AppShell> {
     if (unlock == null) return;
     final earned = unlock.milestones;
     final count = earned.length;
+    final l10n = context.l10n;
     final String message;
     if (unlock.fromHistory) {
-      message = 'You\'ve earned $count ${count == 1 ? 'milestone' : 'milestones'} from your history';
+      message = l10n.milestonesEarnedFromHistory(count);
     } else {
-      final names = count == 1 ? earned.first.title : '${earned.first.title} and ${count - 1} more';
+      final names = count == 1 ? earned.first.title : l10n.nameAndMore(earned.first.title, count - 1);
       final reward = earned.any((m) => m.frame != null)
-          ? ' · New frame unlocked'
+          ? ' · ${l10n.newFrameUnlocked}'
           : earned.any((m) => m.rewardTitle != null)
-          ? ' · New title unlocked'
+          ? ' · ${l10n.newTitleUnlocked}'
           : '';
-      message = 'Milestone unlocked: $names$reward';
+      message = l10n.milestoneUnlocked('$names$reward');
     }
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text(message),
         action: SnackBarAction(
-          label: 'View',
+          label: l10n.view,
           onPressed: () {
             final userId = _auth.user?.id;
             if (userId != null) openMilestones(context, userId: userId);
@@ -238,7 +240,7 @@ class _AppShellState extends State<AppShell> {
             ? FloatingActionButton.extended(
                 onPressed: () => showQuickLogSheet(context),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Log Game'),
+                label: Text(context.l10n.logGame),
               )
             : null,
         bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -250,11 +252,11 @@ class _AppShellState extends State<AppShell> {
               FocusManager.instance.primaryFocus?.unfocus();
               context.read<NavStore>().select(i);
             },
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
-              NavigationDestination(icon: Icon(Icons.search_rounded), selectedIcon: Icon(Icons.search_rounded), label: 'Search'),
-              NavigationDestination(icon: Icon(Icons.collections_bookmark_outlined), selectedIcon: Icon(Icons.collections_bookmark_rounded), label: 'My Library'),
-              NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
+            destinations: [
+              NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home_rounded), label: context.l10n.navHome),
+              NavigationDestination(icon: const Icon(Icons.search_rounded), selectedIcon: const Icon(Icons.search_rounded), label: context.l10n.navSearch),
+              NavigationDestination(icon: const Icon(Icons.collections_bookmark_outlined), selectedIcon: const Icon(Icons.collections_bookmark_rounded), label: context.l10n.navLibrary),
+              NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.l10n.navProfile),
             ],
           ),
         ]),

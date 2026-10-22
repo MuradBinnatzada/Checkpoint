@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -25,6 +26,7 @@ class SyncLibraryButton extends StatelessWidget {
                 ? null
                 : () async {
                     final messenger = ScaffoldMessenger.of(context);
+                    final synced = context.l10n.librarySynced;
                     // null = everything synced; otherwise why not, or what is still waiting.
                     final message = await context
                         .read<LibraryStore>()
@@ -34,7 +36,7 @@ class SyncLibraryButton extends StatelessWidget {
                       ..showSnackBar(
                         SnackBar(
                           content: Text(
-                            message ?? 'Library synced successfully',
+                            message ?? synced,
                           ),
                         ),
                       );
@@ -48,10 +50,10 @@ class SyncLibraryButton extends StatelessWidget {
                 : const Icon(Icons.sync_rounded),
             label: Text(
               library.isSyncing
-                  ? 'Syncing…'
+                  ? context.l10n.syncing
                   : library.syncStatus == SyncStatus.delayed
-                  ? 'Retry Sync'
-                  : 'Sync Library',
+                  ? context.l10n.retrySync
+                  : context.l10n.syncLibrary,
             ),
           ),
         ),
@@ -72,7 +74,7 @@ class _SyncDelayedNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: 'Sync delayed. $message',
+      label: context.l10n.syncDelayedLabel(message),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
@@ -90,9 +92,9 @@ class _SyncDelayedNotice extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sync Delayed',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.syncDelayed,
+                    style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13.5,
                     ),

@@ -2,16 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+
 /// Where a [ConnectedService] is listed on a profile.
 enum ServiceGroup {
   /// Places that hold the member's games.
-  game('Game profiles'),
+  game,
 
   /// Places to find the member as a person.
-  social('Social media');
+  social;
 
-  const ServiceGroup(this.label);
-  final String label;
+  String get label => switch (this) {
+    game => L10n.current.serviceGroupGame,
+    social => L10n.current.serviceGroupSocial,
+  };
 }
 
 /// Services the user can connect, each with its brand icon and color.

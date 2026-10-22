@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -45,7 +46,7 @@ class _ReviewSheetState extends State<ReviewSheet> {
   Widget build(BuildContext context) {
     final game = context.read<LibraryStore>().gameById(widget.gameId);
     return SheetFrame(
-      title: _saved.isEmpty ? 'Write a review' : 'Your review',
+      title: _saved.isEmpty ? context.l10n.writeReview : context.l10n.yourReview,
       subtitle: game.title,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         TextField(
@@ -56,10 +57,10 @@ class _ReviewSheetState extends State<ReviewSheet> {
           maxLength: Db.reviewMaxLength,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration(context, 'What did you think?'),
+          decoration: fieldDecoration(context, context.l10n.whatDidYouThink),
         ),
         Text(
-          'Members who follow you see it on the game\'s page, with your rating.',
+          context.l10n.reviewVisibility,
           style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 18),
@@ -68,7 +69,7 @@ class _ReviewSheetState extends State<ReviewSheet> {
           child: FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             onPressed: _text.text.trim() == _saved ? null : () => _save(_text.text),
-            child: const Text('Save review'),
+            child: Text(context.l10n.saveReview),
           ),
         ),
         if (_saved.isNotEmpty) ...[
@@ -77,7 +78,7 @@ class _ReviewSheetState extends State<ReviewSheet> {
             child: TextButton(
               style: TextButton.styleFrom(foregroundColor: context.palette.danger),
               onPressed: () => _save(''),
-              child: const Text('Remove review'),
+              child: Text(context.l10n.removeReview),
             ),
           ),
         ],

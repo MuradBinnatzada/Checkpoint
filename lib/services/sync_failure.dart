@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 
 /// What went wrong with a Steam sync, as named by the Edge Functions in the
@@ -14,47 +15,72 @@ import 'package:checkpoint/services/connection_failure.dart';
 /// need the user (a private Steam profile) or the app's owner (missing secrets).
 enum SyncFailureCode {
   // Retry later.
-  steamRateLimited('STEAM_RATE_LIMITED', 'Steam is limiting requests right now.', delayed: true),
-  steamUnavailable('STEAM_UNAVAILABLE', 'Steam is not responding right now.', delayed: true),
-  igdbRateLimited('IGDB_RATE_LIMITED', 'The game database is busy right now.', delayed: true),
-  igdbUnavailable('IGDB_UNAVAILABLE', 'The game database is not responding right now.', delayed: true),
-  syncPartial('SYNC_PARTIAL', 'Some games will be matched on your next sync.', delayed: true),
-  serverBusy('SERVER_BUSY', 'The sync service is busy right now.', delayed: true),
-  rateLimited('RATE_LIMITED', 'Too many requests from your account.', delayed: true),
-  offline('OFFLINE', 'Could not reach the server. Check your connection.', delayed: true),
+  steamRateLimited('STEAM_RATE_LIMITED', delayed: true),
+  steamUnavailable('STEAM_UNAVAILABLE', delayed: true),
+  igdbRateLimited('IGDB_RATE_LIMITED', delayed: true),
+  igdbUnavailable('IGDB_UNAVAILABLE', delayed: true),
+  syncPartial('SYNC_PARTIAL', delayed: true),
+  serverBusy('SERVER_BUSY', delayed: true),
+  rateLimited('RATE_LIMITED', delayed: true),
+  offline('OFFLINE', delayed: true),
 
   // Needs the user.
-  unauthenticated('UNAUTHENTICATED', 'Your session expired. Sign in again to sync.'),
-  mfaRequired('MFA_REQUIRED', 'Enter your two-factor code to finish signing in, then sync again.'),
-  noSteamId('NO_STEAM_ID', 'Connect your Steam account first to sync your library.'),
-  steamProfilePrivate(
-    'STEAM_PROFILE_PRIVATE',
-    'Your Steam game details are private. Set "Game details" to Public in your '
-        'Steam privacy settings, then try again.',
-  ),
-  gameNotLinked('GAME_NOT_LINKED', 'This game is not linked to a Steam app yet. Sync your Steam library first.'),
-  notInLibrary('NOT_IN_LIBRARY', 'That game is not in your library.'),
-  achievementsHidden('ACHIEVEMENTS_HIDDEN', 'This member keeps their achievements private.'),
-  steamLinkCancelled('STEAM_LINK_CANCELLED', 'Steam sign-in was cancelled, so Steam is not connected.'),
-  steamLinkExpired('STEAM_LINK_EXPIRED', 'The Steam sign-in took too long. Connect Steam again.'),
-  steamLinkInvalid('STEAM_LINK_INVALID', 'Steam could not confirm the sign-in. Connect Steam again.'),
+  unauthenticated('UNAUTHENTICATED'),
+  mfaRequired('MFA_REQUIRED'),
+  noSteamId('NO_STEAM_ID'),
+  steamProfilePrivate('STEAM_PROFILE_PRIVATE'),
+  gameNotLinked('GAME_NOT_LINKED'),
+  notInLibrary('NOT_IN_LIBRARY'),
+  achievementsHidden('ACHIEVEMENTS_HIDDEN'),
+  steamLinkCancelled('STEAM_LINK_CANCELLED'),
+  steamLinkExpired('STEAM_LINK_EXPIRED'),
+  steamLinkInvalid('STEAM_LINK_INVALID'),
 
   // Needs the owner, or a bug.
-  notConfigured('NOT_CONFIGURED', 'Syncing is not available right now.'),
-  steamError('STEAM_ERROR', 'Steam returned an unexpected response.'),
-  igdbError('IGDB_ERROR', 'The game database returned an unexpected response.'),
-  badRequest('BAD_REQUEST', 'The sync request was not valid.'),
-  internal('INTERNAL', 'Something went wrong on our side.'),
-  unknown('UNKNOWN', 'Could not sync your Steam library.');
+  notConfigured('NOT_CONFIGURED'),
+  steamError('STEAM_ERROR'),
+  igdbError('IGDB_ERROR'),
+  badRequest('BAD_REQUEST'),
+  internal('INTERNAL'),
+  unknown('UNKNOWN');
 
-  const SyncFailureCode(this.wire, this.message, {this.delayed = false});
+  const SyncFailureCode(this.wire, {this.delayed = false});
 
   /// The string the Edge Functions send.
   final String wire;
 
-  /// What to tell the user. Written here rather than taken from the server's
-  /// `error` text, so it can be reworded (and later translated) without a deploy.
-  final String message;
+  /// What to tell the user, in the app's language. Written here rather than
+  /// taken from the server's `error` text, so it can be reworded and translated
+  /// without a deploy.
+  String get message {
+    final l10n = L10n.current;
+    return switch (this) {
+      steamRateLimited => l10n.syncErrorSteamRateLimited,
+      steamUnavailable => l10n.syncErrorSteamUnavailable,
+      igdbRateLimited => l10n.syncErrorIgdbRateLimited,
+      igdbUnavailable => l10n.syncErrorIgdbUnavailable,
+      syncPartial => l10n.syncErrorSyncPartial,
+      serverBusy => l10n.syncErrorServerBusy,
+      rateLimited => l10n.syncErrorRateLimited,
+      offline => l10n.syncErrorOffline,
+      unauthenticated => l10n.syncErrorUnauthenticated,
+      mfaRequired => l10n.syncErrorMfaRequired,
+      noSteamId => l10n.syncErrorNoSteamId,
+      steamProfilePrivate => l10n.syncErrorSteamProfilePrivate,
+      gameNotLinked => l10n.syncErrorGameNotLinked,
+      notInLibrary => l10n.syncErrorNotInLibrary,
+      achievementsHidden => l10n.syncErrorAchievementsHidden,
+      steamLinkCancelled => l10n.syncErrorSteamLinkCancelled,
+      steamLinkExpired => l10n.syncErrorSteamLinkExpired,
+      steamLinkInvalid => l10n.syncErrorSteamLinkInvalid,
+      notConfigured => l10n.syncErrorNotConfigured,
+      steamError => l10n.syncErrorSteamError,
+      igdbError => l10n.syncErrorIgdbError,
+      badRequest => l10n.syncErrorBadRequest,
+      internal => l10n.syncErrorInternal,
+      unknown => l10n.syncErrorUnknown,
+    };
+  }
 
   /// Trying again later is expected to work; see the enum comment.
   final bool delayed;
@@ -86,7 +112,7 @@ class SyncFailure {
     if (!isDelayed || wait == null || code == SyncFailureCode.offline) {
       return code.message;
     }
-    return '${code.message} Try again ${_in(wait)}.';
+    return '${code.message} ${_tryAgain(wait)}';
   }
 
   /// Sorts any error thrown while calling a sync Edge Function.
@@ -133,11 +159,12 @@ class SyncFailure {
     );
   }
 
-  /// "in a minute", "in 5 minutes", "in about an hour".
-  static String _in(Duration wait) {
-    if (wait.inSeconds < 90) return 'in a minute';
-    if (wait.inMinutes < 60) return 'in ${wait.inMinutes} minutes';
-    return 'in about an hour';
+  /// "Try again in a minute.", "Try again in 5 minutes.", "Try again in about
+  /// an hour."
+  static String _tryAgain(Duration wait) {
+    if (wait.inSeconds < 90) return L10n.current.tryAgainInAMinute;
+    if (wait.inMinutes < 60) return L10n.current.tryAgainInMinutes(wait.inMinutes);
+    return L10n.current.tryAgainInAnHour;
   }
 
   @override

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/user_profile.dart';
@@ -107,7 +108,7 @@ class ProfileStore extends ChangeNotifier {
   int _loadSeq = 0;
 
   static UserProfile _guestProfile() => UserProfile(
-    name: 'Player',
+    name: L10n.current.defaultPlayerName,
     handle: '@guest',
     bio: '',
     joined: DateTime.now(),
@@ -484,7 +485,7 @@ class ProfileStore extends ChangeNotifier {
       } else {
         _showFollowing(userId, !following);
         _setNotice(
-          following ? 'Could not follow that user.' : 'Could not unfollow that user.',
+          following ? L10n.current.followFailed : L10n.current.unfollowFailed,
         );
         await _refreshSocial(current.id);
       }
@@ -552,7 +553,7 @@ class ProfileStore extends ChangeNotifier {
       if (_user?.id == user.id) {
         _savePending();
         if (refused > 0) {
-          _setNotice('Some offline follow changes could not be saved.');
+          _setNotice(L10n.current.offlineFollowsSaveFailed);
         } else {
           notifyListeners();
         }
@@ -591,11 +592,9 @@ class ProfileStore extends ChangeNotifier {
   /// A [connectSteam] is waiting for the member to sign in through Steam.
   bool get linkingSteam => _linkingSteam;
 
-  static const _steamConnected = 'Steam connected.';
-  static const _steamNotConfirmed =
-      "Steam isn't connected yet. If you finished signing in on Steam's page, "
-      'it shows here in a moment; otherwise connect Steam again.';
-  static const _steamLinkFailed = 'Could not connect Steam. Please try again.';
+  static String get _steamConnected => L10n.current.steamConnected;
+  static String get _steamNotConfirmed => L10n.current.steamNotConfirmed;
+  static String get _steamLinkFailed => L10n.current.steamLinkFailed;
 
   /// Connects Steam the only way the server accepts: the member signs in
   /// through Steam, and the `steam-link` Edge Function saves the Steam ID Steam
@@ -609,7 +608,7 @@ class ProfileStore extends ChangeNotifier {
   /// `steamLinkResult`).
   Future<String?> connectSteam() async {
     final user = _user;
-    if (user == null) return 'Sign in to connect your Steam account.';
+    if (user == null) return L10n.current.steamConnectSignIn;
     final seq = ++_steamLinkSeq;
     final before = _profile.steamId;
     _linkingSteam = true;
@@ -710,7 +709,7 @@ class ProfileStore extends ChangeNotifier {
       return null;
     } catch (e, st) {
       debugPrint('Disconnecting Steam failed: $e\n$st');
-      return 'Could not disconnect Steam. Please try again.';
+      return L10n.current.steamDisconnectFailed;
     }
   }
 
@@ -865,7 +864,7 @@ class ProfileStore extends ChangeNotifier {
           _setNotice(
             isConnectionFailure(e)
                 ? queuedNotice
-                : 'Could not update the accounts shown on your profile.',
+                : L10n.current.connectedAccountsSaveFailed,
           );
         }
         return;
@@ -972,7 +971,7 @@ class ProfileStore extends ChangeNotifier {
   /// that is safe to show.
   Future<String?> toggleSteamAchievementsPrivacy(bool value) async {
     final current = _user;
-    if (current == null) return 'Sign in to change your privacy settings.';
+    if (current == null) return L10n.current.privacySignIn;
     final previous = _profile.showSteamAchievements;
     if (_savingPrivacy || value == previous) return null;
 
@@ -986,8 +985,8 @@ class ProfileStore extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('Saving the achievements privacy setting failed: $e\n$st');
       error = isConnectionFailure(e)
-          ? 'Could not reach the server, so your achievements setting was not changed.'
-          : 'Could not save your privacy setting. Please try again.';
+          ? L10n.current.privacyAchievementsOffline
+          : L10n.current.privacySaveFailed;
     }
     _savingPrivacy = false;
     // Another account signed in meanwhile: its own profile is loaded instead.
@@ -1018,7 +1017,7 @@ class ProfileStore extends ChangeNotifier {
   /// Returns null on success, or a message that is safe to show.
   Future<String?> setFlair(ProfileFlair flair) async {
     final current = _user;
-    if (current == null) return 'Sign in to change your profile.';
+    if (current == null) return L10n.current.profileChangeSignIn;
     final previous = _profile.flair;
     if (_savingFlair || flair == previous) return null;
 
@@ -1032,13 +1031,13 @@ class ProfileStore extends ChangeNotifier {
     } on PostgrestException catch (e, st) {
       debugPrint('Saving the profile flair failed: $e\n$st');
       error = e.code == '23514'
-          ? 'You haven\'t unlocked that yet.'
-          : 'Could not save your profile. Please try again.';
+          ? L10n.current.flairNotUnlocked
+          : L10n.current.profileSaveFailed;
     } catch (e, st) {
       debugPrint('Saving the profile flair failed: $e\n$st');
       error = isConnectionFailure(e)
-          ? 'Could not reach the server, so your profile was not changed.'
-          : 'Could not save your profile. Please try again.';
+          ? L10n.current.profileSaveOffline
+          : L10n.current.profileSaveFailed;
     }
     _savingFlair = false;
     if (_user?.id != current.id) return null;
@@ -1079,13 +1078,13 @@ class ProfileStore extends ChangeNotifier {
     String? avatarUrl,
   }) async {
     final current = _user;
-    if (current == null) return 'Sign in to edit your profile.';
+    if (current == null) return L10n.current.profileEditSignIn;
 
     final nextName = name.trim();
     final nextHandle = _normalizeHandle(handle);
     final nextBio = bio?.trim();
     if (nextName.isEmpty || nextHandle.isEmpty) {
-      return 'Display name and username can\'t be empty.';
+      return L10n.current.profileNameRequired;
     }
 
     final currentHandle = _profile.handle.replaceFirst(RegExp(r'^@+'), '');
@@ -1117,11 +1116,11 @@ class ProfileStore extends ChangeNotifier {
       return null;
     } on PostgrestException catch (e, st) {
       debugPrint('Profile update failed: $e\n$st');
-      if (e.code == '23505') return 'That username is already taken.';
-      return 'Could not save your profile. Please try again.';
+      if (e.code == '23505') return L10n.current.usernameTaken;
+      return L10n.current.profileSaveFailed;
     } catch (e, st) {
       debugPrint('Profile update failed: $e\n$st');
-      return 'Could not save your profile. Please try again.';
+      return L10n.current.profileSaveFailed;
     }
   }
 

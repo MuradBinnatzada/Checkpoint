@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// How the app looks on this device (Settings > Appearance): the theme, which
-/// follows the device's light or dark setting until the member picks one, and
-/// the accessibility switches, Increase contrast and Reduce motion. The device's
+/// How the app looks on this device (Settings > Appearance): the language and
+/// the theme, which follow the device's until the member picks one, and the
+/// accessibility switches, Increase contrast and Reduce motion. The device's
 /// own accessibility settings turn those on too (see CheckpointApp); these are
 /// for asking the app alone.
 ///
 /// It is the device's choice, not the account's, so it stays through a sign-out
 /// and is not one of [AppStores]: main.dart reads it before the first frame, so
-/// the app never opens in the other theme and flips.
+/// the app never opens in the other theme or language and flips.
 class AppearanceStore extends ChangeNotifier {
   AppearanceStore({
+    this._locale,
     this._themeMode = ThemeMode.system,
     this._highContrast = false,
     this._reduceMotion = false,
   });
 
+  static const _languageKey = 'language';
   static const _themeModeKey = 'theme_mode';
   static const _highContrastKey = 'high_contrast';
   static const _reduceMotionKey = 'reduce_motion';
@@ -28,7 +30,9 @@ class AppearanceStore extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final saved = ThemeMode.values
           .asNameMap()[prefs.getString(_themeModeKey)];
+      final language = prefs.getString(_languageKey);
       return AppearanceStore(
+        locale: language == null ? null : Locale(language),
         themeMode: saved ?? ThemeMode.system,
         highContrast: prefs.getBool(_highContrastKey) ?? false,
         reduceMotion: prefs.getBool(_reduceMotionKey) ?? false,
@@ -37,6 +41,23 @@ class AppearanceStore extends ChangeNotifier {
       debugPrint('Reading the appearance failed: $e');
       return AppearanceStore();
     }
+  }
+
+  Locale? _locale;
+
+  /// The language the member picked, or null for the device's (English when
+  /// the app doesn't have it).
+  Locale? get locale => _locale;
+
+  Future<void> setLocale(Locale? locale) async {
+    if (locale == _locale) return;
+    _locale = locale;
+    notifyListeners();
+    await _save(
+      (prefs) => locale == null
+          ? prefs.remove(_languageKey)
+          : prefs.setString(_languageKey, locale.languageCode),
+    );
   }
 
   ThemeMode _themeMode;

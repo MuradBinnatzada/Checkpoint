@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -122,9 +123,7 @@ class _SignInPanelState extends State<SignInPanel> {
       setState(() {
         _mode = _Mode.signIn;
         _password.clear();
-        _notice =
-            'Check your inbox: we sent a confirmation link to $email. '
-            'Open it, then sign in here.';
+        _notice = context.l10n.signInConfirmationSent(email);
       });
     });
   }
@@ -139,9 +138,7 @@ class _SignInPanelState extends State<SignInPanel> {
       await auth.sendPasswordReset(email);
       if (!mounted) return;
       setState(
-        () => _notice =
-            'If an account uses $email, a link to choose a new password '
-            'is on its way.',
+        () => _notice = context.l10n.signInResetSent(email),
       );
     });
   }
@@ -153,23 +150,23 @@ class _SignInPanelState extends State<SignInPanel> {
 
   String? _validateName(String? value) {
     final text = (value ?? '').trim();
-    if (text.isEmpty) return 'Enter a name for your profile';
-    if (text.length > _nameMax) return 'Use $_nameMax characters or fewer';
+    if (text.isEmpty) return context.l10n.signInNameRequired;
+    if (text.length > _nameMax) return context.l10n.maxCharacters(_nameMax);
     return null;
   }
 
   String? _validateEmail(String? value) {
     final text = (value ?? '').trim();
-    if (text.isEmpty) return 'Enter your email address';
-    if (!_emailPattern.hasMatch(text)) return 'Enter a valid email address';
+    if (text.isEmpty) return context.l10n.signInEmailRequired;
+    if (!_emailPattern.hasMatch(text)) return context.l10n.signInEmailInvalid;
     return null;
   }
 
   String? _validatePassword(String? value) {
     if ((value ?? '').isEmpty) {
       return _mode == _Mode.signIn
-          ? 'Enter your password'
-          : 'Choose a password';
+          ? context.l10n.signInPasswordRequired
+          : context.l10n.signInChoosePassword;
     }
     return null;
   }
@@ -218,7 +215,7 @@ class _SignInPanelState extends State<SignInPanel> {
                 icon: _pending == _Pending.google
                     ? const _Spinner()
                     : const FaIcon(FontAwesomeIcons.google, size: 16),
-                label: const Text('Continue with Google'),
+                label: Text(context.l10n.continueWithGoogle),
               ),
               if (context.read<AuthStore>().offersAppleSignIn) ...[
                 const SizedBox(height: 10),
@@ -229,7 +226,7 @@ class _SignInPanelState extends State<SignInPanel> {
                   icon: _pending == _Pending.apple
                       ? const _Spinner()
                       : const FaIcon(FontAwesomeIcons.apple, size: 18),
-                  label: const Text('Continue with Apple'),
+                  label: Text(context.l10n.continueWithApple),
                 ),
               ],
               const SizedBox(height: 20),
@@ -243,7 +240,7 @@ class _SignInPanelState extends State<SignInPanel> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Text(
-                          'or use your email',
+                          context.l10n.signInOrUseEmail,
                           textAlign: TextAlign.center,
                           style: TextStyle(color: context.palette.muted, fontSize: 13),
                         ),
@@ -255,11 +252,11 @@ class _SignInPanelState extends State<SignInPanel> {
               ),
               const SizedBox(height: 16),
               SegmentedButton<_Mode>(
-                segments: const [
-                  ButtonSegment(value: _Mode.signIn, label: Text('Sign in')),
+                segments: [
+                  ButtonSegment(value: _Mode.signIn, label: Text(context.l10n.signIn)),
                   ButtonSegment(
                     value: _Mode.signUp,
-                    label: Text('Create account'),
+                    label: Text(context.l10n.createAccount),
                   ),
                 ],
                 selected: {_mode},
@@ -285,9 +282,9 @@ class _SignInPanelState extends State<SignInPanel> {
                           textCapitalization: TextCapitalization.words,
                           autofillHints: const [AutofillHints.name],
                           maxLength: _nameMax,
-                          decoration: const InputDecoration(
-                            labelText: 'Display name',
-                            helperText: 'Shown on your profile. Your email stays private.',
+                          decoration: InputDecoration(
+                            labelText: context.l10n.displayName,
+                            helperText: context.l10n.signInDisplayNameHelper,
                             counterText: '',
                           ),
                           validator: _validateName,
@@ -303,7 +300,7 @@ class _SignInPanelState extends State<SignInPanel> {
                         autocorrect: false,
                         enableSuggestions: false,
                         autofillHints: const [AutofillHints.email],
-                        decoration: const InputDecoration(labelText: 'Email'),
+                        decoration: InputDecoration(labelText: context.l10n.email),
                         validator: _validateEmail,
                       ),
                       const SizedBox(height: 12),
@@ -321,11 +318,11 @@ class _SignInPanelState extends State<SignInPanel> {
                               : AutofillHints.password,
                         ],
                         decoration: InputDecoration(
-                          labelText: 'Password',
+                          labelText: context.l10n.password,
                           suffixIcon: IconButton(
                             tooltip: _hidePassword
-                                ? 'Show password'
-                                : 'Hide password',
+                                ? context.l10n.showPassword
+                                : context.l10n.hidePassword,
                             icon: Icon(
                               _hidePassword
                                   ? Icons.visibility_outlined
@@ -344,12 +341,12 @@ class _SignInPanelState extends State<SignInPanel> {
               ),
               if (!signingUp)
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment: AlignmentDirectional.centerEnd,
                   child: TextButton(
                     onPressed: _busy ? null : _sendPasswordReset,
                     child: _pending == _Pending.reset
                         ? const _Spinner()
-                        : const Text('Forgot password?'),
+                        : Text(context.l10n.forgotPassword),
                   ),
                 )
               else
@@ -359,7 +356,7 @@ class _SignInPanelState extends State<SignInPanel> {
                 onPressed: _busy ? null : _submit,
                 child: _pending == _Pending.email
                     ? const _Spinner()
-                    : Text(signingUp ? 'Create account' : 'Sign in'),
+                    : Text(signingUp ? context.l10n.createAccount : context.l10n.signIn),
               ),
               if (_notice case final notice?) ...[
                 const SizedBox(height: 16),
@@ -408,12 +405,12 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Log in')),
-      body: const SafeArea(
+      appBar: AppBar(title: Text(context.l10n.logIn)),
+      body: SafeArea(
         child: SignInPanel(
           icon: Icons.lock_outline_rounded,
-          title: 'Log in to Checkpoint',
-          message: 'Build your library, log your hours and search every game on IGDB.',
+          title: context.l10n.logInToCheckpoint,
+          message: context.l10n.logInMessage,
         ),
       ),
     );

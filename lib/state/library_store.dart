@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game.dart';
@@ -317,7 +318,7 @@ class LibraryStore extends ChangeNotifier {
         _offline = true;
       } else {
         _loadError =
-            'Could not load Checkpoint data. Pull to retry or sign in again.';
+            L10n.current.libraryLoadFailed;
       }
     } finally {
       if (seq == _loadSeq) {
@@ -470,7 +471,7 @@ class LibraryStore extends ChangeNotifier {
         _queuedNotice();
       } else {
         // The server kept it: say so, and put back what it has.
-        _setNotice('Could not remove that game.');
+        _setNotice(L10n.current.libraryRemoveFailed);
         unawaited(_refreshLibrary(current));
         unawaited(_refreshLogs(current.id));
       }
@@ -486,8 +487,8 @@ class LibraryStore extends ChangeNotifier {
   /// later, because a queued "clear" would also wipe games added in between.
   Future<String?> clearLibrary() async {
     final current = _user;
-    if (current == null) return 'Sign in to clear your library.';
-    if (_isSyncing) return 'Wait for the library sync to finish first.';
+    if (current == null) return L10n.current.libraryClearSignIn;
+    if (_isSyncing) return L10n.current.libraryClearWaitForSync;
 
     try {
       _auth.requireSession();
@@ -495,9 +496,8 @@ class LibraryStore extends ChangeNotifier {
     } catch (e, st) {
       debugPrint('Clearing the library failed: $e\n$st');
       return isConnectionFailure(e)
-          ? 'Could not reach the server. Your library was not cleared. '
-                'Check your connection and try again.'
-          : 'Could not clear your library. Please try again.';
+          ? L10n.current.libraryClearOffline
+          : L10n.current.libraryClearFailed;
     }
     if (_user?.id != current.id) return null; // signed out or switched meanwhile
 
@@ -581,7 +581,7 @@ class LibraryStore extends ChangeNotifier {
     // Enforce Top 4 Limit
     final currentFavorites = _libraryGames.where((g) => g.isFavorite).length;
     if (!isCurrentlyFavorite && currentFavorites >= 4) {
-      _setNotice('You can only have 4 favorite games.');
+      _setNotice(L10n.current.libraryFavoritesLimit(4));
       return;
     }
 
@@ -730,10 +730,10 @@ class LibraryStore extends ChangeNotifier {
   /// or what is still waiting when only part of it was. [syncStatus] says which.
   Future<String?> syncLibrary() async {
     final current = _user;
-    if (current == null) return 'Sign in to sync your library.';
-    if (_isSyncing) return 'A sync is already running.';
+    if (current == null) return L10n.current.syncSignIn;
+    if (_isSyncing) return L10n.current.syncAlreadyRunning;
     if (!_profile.steamConnected || _profile.steamId == null) {
-      return 'Connect your Steam account first to sync your library.';
+      return L10n.current.syncConnectSteamFirst;
     }
 
     _isSyncing = true;
@@ -836,16 +836,16 @@ class LibraryStore extends ChangeNotifier {
     if (_user == null ||
         _profile.steamId == null ||
         !_profile.steamConnected) {
-      return 'Connect your Steam account to load achievements.';
+      return L10n.current.achievementsConnectSteam;
     }
     final game = maybeGame(gameId);
-    if (game == null) return 'Game not found.';
+    if (game == null) return L10n.current.gameNotFound;
 
     try {
       final data = await _repository.syncGameAchievements(gameId);
       final achievements =
           data is Map ? Achievement.listFromJson(data['achievements']) : null;
-      if (achievements == null) return 'Steam returned an unexpected response.';
+      if (achievements == null) return L10n.current.steamUnexpectedResponse;
 
       // Re-read the game: it may have changed while the request was in flight.
       _replaceGame((maybeGame(gameId) ?? game).copyWith(achievements: achievements));
@@ -860,10 +860,10 @@ class LibraryStore extends ChangeNotifier {
       final message = details is Map ? details['error'] : null;
       return message is String && message.isNotEmpty
           ? message
-          : 'Could not load Steam achievements.';
+          : L10n.current.achievementsLoadFailed;
     } catch (e) {
       debugPrint('Achievements sync failed: $e');
-      return 'Could not load Steam achievements.';
+      return L10n.current.achievementsLoadFailed;
     }
   }
 
@@ -1127,7 +1127,7 @@ class LibraryStore extends ChangeNotifier {
       if (isConnectionFailure(e)) {
         _queueCompletionTime(gameId, time);
       } else {
-        _setNotice('Could not save your completion time.');
+        _setNotice(L10n.current.completionTimeSaveFailed);
         _refreshQueued = true; // Revert to server truth once writes settle
       }
     } finally {
@@ -1377,7 +1377,7 @@ class LibraryStore extends ChangeNotifier {
     if (!id.startsWith('local-') || _pending.logs.any((l) => l.localId == id)) {
       return false;
     }
-    _setNotice('That session is still being saved. Try again in a moment.');
+    _setNotice(L10n.current.sessionStillSaving);
     return true;
   }
 
@@ -1437,7 +1437,7 @@ class LibraryStore extends ChangeNotifier {
         _queuedNotice();
         return true;
       }
-      _setNotice('Could not save that change to the session.');
+      _setNotice(L10n.current.sessionChangeSaveFailed);
       unawaited(_refreshLogs(current.id));
       return false;
     }
@@ -1557,7 +1557,7 @@ class LibraryStore extends ChangeNotifier {
         _savePending();
         _queuedNotice();
       } else {
-        _setNotice('Could not save that game update.');
+        _setNotice(L10n.current.gameUpdateSaveFailed);
         _refreshQueued = true; // Revert to server truth once writes settle
       }
     } finally {
@@ -1627,7 +1627,7 @@ class LibraryStore extends ChangeNotifier {
         }
         _queuedNotice();
       } else {
-        _setNotice('Could not save that session.');
+        _setNotice(L10n.current.sessionSaveFailed);
       }
       return false;
     }
@@ -1786,7 +1786,7 @@ class LibraryStore extends ChangeNotifier {
       _savePending();
       if (unreachable) _offline = true;
       if (refused > 0) {
-        _setNotice('Some offline changes could not be saved.');
+        _setNotice(L10n.current.offlineChangesSaveFailed);
       } else {
         notifyListeners();
       }

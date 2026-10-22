@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+
 /// End-of-list row of a paged list. Being built means the end of the list is
 /// near, so it asks for the next page (after the current frame, never during
 /// build). The store ignores the call when a page is already on its way. A failed
@@ -49,7 +51,7 @@ class _LoadMoreFooterState extends State<LoadMoreFooter> {
           child: TextButton.icon(
             onPressed: widget.onLoadMore,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Couldn’t load more. Tap to retry'),
+            label: Text(context.l10n.loadMoreFailed),
           ),
         ),
       );

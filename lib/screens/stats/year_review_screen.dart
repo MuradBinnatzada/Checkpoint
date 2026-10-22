@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/year_review.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -13,11 +16,12 @@ import 'package:checkpoint/widgets/hours_by_platform_panel.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/stat_tile.dart';
 
-const _monthLetters = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+/// "January" (0) to "December" (11), in the app's language, as a heading.
+String _monthName(int month) =>
+    toBeginningOfSentenceCase(DateFormat.LLLL().format(DateTime(2000, month + 1)));
+
+/// "J" (0) to "D" (11): the month's initial, in the app's language.
+String _monthLetter(int month) => DateFormat.LLL().format(DateTime(2000, month + 1)).substring(0, 1).toUpperCase();
 
 /// The member's year of play, worked out on the device from their sessions and
 /// library ([YearReview]): totals, hours by month, the most played games,
@@ -51,7 +55,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Year in Review')),
+      appBar: AppBar(title: Text(context.l10n.yearInReview)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
@@ -64,7 +68,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                 child: Row(children: [
                   for (final y in years)
                     Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsetsDirectional.only(end: 8),
                       child: AppChoiceChip(
                         label: '$y',
                         selected: y == _year,
@@ -79,8 +83,8 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                   padding: const EdgeInsets.only(top: 40),
                   child: EmptyState(
                     icon: Icons.insights_rounded,
-                    title: 'Nothing logged in $_year',
-                    message: 'Log your sessions (or start the timer on a game) and your year adds up here.',
+                    title: context.l10n.yearNothingLogged(_year),
+                    message: context.l10n.yearNothingLoggedMessage,
                   ),
                 )
               else
@@ -98,15 +102,15 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     // Rows rather than a fixed-ratio grid: the tiles take the height their
     // content needs, at any screen width and text size.
     Row(children: [
-      Expanded(child: StatTile(icon: Icons.calendar_month_rounded, value: '${r.daysPlayed}', label: r.daysPlayed == 1 ? 'Day played' : 'Days played')),
+      Expanded(child: StatTile(icon: Icons.calendar_month_rounded, value: '${r.daysPlayed}', label: context.l10n.daysPlayed(r.daysPlayed))),
       const SizedBox(width: 10),
-      Expanded(child: StatTile(icon: Icons.local_fire_department_rounded, value: '${r.longestStreak}', label: 'Longest streak (days)')),
+      Expanded(child: StatTile(icon: Icons.local_fire_department_rounded, value: '${r.longestStreak}', label: context.l10n.longestStreakDays)),
     ]),
     const SizedBox(height: 10),
     Row(children: [
-      Expanded(child: StatTile(icon: Icons.verified_rounded, value: '${r.completed.length}', label: 'Games completed')),
+      Expanded(child: StatTile(icon: Icons.verified_rounded, value: '${r.completed.length}', label: context.l10n.gamesCompleted)),
       const SizedBox(width: 10),
-      Expanded(child: StatTile(icon: Icons.library_add_rounded, value: '${r.addedCount}', label: 'Games added')),
+      Expanded(child: StatTile(icon: Icons.library_add_rounded, value: '${r.addedCount}', label: context.l10n.gamesAdded)),
     ]),
     const SizedBox(height: 14),
     if (r.sessionCount > 0) ...[
@@ -115,7 +119,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     ],
     if (r.topGames.isNotEmpty) ...[
       Panel(
-        title: 'Most played',
+        title: context.l10n.mostPlayed,
         child: _HoursList(
           rows: [
             for (final g in r.topGames)
@@ -136,9 +140,9 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     ],
     if (r.topGenres.isNotEmpty) ...[
       Panel(
-        title: 'Top genres',
+        title: context.l10n.topGenres,
         child: _HoursList(
-          rows: [for (final g in r.topGenres) _HoursRow(label: g.genre, hours: g.hours)],
+          rows: [for (final g in r.topGenres) _HoursRow(label: tagName(g.genre), hours: g.hours)],
         ),
       ),
       const SizedBox(height: 14),
@@ -147,8 +151,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     Padding(
       padding: EdgeInsets.fromLTRB(4, 14, 4, 0),
       child: Text(
-        'Hours come from the sessions you logged, the timer and your Steam playtime. '
-        'Hours a Steam import added without a session count in no year.',
+        context.l10n.yearHoursFootnote,
         style: TextStyle(color: context.palette.muted, fontSize: 12, height: 1.4),
       ),
     ),
@@ -165,17 +168,16 @@ class _Headline extends StatelessWidget {
     final busiest = r.busiestDay;
     return Panel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${fmtHours(r.hours)} h', style: const TextStyle(fontSize: 40, height: 1.05, fontWeight: FontWeight.w800)),
+        Text(context.l10n.hoursShort(fmtHours(r.hours)), style: const TextStyle(fontSize: 40, height: 1.05, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
         Text(
-          'played in ${r.year}, over ${r.sessionCount} session${r.sessionCount == 1 ? '' : 's'} '
-          'of ${r.gamesPlayed} game${r.gamesPlayed == 1 ? '' : 's'}',
+          context.l10n.yearPlayedSummary(r.year, context.l10n.sessionCount(r.sessionCount), context.l10n.ofGamesCount(r.gamesPlayed)),
           style: TextStyle(color: context.palette.muted),
         ),
         if (busiest != null) ...[
           const SizedBox(height: 10),
           Text(
-            'Biggest day: ${fmtMonthDay(busiest)}, ${fmtHours(r.busiestDayHours)} h',
+            context.l10n.yearBiggestDay(fmtMonthDay(busiest), context.l10n.hoursShort(fmtHours(r.busiestDayHours))),
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
         ],
@@ -205,10 +207,10 @@ class _MonthsPanelState extends State<_MonthsPanel> {
     final tallest = months.reduce((a, b) => a > b ? a : b);
     final busiest = months.indexOf(tallest);
     return Panel(
-      title: 'Hours by month',
+      title: context.l10n.hoursByMonth,
       trailing: TextButton(
         onPressed: () => setState(() => _table = !_table),
-        child: Text(_table ? 'Chart' : 'Table'),
+        child: Text(_table ? context.l10n.chart : context.l10n.table),
       ),
       child: _table
           ? Column(children: [
@@ -216,8 +218,8 @@ class _MonthsPanelState extends State<_MonthsPanel> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(children: [
-                    Expanded(child: Text(_monthNames[m])),
-                    Text('${fmtHours(months[m])} h', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Expanded(child: Text(_monthName(m))),
+                    Text(context.l10n.hoursShort(fmtHours(months[m])), style: const TextStyle(fontWeight: FontWeight.w600)),
                   ]),
                 ),
             ])
@@ -230,10 +232,10 @@ class _MonthsPanelState extends State<_MonthsPanel> {
                     for (var m = 0; m < 12; m++)
                       Expanded(
                         child: Tooltip(
-                          message: '${_monthNames[m]}: ${fmtHours(months[m])} h',
+                          message: '${_monthName(m)}: ${context.l10n.hoursShort(fmtHours(months[m]))}',
                           triggerMode: TooltipTriggerMode.tap,
                           child: Semantics(
-                            label: '${_monthNames[m]}, ${fmtHours(months[m])} hours',
+                            label: '${_monthName(m)}, ${context.l10n.hoursLong(months[m], fmtHours(months[m]))}',
                             child: _MonthBar(
                               hours: months[m],
                               tallest: tallest,
@@ -247,9 +249,9 @@ class _MonthsPanelState extends State<_MonthsPanel> {
               ),
               const SizedBox(height: 6),
               Row(children: [
-                for (final letter in _monthLetters)
+                for (var m = 0; m < 12; m++)
                   Expanded(
-                    child: Text(letter, textAlign: TextAlign.center, style: TextStyle(color: context.palette.muted, fontSize: 11)),
+                    child: Text(_monthLetter(m), textAlign: TextAlign.center, style: TextStyle(color: context.palette.muted, fontSize: 11)),
                   ),
               ]),
             ]),
@@ -357,7 +359,7 @@ class _HoursList extends StatelessWidget {
                 ]),
               ),
               const SizedBox(width: 12),
-              Text('${fmtHours(row.hours)} h', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(context.l10n.hoursShort(fmtHours(row.hours)), style: const TextStyle(fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
@@ -372,7 +374,7 @@ class _CompletedPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Panel(
-      title: 'Completed in ${review.year}',
+      title: context.l10n.completedInYear(review.year),
       child: SizedBox(
         height: 132,
         child: ListView.separated(

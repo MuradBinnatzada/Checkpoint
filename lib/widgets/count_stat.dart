@@ -41,7 +41,7 @@ class CountStat extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: tap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 4, 14, 4),
+          padding: const EdgeInsetsDirectional.fromSTEB(0, 4, 14, 4),
           child: content,
         ),
       ),

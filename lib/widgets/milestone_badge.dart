@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -28,7 +29,7 @@ class MilestoneBadge extends StatelessWidget {
     final ring = math.max(2.0, size * 0.07);
     return Semantics(
       label:
-          '${milestone.title}, ${milestone.tier.label}${unlocked ? '' : ', locked'}',
+          '${milestone.title}, ${milestone.tier.label}${unlocked ? '' : ', ${context.l10n.lockedLower}'}',
       child: Container(
         width: size,
         height: size,
@@ -180,8 +181,8 @@ class _FramedAvatarState extends State<FramedAvatar>
 
     return Semantics(
       label: [
-        if (frame != null) '${frame.label} frame',
-        if (level != null) 'Level $level',
+        if (frame != null) context.l10n.frameLabel(frame.label),
+        if (level != null) context.l10n.levelN(level),
       ].join(', '),
       child: SizedBox(
         width: outer,
@@ -205,7 +206,7 @@ class _FramedAvatarState extends State<FramedAvatar>
                     border: Border.all(color: palette.background, width: 2),
                   ),
                   child: Text(
-                    'Lv $level',
+                    context.l10n.levelShort(level),
                     style: TextStyle(
                       color: palette.onAccent,
                       fontSize: 10.5,
@@ -254,7 +255,7 @@ class _MilestoneSheet extends StatelessWidget {
     final at = unlockedAt;
     return SheetFrame(
       title: m.title,
-      subtitle: '${m.category.label} · ${m.tier.label} · ${m.points} points',
+      subtitle: '${m.category.label} · ${m.tier.label} · ${context.l10n.pointsCount(m.points, '${m.points}')}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -279,7 +280,7 @@ class _MilestoneSheet extends StatelessWidget {
             _Line(
               icon: Icons.check_circle_rounded,
               color: palette.success,
-              text: 'Unlocked ${fmtDay(at)}',
+              text: context.l10n.unlockedOn(fmtDay(at)),
             )
           else if (value != null && !m.isYesNo) ...[
             MilestoneProgressBar(milestone: m, value: value!),
@@ -287,7 +288,7 @@ class _MilestoneSheet extends StatelessWidget {
             _Line(
               icon: Icons.lock_rounded,
               color: palette.muted,
-              text: 'Locked',
+              text: context.l10n.locked,
             ),
           for (final reward in milestoneRewards(m)) ...[
             const SizedBox(height: 10),
@@ -305,8 +306,8 @@ class _MilestoneSheet extends StatelessWidget {
 
 /// What [m] unlocks, one line each: "Gold frame", "Title: Collector".
 List<String> milestoneRewards(Milestone m) => [
-  if (m.frame case final frame?) '${frame.label} frame',
-  if (m.rewardTitle case final title?) 'Title: $title',
+  if (m.frame case final frame?) L10n.current.frameLabel(frame.label),
+  if (m.rewardTitle case final title?) L10n.current.titleReward(title),
 ];
 
 class _Line extends StatelessWidget {
@@ -365,7 +366,7 @@ class MilestoneProgressBar extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '$amount / ${fmtThousands(m.threshold)} ${m.metric.unit}',
+          '$amount / ${fmtThousands(m.threshold)} ${m.metric.unit(m.threshold)}',
           style: TextStyle(fontSize: 12, color: palette.muted),
         ),
       ],

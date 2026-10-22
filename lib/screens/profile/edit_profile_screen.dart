@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/profile/profile_flair_sheet.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -96,18 +97,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   String? _validateName(String? value) {
     final v = (value ?? '').trim();
-    if (v.isEmpty) return 'Enter a display name';
-    if (v.length > _nameMax) return 'Use $_nameMax characters or fewer';
+    if (v.isEmpty) return context.l10n.displayNameRequired;
+    if (v.length > _nameMax) return context.l10n.maxCharacters(_nameMax);
     return null;
   }
 
   /// Synchronous format rules only (no network).
   String? _handleFormatError(String v) {
-    if (v.isEmpty) return 'Enter a username';
-    if (v.length < _handleMin) return 'Use at least $_handleMin characters';
-    if (v.length > _handleMax) return 'Use $_handleMax characters or fewer';
+    if (v.isEmpty) return context.l10n.usernameRequired;
+    if (v.length < _handleMin) return context.l10n.minCharacters(_handleMin);
+    if (v.length > _handleMax) return context.l10n.maxCharacters(_handleMax);
     if (!_handlePattern.hasMatch(v)) {
-      return 'Letters, numbers and underscores only';
+      return context.l10n.usernameCharactersOnly;
     }
     return null;
   }
@@ -119,7 +120,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // Result of the async availability check, surfaced through the validator
     // so it renders as the field's regular inline error.
     if (_handleStatus == _HandleStatus.taken && v == _checkedHandle) {
-      return '@$v is already taken';
+      return context.l10n.handleTaken(v);
     }
     return null;
   }
@@ -197,9 +198,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            content: Text('Couldn\'t update your photo. Please try again.'),
-          ),
+          SnackBar(content: Text(L10n.current.photoUpdateFailed)),
         );
     }
   }
@@ -256,7 +255,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       navigator.pop();
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Profile updated')));
+        ..showSnackBar(SnackBar(content: Text(L10n.current.profileUpdated)));
     } else {
       setState(() => _saving = false);
       messenger
@@ -275,7 +274,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return Semantics(
       button: true,
-      label: 'Change profile photo',
+      label: context.l10n.changeProfilePhoto,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: canTap ? _pickAvatar : null,
@@ -321,8 +320,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              right: 0,
+            PositionedDirectional(
+              end: 0,
               bottom: 0,
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -365,11 +364,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   };
 
   String _handleHelper() => switch (_handleStatus) {
-    _HandleStatus.checking => 'Checking availability…',
-    _HandleStatus.available => '@$_checkedHandle is available',
-    _HandleStatus.unknown =>
-      'Couldn\'t check availability. We\'ll verify when you save.',
-    _ => 'Letters, numbers and underscores',
+    _HandleStatus.checking => context.l10n.checkingAvailability,
+    _HandleStatus.available => context.l10n.handleAvailable(_checkedHandle),
+    _HandleStatus.unknown => context.l10n.availabilityUnknown,
+    _ => context.l10n.usernameCharacters,
   };
 
   @override
@@ -377,7 +375,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final busy = _locked || _uploadingAvatar;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit Profile')),
+      appBar: AppBar(title: Text(context.l10n.editProfileTitle)),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -400,7 +398,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         textCapitalization: TextCapitalization.words,
                         maxLength: _nameMax,
                         decoration: InputDecoration(
-                          labelText: 'Display name',
+                          labelText: context.l10n.displayName,
                           floatingLabelBehavior: FloatingLabelBehavior.always,
                           counterText: '',
                           errorStyle: _errorStyle,
@@ -423,7 +421,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           const _LowerCaseFormatter(),
                         ],
                         decoration: InputDecoration(
-                          labelText: 'Username',
+                          labelText: context.l10n.username,
                           // Always floated so the fixed "@" is visible even
                           // while the field is empty and unfocused.
                           floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -455,12 +453,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         maxLines: _bioMaxLines,
                         maxLength: _bioMax,
                         inputFormatters: const [_MaxLinesFormatter(_bioMaxLines)],
-                        decoration: const InputDecoration(
-                          labelText: 'Bio',
+                        decoration: InputDecoration(
+                          labelText: context.l10n.bio,
                           // Same always-floated label as the Username field,
                           // so all three labels render at the same size.
                           floatingLabelBehavior: FloatingLabelBehavior.always,
-                          hintText: 'Write your lore...',
+                          hintText: context.l10n.bioHint,
                         ),
                       ),
                       const SizedBox(height: 28),
@@ -476,7 +474,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('Save'),
+                              : Text(context.l10n.save),
                         ),
                       ),
                     ],
@@ -487,7 +485,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 OutlinedButton.icon(
                   onPressed: () => showProfileFlairSheet(context),
                   icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                  label: const Text('Profile flair: frame, title and showcase'),
+                  label: Text(context.l10n.profileFlairButton),
                 ),
               ],
             ),

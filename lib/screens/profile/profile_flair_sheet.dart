@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -55,8 +56,7 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
     if (!ids.remove(id)) {
       if (ids.length >= ProfileFlair.maxShowcase) {
         setState(
-          () => _error =
-              'You can show up to ${ProfileFlair.maxShowcase}. Take one off first.',
+          () => _error = context.l10n.showcaseFull(ProfileFlair.maxShowcase),
         );
         return;
       }
@@ -87,8 +87,8 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
     final level = earned.level.level;
 
     return SheetFrame(
-      title: 'Profile flair',
-      subtitle: 'Earn milestones to unlock frames and titles.',
+      title: context.l10n.profileFlair,
+      subtitle: context.l10n.profileFlairSubtitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -133,13 +133,13 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
             ),
           ),
           const SizedBox(height: 22),
-          const _Heading('Frame'),
+          _Heading(context.l10n.flairFrame),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
               _FrameOption(
-                label: 'None',
+                label: context.l10n.none,
                 selected: _draft.frameId == null,
                 onTap: () => _set(clearFrame: true),
                 child: ProfileAvatar(
@@ -170,13 +170,13 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
             ],
           ),
           const SizedBox(height: 22),
-          const _Heading('Title'),
+          _Heading(context.l10n.flairTitle),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               AppChoiceChip(
-                label: 'None',
+                label: context.l10n.none,
                 selected: _draft.titleId == null,
                 onSelected: () => _set(clearTitle: true),
               ),
@@ -190,7 +190,7 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
                     )
                   else
                     Tooltip(
-                      message: 'Unlock with ${m.title}',
+                      message: context.l10n.unlockWith(m.title),
                       child: Chip(
                         avatar: Icon(
                           Icons.lock_rounded,
@@ -210,11 +210,11 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
           ),
           const SizedBox(height: 22),
           _Heading(
-            'Showcase (${_draft.showcaseIds.length}/${ProfileFlair.maxShowcase})',
+            context.l10n.showcaseHeading(_draft.showcaseIds.length, ProfileFlair.maxShowcase),
           ),
           if (earned.isEmpty)
             Text(
-              'Milestones you earn can be shown here.',
+              context.l10n.showcaseEmpty,
               style: TextStyle(color: palette.muted),
             )
           else
@@ -242,7 +242,7 @@ class _ProfileFlairSheetState extends State<ProfileFlairSheet> {
             width: double.infinity,
             child: FilledButton(
               onPressed: _saving ? null : _save,
-              child: Text(_saving ? 'Saving...' : 'Save'),
+              child: Text(_saving ? context.l10n.saving : context.l10n.save),
             ),
           ),
         ],
@@ -341,10 +341,10 @@ class _FrameOption extends StatelessWidget {
       selected: selected,
       button: true,
       enabled: !locked,
-      label: locked ? '$label frame, locked: earn $lockedHint' : '$label frame',
+      label: locked ? context.l10n.frameLockedLabel(label, lockedHint!) : context.l10n.frameLabel(label),
       excludeSemantics: true,
       child: locked
-          ? Tooltip(message: 'Unlock with $lockedHint', child: option)
+          ? Tooltip(message: context.l10n.unlockWith(lockedHint!), child: option)
           : option,
     );
   }
@@ -390,8 +390,8 @@ class _ShowcaseOption extends StatelessWidget {
                 child: MilestoneBadge(milestone: milestone, size: 44),
               ),
               if (selected)
-                Positioned(
-                  right: -2,
+                PositionedDirectional(
+                  end: -2,
                   top: -2,
                   child: Container(
                     decoration: BoxDecoration(

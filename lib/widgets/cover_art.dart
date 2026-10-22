@@ -44,8 +44,8 @@ class CoverArt extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned(
-              right: -w * 0.18,
+            PositionedDirectional(
+              end: -w * 0.18,
               top: w * 0.10,
               child: Icon(game.coverIcon, size: w * 0.95, color: Colors.white.withValues(alpha: 0.14)),
             ),
@@ -79,9 +79,9 @@ class CoverArt extends StatelessWidget {
                 ),
               ),
             if (drawTitle)
-              Positioned(
-                left: w * 0.08,
-                right: w * 0.08,
+              PositionedDirectional(
+                start: w * 0.08,
+                end: w * 0.08,
                 bottom: w * 0.08,
                 child: Text(
                   game.title.toUpperCase(),

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
@@ -72,24 +74,23 @@ class LibraryFilterSheet extends StatelessWidget {
     final shown = view.count(library, null);
 
     return SheetFrame(
-      title: 'Filter',
+      title: context.l10n.filter,
       subtitle: view.hasFilters
-          ? 'Showing $shown of ${library.length} '
-                '${library.length == 1 ? 'game' : 'games'}'
-          : 'Narrow your library down.',
+          ? context.l10n.showingOfGames(shown, library.length)
+          : context.l10n.narrowLibrary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (view.hasFilters)
             Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: TextButton(
                 onPressed: view.clearFilters,
-                child: const Text('Clear all'),
+                child: Text(context.l10n.clearAll),
               ),
             ),
           ChipFilterSection<GamePlatform>(
-            title: 'Platform',
+            title: context.l10n.platform,
             icon: Icons.sports_esports_rounded,
             options: platforms,
             labelOf: (p) => p.label,
@@ -158,27 +159,24 @@ class _DetailsStatus extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           SizedBox(width: 10),
-          Text('Loading game details…', style: style),
+          Text(context.l10n.loadingGameDetails, style: style),
         ],
       ),
       LoadStatus.failed => Row(
         children: [
           Expanded(
             child: Text(
-              'Could not load themes, modes, engines and companies.',
+              context.l10n.gameDetailsLoadFailed,
               style: style,
             ),
           ),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
+          TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
         ],
       ),
       LoadStatus.ready when missing > 0 => Text(
         missing == total
-            ? 'IGDB details are not saved for any of your games yet. They '
-                  'fill in over time, and when you open a game.'
-            : 'IGDB details are not saved for $missing of $total games yet, so '
-                  'the filters below leave them out. They fill in over time, '
-                  'and when you open a game.',
+            ? context.l10n.igdbDetailsNoneSaved
+            : context.l10n.igdbDetailsSomeMissing(missing, total),
         style: style,
       ),
       LoadStatus.ready => null,
@@ -208,7 +206,7 @@ class _AttributeSection extends StatelessWidget {
       title: attribute.pluralLabel,
       icon: attribute.icon,
       options: options,
-      labelOf: (o) => '${o.value} (${o.count})',
+      labelOf: (o) => '${tagName(o.value)} (${o.count})',
       isSelected: (o) => picked.contains(o.value),
       selectedCount: picked.length,
       onToggle: (o) => view.toggleFilter(attribute, o.value),
@@ -245,9 +243,7 @@ class LibraryActiveFilters extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
               child: Text(
-                '$missing ${missing == 1 ? 'game has' : 'games have'} no IGDB '
-                'details yet, so these filters leave '
-                '${missing == 1 ? 'it' : 'them'} out.',
+                context.l10n.gamesMissingDetails(missing),
                 style: TextStyle(color: context.palette.muted, fontSize: 12),
               ),
             ),

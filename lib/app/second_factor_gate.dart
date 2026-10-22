@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -90,7 +91,7 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
     if (_busy) return;
     if (_code.text.length != OneTimeCodeField.length) {
       setState(
-        () => _error = 'Enter the 6-digit code from your authenticator app.',
+        () => _error = context.l10n.twoFactorEnterAppCode,
       );
       return;
     }
@@ -119,12 +120,13 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
     final typed = _backupCode.text.replaceAll(RegExp(r'[\s-]'), '');
     if (typed.length != _BackupCodeField.length) {
       setState(
-        () => _error = 'Enter one of your backup codes: 10 letters and digits.',
+        () => _error = context.l10n.twoFactorEnterBackupCode,
       );
       return;
     }
     final auth = context.read<AuthStore>();
     final messenger = ScaffoldMessenger.of(context);
+    final signedInMessage = context.l10n.twoFactorSignedInWithBackupCode;
     setState(() {
       _verifying = true;
       _error = null;
@@ -135,12 +137,9 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            duration: Duration(seconds: 10),
-            content: Text(
-              'Signed in with a backup code. Two-factor authentication is off '
-              'now: turn it on again in Settings > Security.',
-            ),
+          SnackBar(
+            duration: const Duration(seconds: 10),
+            content: Text(signedInMessage),
           ),
         );
     } catch (e) {
@@ -170,7 +169,7 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
 
   static String _messageFor(AuthStore auth, Object e) =>
       e is! AuthException && isConnectionFailure(e)
-      ? 'Could not reach the server. Check your connection and try again.'
+      ? L10n.current.serverUnreachable
       : auth.messageFor(e);
 
   @override
@@ -203,22 +202,19 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Two-factor authentication',
+                  Text(
+                    context.l10n.twoFactorAuthentication,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    _usingBackupCode
-                        ? 'Enter one of the backup codes you saved when you '
-                              'turned on two-factor authentication'
-                              '${email == null ? '' : ' for $email'}. Using '
-                              'one signs you in and turns two-factor '
-                              'authentication off, so you can set it up again.'
-                        : 'Open your authenticator app and enter the code it '
-                              'shows for Checkpoint'
-                              '${email == null ? '' : ' ($email)'}.',
+                    switch ((_usingBackupCode, email)) {
+                      (true, null) => context.l10n.twoFactorBackupPrompt,
+                      (true, final email?) => context.l10n.twoFactorBackupPromptFor(email),
+                      (false, null) => context.l10n.twoFactorAppPrompt,
+                      (false, final email?) => context.l10n.twoFactorAppPromptFor(email),
+                    },
                     textAlign: TextAlign.center,
                     style: TextStyle(color: context.palette.muted, height: 1.35),
                   ),
@@ -243,22 +239,22 @@ class _SecondFactorScreenState extends State<SecondFactorScreen> {
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _busy ? null : _verify,
-                    child: _verifying ? const _Spinner() : const Text('Verify'),
+                    child: _verifying ? const _Spinner() : Text(context.l10n.verify),
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: _busy ? null : _switchField,
                     child: Text(
                       _usingBackupCode
-                          ? 'Use your authenticator app'
-                          : 'Use a backup code',
+                          ? context.l10n.twoFactorUseApp
+                          : context.l10n.twoFactorUseBackupCode,
                     ),
                   ),
                   TextButton(
                     onPressed: _busy ? null : _signOut,
                     child: _signingOut
                         ? const _Spinner()
-                        : const Text('Sign out'),
+                        : Text(context.l10n.signOut),
                   ),
                 ],
               ),
@@ -313,7 +309,7 @@ class _BackupCodeField extends StatelessWidget {
         LengthLimitingTextInputFormatter(20),
       ],
       decoration: InputDecoration(
-        labelText: 'Backup code',
+        labelText: context.l10n.backupCode,
         hintText: 'XXXXX-XXXXX',
         errorText: errorText,
         errorMaxLines: 3,

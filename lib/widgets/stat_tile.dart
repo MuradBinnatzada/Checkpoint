@@ -41,7 +41,7 @@ class StatTile extends StatelessWidget {
             const SizedBox(height: 10),
             FittedBox(
               fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               child: Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(height: 2),

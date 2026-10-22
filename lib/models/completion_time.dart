@@ -1,17 +1,24 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+
 /// Which run of a game a completion time is for: HowLongToBeat's three, which
 /// are also IGDB's time to beat (hastily, normally, completely).
 enum CompletionCategory {
-  mainStory('main', 'Main Story'),
-  mainExtras('main_extra', 'Main + Extras'),
-  completionist('completionist', 'Completionist');
+  mainStory('main'),
+  mainExtras('main_extra'),
+  completionist('completionist');
 
-  const CompletionCategory(this.wire, this.label);
+  const CompletionCategory(this.wire);
 
   /// `completion_times.category`.
   final String wire;
-  final String label;
+
+  String get label => switch (this) {
+    mainStory => L10n.current.completionMainStory,
+    mainExtras => L10n.current.completionMainExtras,
+    completionist => L10n.current.completionCompletionist,
+  };
 
   /// The category stored as [wire], or null when it is not one this build knows.
   static CompletionCategory? fromWire(Object? wire) {

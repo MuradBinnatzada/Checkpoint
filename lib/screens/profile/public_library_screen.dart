@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_view_store.dart';
@@ -111,9 +112,9 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
     if (library.status == LoadStatus.failed) {
       body = EmptyState(
         icon: Icons.cloud_off_rounded,
-        title: 'Could not load this library',
-        message: 'Check your connection and try again.',
-        actionLabel: 'Try again',
+        title: context.l10n.publicLibraryLoadFailed,
+        message: context.l10n.checkConnection,
+        actionLabel: context.l10n.tryAgain,
         onAction: () => unawaited(_load(force: true)),
       );
     } else if (library.status != LoadStatus.ready) {
@@ -133,9 +134,9 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Library',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                context.l10n.milestoneCategoryLibrary,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               if (name != null)
                 Text(
@@ -165,7 +166,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
               ListenableBuilder(
                 listenable: _viewStore,
                 builder: (context, _) => Padding(
-                  padding: const EdgeInsets.only(left: 4, right: 12),
+                  padding: const EdgeInsetsDirectional.only(start: 4, end: 12),
                   child: LibraryViewToggle(view: _viewStore.view),
                 ),
               ),
@@ -185,8 +186,8 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
           child: Text(
-            'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}'
-            '${view.platformFilter != null ? ' · ${view.platformFilter!.label}' : ''}',
+            context.l10n.sortedBy(view.sortField.label, view.sortDescending ? context.l10n.highToLow : context.l10n.lowToHigh) +
+                (view.platformFilter != null ? ' · ${view.platformFilter!.label}' : ''),
             style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ),
@@ -200,7 +201,7 @@ class _PublicLibraryScreenState extends State<PublicLibraryScreen>
         const SizedBox(height: 8),
         LibrarySearchField(
           controller: _searchController,
-          tabLabel: view.selectedStatus?.label ?? 'All',
+          tabLabel: view.selectedStatus?.label ?? context.l10n.all,
           hasText: _searchQuery.isNotEmpty,
           onChanged: (v) => setState(() => _searchQuery = v),
           onClear: _clearSearch,
@@ -262,11 +263,11 @@ class _Collection extends StatelessWidget {
       if (query.isNotEmpty) {
         return EmptyState(
           icon: Icons.search_off_rounded,
-          title: 'No matches for "${searchQuery.trim()}"',
+          title: context.l10n.noMatchesFor(searchQuery.trim()),
           message: p != null
-              ? 'Try another title, or clear the platform filter.'
-              : 'Try a different title.',
-          actionLabel: 'Clear search',
+              ? context.l10n.noMatchesPlatformMessage
+              : context.l10n.noMatchesMessage,
+          actionLabel: context.l10n.clearSearch,
           onAction: onClearSearch,
         );
       }
@@ -274,13 +275,13 @@ class _Collection extends StatelessWidget {
         icon: s?.icon ?? Icons.apps_rounded,
         title: p != null
             ? (s == null
-                  ? 'No games on ${p.label}'
-                  : 'No ${s.label.toLowerCase()} games on ${p.label}')
-            : (s == null ? 'Nothing here yet' : 'Nothing in ${s.label} yet'),
+                  ? context.l10n.noGamesOnPlatform(p.label)
+                  : context.l10n.noStatusGamesOnPlatform(s.name, p.label))
+            : (s == null ? context.l10n.nothingHereYet : context.l10n.nothingInStatusYet(s.label)),
         message: p != null
-            ? 'Clear the platform filter to see everything.'
-            : 'Games they add show up here.',
-        actionLabel: p != null ? 'Clear filter' : null,
+            ? context.l10n.clearPlatformFilterMessage
+            : context.l10n.theirGamesShowHere,
+        actionLabel: p != null ? context.l10n.clearFilters(1) : null,
         onAction: p != null
             ? () => context.read<LibraryViewStore>().setPlatformFilter(null)
             : null,

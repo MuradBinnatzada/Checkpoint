@@ -3,6 +3,7 @@ import 'package:cached_network_image_platform_interface/cached_network_image_pla
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_media.dart';
 import 'package:checkpoint/state/game_details_store.dart';
@@ -56,7 +57,7 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
     final game = context.watch<LibraryStore>().maybeGame(widget.gameId);
     if (game == null) return const SizedBox.shrink();
     return SheetFrame(
-      title: 'Change backdrop',
+      title: context.l10n.changeBackdrop,
       subtitle: game.title,
       child: FutureBuilder<GameMedia?>(
         future: _media,
@@ -80,14 +81,14 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
       child: Column(
         children: [
           Text(
-            'Could not load the art for this game.',
+            context.l10n.artLoadFailed,
             style: TextStyle(color: context.palette.muted),
           ),
           const SizedBox(height: 10),
           TextButton.icon(
             onPressed: () => setState(() => _media = _load()),
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Try again'),
+            label: Text(context.l10n.tryAgain),
           ),
         ],
       ),
@@ -107,7 +108,7 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
         _Grid(
           children: [
             _Tile(
-              label: 'Default',
+              label: context.l10n.defaultBackdrop,
               selected: current == null,
               onTap: () => _pick(game, null),
               child: CoverBackdrop(game: game.withBackdrop(null)),
@@ -116,14 +117,14 @@ class _GameBackdropSheetState extends State<GameBackdropSheet> {
           ],
         ),
         if (media.screenshots.isNotEmpty) ...[
-          const _SectionTitle('Screenshots'),
+          _SectionTitle(context.l10n.screenshots),
           _Grid(children: [for (final image in media.screenshots) tile(image)]),
         ],
         if (media.isEmpty)
           Padding(
             padding: EdgeInsets.only(top: 16),
             child: Text(
-              'IGDB has no artworks or screenshots for this game yet.',
+              context.l10n.noArtworks,
               style: TextStyle(color: context.palette.muted),
             ),
           ),
@@ -193,7 +194,7 @@ class _Tile extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: label ?? 'Backdrop',
+      label: label ?? context.l10n.backdrop,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
@@ -241,9 +242,9 @@ class _Tile extends StatelessWidget {
                     ),
                   ),
                 if (selected)
-                  Positioned(
+                  PositionedDirectional(
                     top: 6,
-                    right: 6,
+                    end: 6,
                     child: CircleAvatar(
                       radius: 11,
                       backgroundColor: context.palette.accent,

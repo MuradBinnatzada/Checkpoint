@@ -3,12 +3,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/log_entry.dart';
 
 /// What the user is told when an edit was kept on the device instead of sent.
-const queuedNotice = 'Saved on this device. It will sync when you\'re back online.';
+String get queuedNotice => L10n.current.queuedNotice;
 
 /// A play session logged while the server could not be reached.
 @immutable

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -35,7 +36,7 @@ class MemberTile extends StatelessWidget {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('Log in to follow people')),
+            SnackBar(content: Text(context.l10n.logInToFollow)),
           );
         return;
       }
@@ -79,7 +80,7 @@ class MemberTile extends StatelessWidget {
                       ),
                       for (final m in user.flair.showcase)
                         Padding(
-                          padding: const EdgeInsets.only(left: 4),
+                          padding: const EdgeInsetsDirectional.only(start: 4),
                           child: MilestoneBadge(milestone: m, size: 18),
                         ),
                     ],
@@ -111,7 +112,7 @@ class MemberTile extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
-                  'You',
+                  context.l10n.you,
                   style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
               )
@@ -123,14 +124,14 @@ class MemberTile extends StatelessWidget {
                         visualDensity: VisualDensity.compact,
                       ),
                       onPressed: toggle,
-                      child: const Text('Following'),
+                      child: Text(context.l10n.followingButton),
                     )
                   : FilledButton(
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
                       onPressed: toggle,
-                      child: const Text('Follow'),
+                      child: Text(context.l10n.follow),
                     ),
             ],
           ],

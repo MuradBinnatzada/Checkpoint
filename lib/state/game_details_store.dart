@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/game_media.dart';
@@ -10,12 +11,15 @@ import 'package:checkpoint/utils/lru_cache.dart';
 /// One game's [GameDetails], with where the request stands.
 @immutable
 class GameDetailsView {
-  const GameDetailsView({this.status = LoadStatus.idle, this.details});
+  const GameDetailsView({this.status = LoadStatus.idle, this.details, this.language = 'en'});
 
   final LoadStatus status;
 
   /// Set once [status] is [LoadStatus.ready].
   final GameDetails? details;
+
+  /// The app's language when [details] were asked for: their translation's.
+  final String language;
 }
 
 /// What IGDB says about a game beyond what the library holds (see [GameDetails]),
@@ -63,16 +67,19 @@ class GameDetailsStore extends ChangeNotifier {
   }
 
   /// Makes sure [game]'s details are loaded: does nothing for a game without an
-  /// IGDB id, while a request is running, or when they are already here; [force]
-  /// asks again (a retry). Details already held stay on screen if asking again
-  /// fails.
+  /// IGDB id, while a request is running, or when they are already here in the
+  /// app's language; [force] asks again (a retry). Details already held stay on
+  /// screen if asking again fails.
   Future<void> load(Game game, {bool force = false}) {
     final igdbId = game.igdbId;
     if (igdbId == null) return Future.value();
     final running = _loading[game.id];
     if (running != null) return running;
     final cached = _views[game.id];
-    if (!force && cached != null && cached.status == LoadStatus.ready) {
+    if (!force &&
+        cached != null &&
+        cached.status == LoadStatus.ready &&
+        cached.language == L10n.languageCode) {
       return Future.value();
     }
 
@@ -93,11 +100,13 @@ class GameDetailsStore extends ChangeNotifier {
       _views[gameId] = const GameDetailsView(status: LoadStatus.loading);
       _notify();
     }
+    final language = L10n.languageCode;
     final details = await _apiService.fetchDetails(igdbId);
     if (details != null) {
       _views[gameId] = GameDetailsView(
         status: LoadStatus.ready,
         details: details,
+        language: language,
       );
       _onLoaded?.call(gameId, details);
     } else if (!hasContent) {

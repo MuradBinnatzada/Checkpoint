@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -49,9 +50,9 @@ Future<void> connectService(
       final id = await showDialog<String>(
         context: context,
         builder: (_) => _TextDialog(
-          title: 'Connect Nintendo',
-          hint: 'Enter your Nintendo Gamertag/ID',
-          validate: (text) => text.isEmpty ? 'Enter your Nintendo ID' : null,
+          title: context.l10n.connectService('Nintendo'),
+          hint: context.l10n.nintendoIdHint,
+          validate: (text) => text.isEmpty ? context.l10n.nintendoIdRequired : null,
         ),
       );
       // Nintendo has nothing to open, so only the fact that it is connected is kept.
@@ -70,15 +71,15 @@ Future<void> connectService(
       final name = await showDialog<String>(
         context: context,
         builder: (_) => _TextDialog(
-          title: editing ? 'Change $label username' : 'Connect $label',
-          hint: 'Enter your $label username',
+          title: editing ? context.l10n.changeServiceUsername(label) : context.l10n.connectService(label),
+          hint: context.l10n.serviceUsernameHint(label),
           initial: editing ? store.accountNames[service] : null,
-          confirmLabel: editing ? 'Save' : 'Connect',
+          confirmLabel: editing ? context.l10n.save : context.l10n.connect,
           prefix: isHandle ? '@' : null,
           validate: (text) {
-            if (text.isEmpty) return 'Enter your $label username';
+            if (text.isEmpty) return context.l10n.serviceUsernameHint(label);
             if (cleanAccountName(service, text) == null) {
-              return "That isn't a valid $label username";
+              return context.l10n.serviceUsernameInvalid(label);
             }
             return null;
           },
@@ -99,21 +100,20 @@ Future<void> disconnectService(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Disconnect ${service.label}?'),
+      title: Text(context.l10n.disconnectServiceTitle(service.label)),
       content: Text(
         service == ConnectedService.steam
-            ? 'Your Steam ID is removed and library sync stops. Games already in '
-                  'your library stay.'
-            : "It's removed from your profile. You can connect it again any time.",
+            ? context.l10n.disconnectSteamBody
+            : context.l10n.disconnectServiceBody,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Disconnect'),
+          child: Text(context.l10n.disconnect),
         ),
       ],
     ),
@@ -158,19 +158,16 @@ class _SteamLinkDialogState extends State<_SteamLinkDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Connect Steam'),
-      content: const Row(
+      title: Text(context.l10n.connectService('Steam')),
+      content: Row(
         children: [
-          SizedBox.square(
+          const SizedBox.square(
             dimension: 24,
             child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              "Sign in on Steam's page to show the account is yours. "
-              'Checkpoint gets your Steam ID from Steam, never your password.',
-            ),
+            child: Text(context.l10n.connectSteamBody),
           ),
         ],
       ),
@@ -180,7 +177,7 @@ class _SteamLinkDialogState extends State<_SteamLinkDialog> {
             widget.onCancel();
             Navigator.pop(context);
           },
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
       ],
     );
@@ -198,7 +195,7 @@ class _TextDialog extends StatefulWidget {
     this.initial,
     this.prefix,
     this.clean,
-    this.confirmLabel = 'Connect',
+    this.confirmLabel,
   });
 
   final String title;
@@ -207,7 +204,7 @@ class _TextDialog extends StatefulWidget {
   final String? prefix;
   final String? Function(String text) validate;
   final String? Function(String text)? clean;
-  final String confirmLabel;
+  final String? confirmLabel;
 
   @override
   State<_TextDialog> createState() => _TextDialogState();
@@ -256,9 +253,9 @@ class _TextDialogState extends State<_TextDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
-        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
+        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel ?? context.l10n.connect)),
       ],
     );
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/profile_store.dart';
@@ -72,14 +73,17 @@ class _FollowsScreenState extends State<FollowsScreen>
   Widget build(BuildContext context) {
     String label(FollowListKind kind) {
       final count = _count(context, kind);
-      final name = kind.label.toLowerCase();
-      return count == null ? kind.label : '${fmtThousands(count)} $name';
+      if (count == null) return kind.label;
+      return switch (kind) {
+        FollowListKind.followers => context.l10n.followersCountFormatted(count, fmtThousands(count)),
+        FollowListKind.following => context.l10n.followingCountFormatted(count, fmtThousands(count)),
+      };
     }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.ownerName ?? 'People',
+          widget.ownerName ?? context.l10n.people,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -172,9 +176,9 @@ class _FollowListState extends State<_FollowList>
     if (view.status == LoadStatus.failed) {
       return EmptyState(
         icon: Icons.cloud_off_rounded,
-        title: 'Could not load ${widget.kind.label.toLowerCase()}',
-        message: 'Check your connection and try again.',
-        actionLabel: 'Try again',
+        title: followers ? context.l10n.followersLoadFailed : context.l10n.followingLoadFailed,
+        message: context.l10n.checkConnection,
+        actionLabel: context.l10n.tryAgain,
         onAction: _load,
       );
     }
@@ -182,15 +186,18 @@ class _FollowListState extends State<_FollowList>
       return const Center(child: CircularProgressIndicator());
     }
     if (view.users.isEmpty) {
-      final who = widget.ownerName ?? 'this member';
+      final who = widget.ownerName;
       return EmptyState(
         icon: followers
             ? Icons.people_outline_rounded
             : Icons.person_add_alt_rounded,
-        title: followers ? 'No followers yet' : 'Not following anyone yet',
-        message: followers
-            ? 'When people follow $who, they show up here.'
-            : 'People $who follows show up here.',
+        title: followers ? context.l10n.noFollowersYet : context.l10n.notFollowingYet,
+        message: switch ((followers, who)) {
+          (true, final who?) => context.l10n.noFollowersMessage(who),
+          (true, null) => context.l10n.noFollowersMessageMember,
+          (false, final who?) => context.l10n.notFollowingMessage(who),
+          (false, null) => context.l10n.notFollowingMessageMember,
+        },
       );
     }
 

@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -284,12 +285,12 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
                 isDense: true,
                 filled: true,
                 fillColor: context.palette.surfaceHigh,
-                hintText: 'Search achievements',
+                hintText: context.l10n.searchAchievements,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        tooltip: 'Clear search',
+                        tooltip: context.l10n.clearSearch,
                         icon: const Icon(Icons.close_rounded, size: 18),
                         onPressed: () => setState(() {
                           _search.clear();
@@ -309,9 +310,9 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
               runSpacing: 8,
               children: [
                 for (final (filter, label) in [
-                  (_Filter.all, 'All ${list.length}'),
-                  (_Filter.unlocked, 'Unlocked $unlocked'),
-                  (_Filter.locked, 'Locked $locked'),
+                  (_Filter.all, context.l10n.filterAllCount(list.length)),
+                  (_Filter.unlocked, context.l10n.filterUnlockedCount(unlocked)),
+                  (_Filter.locked, context.l10n.filterLockedCount(locked)),
                 ])
                   AppChoiceChip(
                     label: label,
@@ -341,12 +342,12 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
         );
       case LoadStatus.failed:
         return _Message(
-          text: widget.error ?? 'Could not load the achievements.',
+          text: widget.error ?? context.l10n.achievementsLoadFailedShort,
           error: true,
           action: TextButton.icon(
             onPressed: widget.onRetry,
             icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Try again'),
+            label: Text(context.l10n.tryAgain),
           ),
         );
       case LoadStatus.ready:
@@ -355,7 +356,7 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
 
     final all = sortAchievements(list ?? const <Achievement>[]);
     if (all.isEmpty) {
-      return const _Message(text: 'Steam lists no achievements for this game.');
+      return _Message(text: context.l10n.noSteamAchievements);
     }
     final shown = [
       for (final a in all)
@@ -376,7 +377,7 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: Text(
-              'Showing the last saved list. $error',
+              context.l10n.showingLastSavedList(error),
               style: TextStyle(
                 color: context.palette.muted,
                 fontSize: 12,
@@ -386,7 +387,7 @@ class _AchievementsDialogFrameState extends State<_AchievementsDialogFrame> {
           ),
         Flexible(
           child: shown.isEmpty
-              ? const _Message(text: 'No achievements match.')
+              ? _Message(text: context.l10n.noAchievementsMatch)
               : ListView.builder(
                   shrinkWrap: all.length <= _shrinkWrapUpTo,
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -429,7 +430,7 @@ class _Header extends StatelessWidget {
         : (complete ? 100 : (unlocked * 100 / total).floor());
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
+      padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 8, 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -474,12 +475,12 @@ class _Header extends StatelessWidget {
                 )
               else if (showRefresh)
                 IconButton(
-                  tooltip: 'Refresh from Steam',
+                  tooltip: context.l10n.refreshFromSteam,
                   onPressed: onRefresh,
                   icon: Icon(Icons.refresh_rounded, color: context.palette.muted),
                 ),
               IconButton(
-                tooltip: 'Close',
+                tooltip: context.l10n.close,
                 onPressed: () => Navigator.of(context).maybePop(),
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -488,7 +489,7 @@ class _Header extends StatelessWidget {
           const SizedBox(height: 14),
           Semantics(
             container: true,
-            label: '$unlocked of $total achievements unlocked',
+            label: context.l10n.achievementsUnlockedOf(unlocked, total),
             excludeSemantics: true,
             child: Row(
               children: [
@@ -503,8 +504,8 @@ class _Header extends StatelessWidget {
                 Expanded(
                   child: Text(
                     complete
-                        ? 'All achievements unlocked · $unlocked / $total'
-                        : '$unlocked / $total unlocked',
+                        ? '${context.l10n.perfectAchievementsDone} · $unlocked / $total'
+                        : '$unlocked ${context.l10n.slashUnlocked(total)}',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -525,7 +526,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsetsDirectional.only(end: 8),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(

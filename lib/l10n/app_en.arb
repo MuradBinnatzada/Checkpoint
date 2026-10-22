@@ -1,0 +1,2697 @@
+{
+  "@@locale": "en",
+  "languageName": "English",
+  "@languageName": {
+    "description": "This language's name, in this language: how Settings > Appearance lists it."
+  },
+  "appearanceLanguage": "Language",
+  "appearanceLanguageDevice": "Device language",
+  "appearanceLanguageDeviceSubtitle": "Follows your device, or English when Checkpoint doesn't have its language yet.",
+  "appearanceTheme": "Theme",
+  "appearanceAccessibility": "Accessibility",
+  "appearanceSavedOnDevice": "These are saved on this device only, so each of your devices can look its own way. Text size follows your device's setting, up to twice the normal size.",
+  "appearanceThemeSystem": "Same as device",
+  "appearanceThemeLight": "Light",
+  "appearanceThemeDark": "Dark",
+  "appearanceThemeSystemSubtitle": "Switches with your device's light or dark mode.",
+  "appearanceThemeLightSubtitle": "Dark text on a light background.",
+  "appearanceThemeDarkSubtitle": "Light text on a dark background.",
+  "appearanceIncreaseContrast": "Increase contrast",
+  "appearanceOnInDeviceSettings": "On in your device's settings.",
+  "appearanceIncreaseContrastSubtitle": "Darker text and colors on light, brighter on dark, and stronger borders.",
+  "appearanceReduceMotion": "Reduce motion",
+  "appearanceReduceMotionSubtitle": "Pages fade in instead of sliding, and nothing animates just for show.",
+  "countThousands": "{value}k",
+  "@countThousands": {
+    "description": "A count in thousands, in little room: 1.3k for 1,280.",
+    "placeholders": {
+      "value": {
+        "type": "String",
+        "example": "1.3"
+      }
+    }
+  },
+  "timeAgoMinutes": "{count}m ago",
+  "@timeAgoMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoHours": "{count}h ago",
+  "@timeAgoHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoDays": "{count}d ago",
+  "@timeAgoDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoWeeks": "{count}w ago",
+  "@timeAgoWeeks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeAgoMonths": "{count}mo ago",
+  "@timeAgoMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "greetingLateNight": "Late night",
+  "greetingMorning": "Good morning",
+  "greetingAfternoon": "Good afternoon",
+  "greetingEvening": "Good evening",
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "milestoneLibrary1": "First Pick",
+  "milestoneLibrary1Description": "Add your first game to your library.",
+  "milestoneLibrary10": "Shelf Starter",
+  "milestoneLibrary10Description": "Have 10 games in your library.",
+  "milestoneLibrary50": "Bookshelf",
+  "milestoneLibrary50Description": "Have 50 games in your library.",
+  "milestoneLibrary100": "Collector",
+  "milestoneLibrary100Description": "Have 100 games in your library.",
+  "milestoneLibrary200": "Archivist",
+  "milestoneLibrary200Description": "Have 200 games in your library.",
+  "milestoneLibrary500": "Hoarder",
+  "milestoneLibrary500Description": "Have 500 games in your library.",
+  "milestoneLibrary1000": "Living Museum",
+  "milestoneLibrary1000Description": "Have 1,000 games in your library.",
+  "milestoneSessions1": "Checkpoint Reached",
+  "milestoneSessions1Description": "Log your first play session.",
+  "milestoneSessions10": "Getting Into It",
+  "milestoneSessions10Description": "Log 10 play sessions.",
+  "milestoneSessions50": "Regular Logger",
+  "milestoneSessions50Description": "Log 50 play sessions.",
+  "milestoneSessions100": "Diarist",
+  "milestoneSessions100Description": "Log 100 play sessions.",
+  "milestoneSessions500": "Chronicler",
+  "milestoneSessions500Description": "Log 500 play sessions.",
+  "milestoneHours10": "Warming Up",
+  "milestoneHours10Description": "Play 10 hours in total.",
+  "milestoneHours100": "Hundred Hours",
+  "milestoneHours100Description": "Play 100 hours in total.",
+  "milestoneHours500": "Dedicated",
+  "milestoneHours500Description": "Play 500 hours in total.",
+  "milestoneHours1000": "Touch Grass",
+  "milestoneHours1000Description": "Play 1,000 hours in total.",
+  "milestoneGameHours100": "Devoted",
+  "milestoneGameHours100Description": "Play one game for 100 hours.",
+  "milestoneCompleted1": "The End",
+  "milestoneCompleted1Description": "Complete your first game.",
+  "milestoneCompleted10": "Credits Roll",
+  "milestoneCompleted10Description": "Complete 10 games.",
+  "milestoneCompleted25": "Finisher",
+  "milestoneCompleted25Description": "Complete 25 games.",
+  "milestoneCompleted50": "Closer",
+  "milestoneCompleted50Description": "Complete 50 games.",
+  "milestoneCompleted100": "Completionist",
+  "milestoneCompleted100Description": "Complete 100 games.",
+  "milestoneCompletionTime1": "Stopwatch",
+  "milestoneCompletionTime1Description": "Add how long a game took you to finish.",
+  "milestoneStreak3": "Hat Trick",
+  "milestoneStreak3Description": "Log a session 3 days in a row.",
+  "milestoneStreak7": "On a Roll",
+  "milestoneStreak7Description": "Log a session 7 days in a row.",
+  "milestoneStreak30": "Unstoppable",
+  "milestoneStreak30Description": "Log a session 30 days in a row.",
+  "milestoneStreak30RewardTitle": "Marathoner",
+  "milestoneNightOwl": "Night Owl",
+  "milestoneNightOwlDescription": "Log a session between midnight and 4 am.",
+  "milestoneRated1": "First Impressions",
+  "milestoneRated1Description": "Rate a game.",
+  "milestoneRated25": "Opinionated",
+  "milestoneRated25Description": "Rate 25 games.",
+  "milestoneRated100": "Tastemaker",
+  "milestoneRated100Description": "Rate 100 games.",
+  "milestoneReviews1": "First Review",
+  "milestoneReviews1Description": "Write a review.",
+  "milestoneReviews10": "Critic",
+  "milestoneReviews10Description": "Write 10 reviews.",
+  "milestoneReviews50": "Columnist",
+  "milestoneReviews50Description": "Write 50 reviews.",
+  "milestoneLists1": "Curator",
+  "milestoneLists1Description": "Make your first list.",
+  "milestonePublicList": "On Display",
+  "milestonePublicListDescription": "Make a list public.",
+  "milestoneListSize25": "Big List",
+  "milestoneListSize25Description": "Put 25 games on one list.",
+  "milestonePlatforms3": "Multi-Platform",
+  "milestonePlatforms3Description": "Play on 3 different platforms.",
+  "milestonePlatforms5": "Platform Hopper",
+  "milestonePlatforms5Description": "Play on 5 different platforms.",
+  "milestoneGenres10": "Genre Hopper",
+  "milestoneGenres10Description": "Play games from 10 different genres.",
+  "milestoneRetro1": "Old School",
+  "milestoneRetro1Description": "Play a game released before 1995.",
+  "milestoneDecades4": "Time Traveler",
+  "milestoneDecades4Description": "Play games from 4 different decades.",
+  "milestoneFollowing1": "Say Hi",
+  "milestoneFollowing1Description": "Follow another member.",
+  "milestoneFollowers1": "Fan Club",
+  "milestoneFollowers1Description": "Get your first follower.",
+  "milestoneFollowers10": "Rising Star",
+  "milestoneFollowers10Description": "Have 10 followers.",
+  "milestoneFollowers50": "Socialite",
+  "milestoneFollowers50Description": "Have 50 followers.",
+  "milestoneMember1m": "Welcome Aboard",
+  "milestoneMember1mDescription": "Be a member for a month.",
+  "milestoneMember3m": "Settling In",
+  "milestoneMember3mDescription": "Be a member for 3 months.",
+  "milestoneMember6m": "Regular",
+  "milestoneMember6mDescription": "Be a member for 6 months.",
+  "milestoneMember1y": "Veteran",
+  "milestoneMember1yDescription": "Be a member for a year.",
+  "milestoneMember2y": "Two Years Strong",
+  "milestoneMember2yDescription": "Be a member for 2 years.",
+  "milestoneMember3y": "Old Guard",
+  "milestoneMember3yDescription": "Be a member for 3 years.",
+  "milestoneMember5y": "Legend",
+  "milestoneMember5yDescription": "Be a member for 5 years.",
+  "milestoneFoundingMember": "Founding Member",
+  "milestoneFoundingMemberDescription": "Join Checkpoint in its first year, 2026.",
+  "milestoneFoundingMemberRewardTitle": "Founder",
+  "milestoneProfileComplete": "Looking Sharp",
+  "milestoneProfileCompleteDescription": "Add a profile photo and a bio.",
+  "milestoneFavorites4": "Top Four",
+  "milestoneFavorites4Description": "Pick 4 favorite games.",
+  "milestoneWishlist10": "Window Shopper",
+  "milestoneWishlist10Description": "Wishlist 10 games.",
+  "milestoneDropped1": "Know When to Fold",
+  "milestoneDropped1Description": "Drop a game.",
+  "milestoneSteamConnected": "Plugged In",
+  "milestoneSteamConnectedDescription": "Connect a game account: Steam, PSN, Xbox or Nintendo.",
+  "milestoneTwoFactor": "Locked Down",
+  "milestoneTwoFactorDescription": "Turn on two-factor authentication.",
+  "milestonePerfectGame": "Perfectionist",
+  "milestonePerfectGameDescription": "Earn a Platinum trophy, every achievement or 100% in a game.",
+  "tierBronze": "Bronze",
+  "tierSilver": "Silver",
+  "tierGold": "Gold",
+  "tierPlatinum": "Platinum",
+  "milestoneCategoryLibrary": "Library",
+  "milestoneCategoryLogbook": "Logbook",
+  "milestoneCategoryPlaytime": "Playtime",
+  "milestoneCategoryFinisher": "Finisher",
+  "milestoneCategoryStreaks": "Streaks",
+  "milestoneCategoryCritic": "Critic",
+  "milestoneCategoryCurator": "Curator",
+  "milestoneCategoryVariety": "Variety",
+  "milestoneCategorySocial": "Social",
+  "milestoneCategoryMembership": "Membership",
+  "milestoneCategoryAccount": "Account",
+  "milestoneUnitGames": "{count, plural, =1{game} other{games}}",
+  "@milestoneUnitGames": {
+    "description": "What is counted in a milestone's progress line: games in \"37 / 50 games\". count is the number after the slash.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitSessions": "{count, plural, =1{session} other{sessions}}",
+  "@milestoneUnitSessions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitHours": "{count, plural, =1{hour} other{hours}}",
+  "@milestoneUnitHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitCompleted": "{count, plural, other{completed}}",
+  "@milestoneUnitCompleted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitTimes": "{count, plural, =1{time} other{times}}",
+  "@milestoneUnitTimes": {
+    "description": "Completion times logged: \"3 / 10 times\".",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitDays": "{count, plural, =1{day} other{days}}",
+  "@milestoneUnitDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitRated": "{count, plural, other{rated}}",
+  "@milestoneUnitRated": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitReviews": "{count, plural, =1{review} other{reviews}}",
+  "@milestoneUnitReviews": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitLists": "{count, plural, =1{list} other{lists}}",
+  "@milestoneUnitLists": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitPlatforms": "{count, plural, =1{platform} other{platforms}}",
+  "@milestoneUnitPlatforms": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitGenres": "{count, plural, =1{genre} other{genres}}",
+  "@milestoneUnitGenres": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitDecades": "{count, plural, =1{decade} other{decades}}",
+  "@milestoneUnitDecades": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitFollowers": "{count, plural, =1{follower} other{followers}}",
+  "@milestoneUnitFollowers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitMonths": "{count, plural, =1{month} other{months}}",
+  "@milestoneUnitMonths": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitFavorites": "{count, plural, =1{favorite} other{favorites}}",
+  "@milestoneUnitFavorites": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "milestoneUnitWishlisted": "{count, plural, other{wishlisted}}",
+  "@milestoneUnitWishlisted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "frameBronze": "Bronze",
+  "frameSilver": "Silver",
+  "frameGold": "Gold",
+  "framePrism": "Prism",
+  "framePlatinum": "Platinum",
+  "frameNeon": "Neon",
+  "frameLaurel": "Laurel",
+  "frameEmber": "Ember",
+  "frameShield": "Shield",
+  "frameVeteran": "Veteran",
+  "frameFounder": "Founder",
+  "statusPlaying": "Playing",
+  "statusToPlay": "To Play",
+  "statusCompleted": "Completed",
+  "statusDropped": "Dropped",
+  "statusWishlist": "Wishlist",
+  "platformXboxOriginal": "Xbox (Original)",
+  "platformMobile": "Mobile",
+  "platformEmulator": "Emulator",
+  "perfectPlatinumLabel": "Platinum",
+  "perfectPlatinumTitle": "Platinum trophy",
+  "perfectPlatinumDescription": "You earned every trophy in it",
+  "perfectPlatinumDone": "Platinum trophy earned",
+  "perfectAchievementsLabel": "All achievements",
+  "perfectAchievementsTitle": "All achievements",
+  "perfectAchievementsDescription": "You unlocked every achievement in it",
+  "perfectAchievementsDone": "All achievements unlocked",
+  "perfectCompleteLabel": "100%",
+  "perfectCompleteTitle": "100% complete",
+  "perfectCompleteDescription": "You did everything there is to do in it",
+  "perfectCompleteDone": "Marked 100% complete",
+  "importFileEmpty": "The file is empty.",
+  "importNoTitleColumn": "No \"title\" column in the first row.",
+  "@importNoTitleColumn": {
+    "description": "\"title\" is the column's name in the file: keep it in English."
+  },
+  "importLineNoTitle": "Line {line}: no title.",
+  "@importLineNoTitle": {
+    "placeholders": {
+      "line": {
+        "type": "int"
+      }
+    }
+  },
+  "importTooManyRows": "Lines {line} and after: an import takes up to {max} games.",
+  "@importTooManyRows": {
+    "placeholders": {
+      "line": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "importUnknownStatus": "Line {line} ({title}): unknown status \"{status}\".",
+  "@importUnknownStatus": {
+    "placeholders": {
+      "line": {
+        "type": "int"
+      },
+      "title": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "countryArgentina": "Argentina",
+  "countryAustralia": "Australia",
+  "countryAustria": "Austria",
+  "countryArmenia": "Armenia",
+  "countryBelgium": "Belgium",
+  "countryBrazil": "Brazil",
+  "countryBulgaria": "Bulgaria",
+  "countryBelarus": "Belarus",
+  "countryCanada": "Canada",
+  "countryChile": "Chile",
+  "countryChina": "China",
+  "countryTaiwan": "Taiwan",
+  "countryColombia": "Colombia",
+  "countryCroatia": "Croatia",
+  "countryCyprus": "Cyprus",
+  "countryCzechia": "Czechia",
+  "countryDenmark": "Denmark",
+  "countryEstonia": "Estonia",
+  "countryFinland": "Finland",
+  "countryFrance": "France",
+  "countryGeorgia": "Georgia",
+  "countryGermany": "Germany",
+  "countryGreece": "Greece",
+  "countryHongKong": "Hong Kong",
+  "countryHungary": "Hungary",
+  "countryIceland": "Iceland",
+  "countryIndia": "India",
+  "countryIndonesia": "Indonesia",
+  "countryIran": "Iran",
+  "countryIreland": "Ireland",
+  "countryIsrael": "Israel",
+  "countryItaly": "Italy",
+  "countryJapan": "Japan",
+  "countryKazakhstan": "Kazakhstan",
+  "countrySouthKorea": "South Korea",
+  "countryLatvia": "Latvia",
+  "countryLithuania": "Lithuania",
+  "countryLuxembourg": "Luxembourg",
+  "countryMalaysia": "Malaysia",
+  "countryMalta": "Malta",
+  "countryMexico": "Mexico",
+  "countryMoldova": "Moldova",
+  "countryNetherlands": "Netherlands",
+  "countryNewZealand": "New Zealand",
+  "countryNorway": "Norway",
+  "countryPeru": "Peru",
+  "countryPhilippines": "Philippines",
+  "countryPoland": "Poland",
+  "countryPortugal": "Portugal",
+  "countryRomania": "Romania",
+  "countryRussia": "Russia",
+  "countrySaudiArabia": "Saudi Arabia",
+  "countrySerbia": "Serbia",
+  "countrySingapore": "Singapore",
+  "countrySlovakia": "Slovakia",
+  "countryVietnam": "Vietnam",
+  "countrySlovenia": "Slovenia",
+  "countrySouthAfrica": "South Africa",
+  "countrySpain": "Spain",
+  "countrySweden": "Sweden",
+  "countrySwitzerland": "Switzerland",
+  "countryThailand": "Thailand",
+  "countryUnitedArabEmirates": "United Arab Emirates",
+  "countryTrkiye": "Türkiye",
+  "countryUkraine": "Ukraine",
+  "countryEgypt": "Egypt",
+  "countryUnitedKingdom": "United Kingdom",
+  "countryUnitedStates": "United States",
+  "countryUruguay": "Uruguay",
+  "countryVenezuela": "Venezuela",
+  "tagAdventure": "Adventure",
+  "tagRolePlayingRpg": "Role-playing (RPG)",
+  "tagRolePlayingRpgShort": "RPG",
+  "tagShooter": "Shooter",
+  "tagPlatform": "Platform",
+  "tagPuzzle": "Puzzle",
+  "tagStrategy": "Strategy",
+  "tagSimulator": "Simulator",
+  "tagIndie": "Indie",
+  "tagFighting": "Fighting",
+  "tagRacing": "Racing",
+  "tagSport": "Sport",
+  "tagArcade": "Arcade",
+  "tagHackAndSlashBeatEmUp": "Hack and slash/Beat 'em up",
+  "tagHackAndSlashBeatEmUpShort": "Hack and slash",
+  "tagTactical": "Tactical",
+  "tagRealTimeStrategyRts": "Real Time Strategy (RTS)",
+  "tagRealTimeStrategyRtsShort": "Real-time strategy",
+  "tagTurnBasedStrategyTbs": "Turn-based strategy (TBS)",
+  "tagTurnBasedStrategyTbsShort": "Turn-based strategy",
+  "tagVisualNovel": "Visual Novel",
+  "tagPointAndClick": "Point-and-click",
+  "tagCardBoardGame": "Card & Board Game",
+  "tagMoba": "MOBA",
+  "tagMusic": "Music",
+  "tagQuizTrivia": "Quiz/Trivia",
+  "tagPinball": "Pinball",
+  "tagAction": "Action",
+  "tagFantasy": "Fantasy",
+  "tagScienceFiction": "Science fiction",
+  "tagScienceFictionShort": "Sci-fi",
+  "tagHorror": "Horror",
+  "tagSurvival": "Survival",
+  "tagOpenWorld": "Open world",
+  "tagSandbox": "Sandbox",
+  "tagStealth": "Stealth",
+  "tagMystery": "Mystery",
+  "tagThriller": "Thriller",
+  "tagComedy": "Comedy",
+  "tagDrama": "Drama",
+  "tagHistorical": "Historical",
+  "tagWarfare": "Warfare",
+  "tagRomance": "Romance",
+  "tagParty": "Party",
+  "tagKids": "Kids",
+  "tagEducational": "Educational",
+  "tagBusiness": "Business",
+  "tagNonFiction": "Non-fiction",
+  "tag4xExploreExpandExploitAndExterminate": "4X (explore, expand, exploit, and exterminate)",
+  "tag4xExploreExpandExploitAndExterminateShort": "4X",
+  "tagSinglePlayer": "Single player",
+  "tagSinglePlayerShort": "Single-player",
+  "tagMultiplayer": "Multiplayer",
+  "tagCoOperative": "Co-operative",
+  "tagCoOperativeShort": "Co-op",
+  "tagSplitScreen": "Split screen",
+  "tagMassivelyMultiplayerOnlineMmo": "Massively Multiplayer Online (MMO)",
+  "tagMassivelyMultiplayerOnlineMmoShort": "MMO",
+  "tagBattleRoyale": "Battle Royale",
+  "tagBattleRoyaleShort": "Battle royale",
+  "tagErotic": "Erotic",
+  "tagFirstPerson": "First person",
+  "tagThirdPerson": "Third person",
+  "tagBirdViewIsometric": "Bird view / Isometric",
+  "tagSideView": "Side view",
+  "tagText": "Text",
+  "tagAuditory": "Auditory",
+  "tagVirtualReality": "Virtual Reality",
+  "sortMostPopular": "Most popular",
+  "sortHighestRated": "Highest rated",
+  "sortNewest": "Newest",
+  "sortOldest": "Oldest",
+  "yearsDecade": "{start}s",
+  "@yearsDecade": {
+    "description": "A decade, by its first year: \"1990s\".",
+    "placeholders": {
+      "start": {
+        "type": "int"
+      }
+    }
+  },
+  "yearsFrom": "{year} or later",
+  "@yearsFrom": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "yearsUpTo": "Up to {year}",
+  "@yearsUpTo": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "companyRoleAll": "All",
+  "companyRolePublished": "Published",
+  "companyRoleDeveloped": "Developed",
+  "websiteOfficial": "Official website",
+  "websiteOther": "Website",
+  "attributeGenre": "Genre",
+  "attributeTheme": "Theme",
+  "attributeGameMode": "Game mode",
+  "attributePerspective": "Perspective",
+  "attributeEngine": "Engine",
+  "attributeDeveloper": "Developer",
+  "attributePublisher": "Publisher",
+  "attributeGenres": "Genres",
+  "attributeThemes": "Themes",
+  "attributeGameModes": "Game modes",
+  "attributePerspectives": "Perspectives",
+  "attributeEngines": "Engines",
+  "attributeDevelopers": "Developers",
+  "attributePublishers": "Publishers",
+  "serviceGroupGame": "Game profiles",
+  "serviceGroupSocial": "Social media",
+  "releaseOutToday": "Out today",
+  "releaseOutNow": "Out now",
+  "releaseOutTomorrow": "Out tomorrow",
+  "releaseOutInDays": "{count, plural, =1{Out in 1 day} other{Out in {count} days}}",
+  "@releaseOutInDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "completionMainStory": "Main Story",
+  "completionMainExtras": "Main + Extras",
+  "completionCompletionist": "Completionist",
+  "friendGroupCompleted": "Completed",
+  "friendGroupPlaying": "Playing",
+  "friendGroupWantToPlay": "Want to play",
+  "browseNewReleases": "New releases",
+  "libraryLoadFailed": "Could not load Checkpoint data. Pull to retry or sign in again.",
+  "libraryRemoveFailed": "Could not remove that game.",
+  "libraryClearSignIn": "Sign in to clear your library.",
+  "libraryClearWaitForSync": "Wait for the library sync to finish first.",
+  "libraryClearOffline": "Could not reach the server. Your library was not cleared. Check your connection and try again.",
+  "libraryClearFailed": "Could not clear your library. Please try again.",
+  "libraryFavoritesLimit": "You can only have {count} favorite games.",
+  "@libraryFavoritesLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncSignIn": "Sign in to sync your library.",
+  "syncAlreadyRunning": "A sync is already running.",
+  "syncConnectSteamFirst": "Connect your Steam account first to sync your library.",
+  "achievementsConnectSteam": "Connect your Steam account to load achievements.",
+  "gameNotFound": "Game not found.",
+  "steamUnexpectedResponse": "Steam returned an unexpected response.",
+  "achievementsLoadFailed": "Could not load Steam achievements.",
+  "completionTimeSaveFailed": "Could not save your completion time.",
+  "sessionStillSaving": "That session is still being saved. Try again in a moment.",
+  "sessionChangeSaveFailed": "Could not save that change to the session.",
+  "gameUpdateSaveFailed": "Could not save that game update.",
+  "sessionSaveFailed": "Could not save that session.",
+  "offlineChangesSaveFailed": "Some offline changes could not be saved.",
+  "sortDateAdded": "Date Added",
+  "sortRating": "Rating",
+  "sortHoursPlayed": "Hours Played",
+  "sortReleaseYear": "Release Year",
+  "defaultPlayerName": "Player",
+  "@defaultPlayerName": {
+    "description": "The name shown for a member who has not set one."
+  },
+  "followFailed": "Could not follow that user.",
+  "unfollowFailed": "Could not unfollow that user.",
+  "offlineFollowsSaveFailed": "Some offline follow changes could not be saved.",
+  "steamConnected": "Steam connected.",
+  "steamNotConfirmed": "Steam isn't connected yet. If you finished signing in on Steam's page, it shows here in a moment; otherwise connect Steam again.",
+  "steamLinkFailed": "Could not connect Steam. Please try again.",
+  "steamConnectSignIn": "Sign in to connect your Steam account.",
+  "steamDisconnectFailed": "Could not disconnect Steam. Please try again.",
+  "connectedAccountsSaveFailed": "Could not update the accounts shown on your profile.",
+  "privacySignIn": "Sign in to change your privacy settings.",
+  "privacyAchievementsOffline": "Could not reach the server, so your achievements setting was not changed.",
+  "privacySaveFailed": "Could not save your privacy setting. Please try again.",
+  "profileChangeSignIn": "Sign in to change your profile.",
+  "flairNotUnlocked": "You haven't unlocked that yet.",
+  "profileSaveFailed": "Could not save your profile. Please try again.",
+  "profileSaveOffline": "Could not reach the server, so your profile was not changed.",
+  "profileEditSignIn": "Sign in to edit your profile.",
+  "profileNameRequired": "Display name and username can't be empty.",
+  "usernameTaken": "That username is already taken.",
+  "syncErrorSteamRateLimited": "Steam is limiting requests right now.",
+  "syncErrorSteamUnavailable": "Steam is not responding right now.",
+  "syncErrorIgdbRateLimited": "The game database is busy right now.",
+  "syncErrorIgdbUnavailable": "The game database is not responding right now.",
+  "syncErrorSyncPartial": "Some games will be matched on your next sync.",
+  "syncErrorServerBusy": "The sync service is busy right now.",
+  "syncErrorRateLimited": "Too many requests from your account.",
+  "syncErrorOffline": "Could not reach the server. Check your connection.",
+  "syncErrorUnauthenticated": "Your session expired. Sign in again to sync.",
+  "syncErrorMfaRequired": "Enter your two-factor code to finish signing in, then sync again.",
+  "syncErrorNoSteamId": "Connect your Steam account first to sync your library.",
+  "syncErrorSteamProfilePrivate": "Your Steam game details are private. Set \"Game details\" to Public in your Steam privacy settings, then try again.",
+  "syncErrorGameNotLinked": "This game is not linked to a Steam app yet. Sync your Steam library first.",
+  "syncErrorNotInLibrary": "That game is not in your library.",
+  "syncErrorAchievementsHidden": "This member keeps their achievements private.",
+  "syncErrorSteamLinkCancelled": "Steam sign-in was cancelled, so Steam is not connected.",
+  "syncErrorSteamLinkExpired": "The Steam sign-in took too long. Connect Steam again.",
+  "syncErrorSteamLinkInvalid": "Steam could not confirm the sign-in. Connect Steam again.",
+  "syncErrorNotConfigured": "Syncing is not available right now.",
+  "syncErrorSteamError": "Steam returned an unexpected response.",
+  "syncErrorIgdbError": "The game database returned an unexpected response.",
+  "syncErrorBadRequest": "The sync request was not valid.",
+  "syncErrorInternal": "Something went wrong on our side.",
+  "syncErrorUnknown": "Could not sync your Steam library.",
+  "tryAgainInAMinute": "Try again in a minute.",
+  "tryAgainInMinutes": "Try again in {count} minutes.",
+  "@tryAgainInMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tryAgainInAnHour": "Try again in about an hour.",
+  "queuedNotice": "Saved on this device. It will sync when you're back online.",
+  "authGoogleCancelled": "Google sign-in was cancelled.",
+  "authGoogleNoToken": "Google did not return an ID token.",
+  "authAppleNoToken": "Apple did not return an ID token.",
+  "authCallbackSignedIn": "Signed in",
+  "authCallbackFailed": "Sign-in failed",
+  "authCallbackSignedInBody": "You can close this tab and go back to Checkpoint.",
+  "authCallbackFailedBody": "Go back to Checkpoint and try again.",
+  "authOffline": "Can't reach Checkpoint. Check your connection and try again.",
+  "authInvalidCredentials": "Wrong email or password. If you joined with Google, use Continue with Google.",
+  "authEmailExists": "That email is already registered. Sign in instead, or use Forgot password? to choose a new password.",
+  "authWeakPassword": "That password is too weak. {reason}",
+  "@authWeakPassword": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "authWeakPasswordMinLength": "Use at least {count} characters.",
+  "@authWeakPasswordMinLength": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "authWeakPasswordPwned": "It has turned up in a data leak, so choose another one.",
+  "authWeakPasswordCharacters": "Mix lowercase and uppercase letters, digits and symbols.",
+  "authSamePassword": "That is your current password. Choose a different one.",
+  "authReauthenticationNeeded": "For your security, sign out and sign in again, then change your password.",
+  "authEmailNotConfirmed": "Confirm your email first: open the link we sent you, then sign in.",
+  "authEmailInvalid": "Enter a valid email address.",
+  "authTooManyEmails": "Too many emails were sent. Wait a few minutes and try again.",
+  "authTooManyAttempts": "Too many attempts. Wait a few minutes and try again.",
+  "authEmailSignInUnavailable": "Email sign-in isn't available right now. Use Continue with Google.",
+  "authSignupDisabled": "New accounts can't be created right now.",
+  "authCodeDidNotWork": "That code didn't work. Enter the newest code from your authenticator app, and check that your device's clock is right.",
+  "authCodeExpired": "That code expired. Enter the newest one.",
+  "authTwoFactorUnavailable": "Two-factor authentication isn't available right now.",
+  "authInsufficientAal": "For your security, sign out and sign in again with your code, then try again.",
+  "authTooManyFactors": "Too many unfinished setups. Wait a few minutes and try again.",
+  "authAppleCancelled": "Apple sign-in was cancelled.",
+  "authAppleFailed": "Apple sign-in failed. Please try again.",
+  "somethingWentWrong": "Something went wrong. Please try again.",
+  "untitledGame": "Untitled Game",
+  "untitledList": "Untitled list",
+  "unknownPublisher": "Unknown publisher",
+  "unknownDeveloper": "Unknown developer",
+  "unknownGame": "Unknown",
+  "backupCodesSessionExpired": "Your session expired. Sign in again, then make new backup codes.",
+  "backupCodesMfaRequired": "Sign in again with the code from your authenticator app, then make new backup codes.",
+  "backupCodesTwoFactorOff": "Turn on two-factor authentication first.",
+  "backupCodesTooMany": "You made new backup codes too many times.",
+  "serverBusy": "The server is busy right now. Try again in a moment.",
+  "backupCodesSignIn": "Sign in to make backup codes.",
+  "backupCodeInvalid": "That backup code didn't work. Check it, or try another one: each code works only once.",
+  "tooManyTries": "Too many tries.",
+  "tryAgainLater": "Try again later.",
+  "serverUnreachable": "Could not reach the server. Check your connection and try again.",
+  "signInExpired": "Your sign-in expired. Sign out and sign in again.",
+  "backupCodesMakeFailed": "Could not make backup codes. Please try again.",
+  "backupCodeCheckFailed": "Could not check that backup code. Please try again.",
+  "deleteAccountSessionExpired": "Your session expired. Sign in again, then delete your account.",
+  "deleteAccountMfaRequired": "Sign in again with your two-factor code, then delete your account.",
+  "deleteAccountServerBusy": "The server is busy right now. Your account was not deleted. Try again in a moment.",
+  "deleteAccountSignIn": "Sign in to delete your account.",
+  "deleteAccountFailed": "Could not delete your account. Please try again.",
+  "steamLinkUnsupported": "Connecting Steam isn't available on this device yet. Connect it in Checkpoint on the web, on your phone or on your computer.",
+  "steamLinkNoBrowser": "Couldn't open a browser for Steam sign-in.",
+  "steamLinkTimedOut": "Steam sign-in timed out. Connect Steam again.",
+  "steamLinkCancelled": "Steam sign-in was cancelled.",
+  "steamLinkPageConnected": "Steam connected",
+  "steamLinkPageNotConnected": "Steam was not connected",
+  "steamLinkPageNotConnectedBody": "Go back to Checkpoint to see why.",
+  "theirSteamPrivate": "Their Steam game details are private, so Steam does not share these achievements.",
+  "theyHaveNoSteam": "They have not connected a Steam account.",
+  "gameNotLinkedToSteam": "This game is not linked to a Steam game yet.",
+  "theirAchievementsPrivate": "They keep their Steam achievements private.",
+  "gameNotInYourLibrary": "That game is not in your library.",
+  "gameNotInTheirLibrary": "This game is not in their library anymore.",
+  "achievementsSteamLoadFailed": "Could not load the achievements from Steam.",
+  "followers": "Followers",
+  "following": "Following",
+  "listOpenFailed": "Could not open that list. Check your connection and try again.",
+  "listsLimit": "You can have up to {count} lists.",
+  "@listsLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "listGamesLimit": "A list can hold up to {count} games.",
+  "@listGamesLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "listsNeedConnection": "Lists need a connection. Check it and try again.",
+  "listSaveFailed": "Could not save that change to your list.",
+  "linkGameNotFound": "That game isn't in Checkpoint yet.",
+  "wishlistGameOut": "{title} from your wishlist is out now",
+  "@wishlistGameOut": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "wishlistGamesOut": "{count} games from your wishlist are out now",
+  "@wishlistGamesOut": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "open": "Open",
+  "view": "View",
+  "milestonesEarnedFromHistory": "{count, plural, =1{You've earned 1 milestone from your history} other{You've earned {count} milestones from your history}}",
+  "@milestonesEarnedFromHistory": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "nameAndMore": "{name} and {count} more",
+  "@nameAndMore": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "newFrameUnlocked": "New frame unlocked",
+  "newTitleUnlocked": "New title unlocked",
+  "milestoneUnlocked": "Milestone unlocked: {names}",
+  "@milestoneUnlocked": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "logGame": "Log Game",
+  "navHome": "Home",
+  "navSearch": "Search",
+  "navLibrary": "My Library",
+  "navProfile": "Profile",
+  "signInConfirmationSent": "Check your inbox: we sent a confirmation link to {email}. Open it, then sign in here.",
+  "@signInConfirmationSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "signInResetSent": "If an account uses {email}, a link to choose a new password is on its way.",
+  "@signInResetSent": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "signInNameRequired": "Enter a name for your profile",
+  "maxCharacters": "Use {count} characters or fewer",
+  "@maxCharacters": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "signInEmailRequired": "Enter your email address",
+  "signInEmailInvalid": "Enter a valid email address",
+  "signInPasswordRequired": "Enter your password",
+  "signInChoosePassword": "Choose a password",
+  "continueWithGoogle": "Continue with Google",
+  "continueWithApple": "Continue with Apple",
+  "signInOrUseEmail": "or use your email",
+  "signIn": "Sign in",
+  "createAccount": "Create account",
+  "displayName": "Display name",
+  "signInDisplayNameHelper": "Shown on your profile. Your email stays private.",
+  "email": "Email",
+  "password": "Password",
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
+  "forgotPassword": "Forgot password?",
+  "logIn": "Log in",
+  "logInToCheckpoint": "Log in to Checkpoint",
+  "logInMessage": "Build your library, log your hours and search every game on IGDB.",
+  "twoFactorEnterAppCode": "Enter the 6-digit code from your authenticator app.",
+  "twoFactorEnterBackupCode": "Enter one of your backup codes: 10 letters and digits.",
+  "twoFactorSignedInWithBackupCode": "Signed in with a backup code. Two-factor authentication is off now: turn it on again in Settings > Security.",
+  "twoFactorAuthentication": "Two-factor authentication",
+  "twoFactorBackupPrompt": "Enter one of the backup codes you saved when you turned on two-factor authentication. Using one signs you in and turns two-factor authentication off, so you can set it up again.",
+  "twoFactorBackupPromptFor": "Enter one of the backup codes you saved when you turned on two-factor authentication for {email}. Using one signs you in and turns two-factor authentication off, so you can set it up again.",
+  "@twoFactorBackupPromptFor": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "twoFactorAppPrompt": "Open your authenticator app and enter the code it shows for Checkpoint.",
+  "twoFactorAppPromptFor": "Open your authenticator app and enter the code it shows for Checkpoint ({email}).",
+  "@twoFactorAppPromptFor": {
+    "placeholders": {
+      "email": {
+        "type": "String"
+      }
+    }
+  },
+  "verify": "Verify",
+  "twoFactorUseApp": "Use your authenticator app",
+  "twoFactorUseBackupCode": "Use a backup code",
+  "signOut": "Sign out",
+  "backupCode": "Backup code",
+  "passwordChanged": "Password changed",
+  "passwordsDontMatch": "The passwords don't match",
+  "yourAccount": "your account",
+  "newPasswordAfterReset": "You opened the password reset link for {account}. Choose the password you will sign in with from now on.",
+  "@newPasswordAfterReset": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "newPasswordIntro": "Choose a new password for {account}. You will use it the next time you sign in.",
+  "@newPasswordIntro": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      }
+    }
+  },
+  "chooseNewPassword": "Choose a new password",
+  "changePassword": "Change password",
+  "newPassword": "New password",
+  "confirmNewPassword": "Confirm new password",
+  "savePassword": "Save password",
+  "notNow": "Not now",
+  "logInToTrackGames": "Log in to track games",
+  "logInToTrackGamesMessage": "Log in to build your library, log your hours and search every game on IGDB.",
+  "gameNotFoundTitle": "Game not found",
+  "gameNotFoundMessage": "It may have been removed.",
+  "changeBackdrop": "Change backdrop",
+  "copyLink": "Copy link",
+  "addToList": "Add to list",
+  "removeFromFavorites": "Remove from favorites",
+  "addToFavorites": "Add to favorites",
+  "playedOn": "Played on",
+  "playedOnHelp": "Pick the platform you play this on. It is used in your session log and profile stats.",
+  "updateStatus": "Update status",
+  "removeFromWishlist": "Remove from wishlist",
+  "alreadyInLibrary": "Already in your library",
+  "addToWishlist": "Add to wishlist",
+  "alreadyInLibraryAs": "{title} is already in your library as {status}",
+  "@alreadyInLibraryAs": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "removedFromWishlist": "Removed {title} from your wishlist",
+  "@removedFromWishlist": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToWishlist": "Added {title} to your wishlist",
+  "@addedToWishlist": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "undo": "Undo",
+  "releasedYear": "Released {year}",
+  "@releasedYear": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "notInYourLibrary": "Not in your library",
+  "logHours": "Log Hours",
+  "hoursShort": "{hours} h",
+  "@hoursShort": {
+    "description": "Hours in little room: \"12.5 h\".",
+    "placeholders": {
+      "hours": {
+        "type": "String",
+        "example": "12.5"
+      }
+    }
+  },
+  "played": "Played",
+  "yourRating": "Your rating",
+  "clear": "Clear",
+  "ratingHint": "Tap or drag across the stars (half-stars supported)",
+  "addShortReview": "Add a short review",
+  "stillPlayingOn": "Listed under Playing too",
+  "stillPlayingOff": "No longer under Playing",
+  "noLongerMarked": "No longer marked {mark}",
+  "@noLongerMarked": {
+    "placeholders": {
+      "mark": {
+        "type": "String"
+      }
+    }
+  },
+  "markedAsCompleted": "Marked as completed",
+  "markAsCompleted": "Mark as Completed",
+  "movedToToPlay": "Moved to To Play",
+  "moveToToPlay": "Move to To Play",
+  "droppedNotice": "Dropped",
+  "drop": "Drop",
+  "startedPlaying": "Started playing",
+  "startPlaying": "Start Playing",
+  "stillPlaying": "Still playing",
+  "stillPlayingSubtitle": "Keep it under Playing too, for online, post-game or DLC",
+  "removeFromLibrary": "Remove from Library",
+  "removeGameTitle": "Remove {title}?",
+  "@removeGameTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "removeGameBody": "Your status, rating and hours for it are removed. It can't be undone.",
+  "removeGameBodyWithSessions": "{count, plural, =1{Your status, rating and hours for it are removed, along with 1 play session. It can't be undone.} other{Your status, rating and hours for it are removed, along with {count} play sessions. It can't be undone.}}",
+  "@removeGameBodyWithSessions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "remove": "Remove",
+  "removedFromLibrary": "Removed {title} from library",
+  "@removedFromLibrary": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "recentSessions": "Recent sessions",
+  "seeAll": "See all {count}",
+  "@seeAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "loadSteamAchievementsHelp": "Pull your unlocked achievements for this game from Steam.",
+  "loadingAchievements": "Loading achievements…",
+  "loadSteamAchievements": "Load Steam Achievements",
+  "showAchievements": "Show achievements",
+  "refreshFromSteam": "Refresh from Steam",
+  "achievements": "Achievements",
+  "noSteamAchievements": "Steam lists no achievements for this game.",
+  "mainDevelopers": "Main developers",
+  "playerPerspectives": "Player perspectives",
+  "gameEngine": "Game engine",
+  "story": "Story",
+  "about": "About",
+  "browseTagGames": "Browse {tag} games",
+  "@browseTagGames": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  },
+  "seeCompany": "See {name}",
+  "@seeCompany": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "minutesShort": "{minutes} min",
+  "@minutesShort": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "checkpointPlayers": "{count, plural, =1{{formatted} Checkpoint player} other{{formatted} Checkpoint players}}",
+  "@checkpointPlayers": {
+    "description": "How many members reported a time; formatted is count written out (1,280).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "timeToBeat": "Time to beat",
+  "timeToBeatNone": "IGDB has no times for this game yet.",
+  "timeToBeatOursCaption": "Checkpoint players: the median of the times reported here.",
+  "timeToBeatFromIgdb": "{count, plural, =1{From {formatted} player on IGDB} other{From {formatted} players on IGDB}}",
+  "@timeToBeatFromIgdb": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "timeToBeatFromIgdbFew": "{count, plural, =1{From {formatted} player on IGDB, so it may be off} other{From {formatted} players on IGDB, so it may be off}}",
+  "@timeToBeatFromIgdbFew": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "compareOnHowLongToBeat": "Compare on HowLongToBeat",
+  "similarGames": "Similar games",
+  "completionHoursInvalid": "Enter the hours as a number, like {example}.",
+  "@completionHoursInvalid": {
+    "placeholders": {
+      "example": {
+        "type": "String",
+        "example": "12.5"
+      }
+    }
+  },
+  "completionMinutesInvalid": "Minutes go from 0 to 59.",
+  "completionTooLong": "That is more than {hours} hours.",
+  "@completionTooLong": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "completionEnterTime": "Enter how long it took.",
+  "completionAdd": "Add how long it took",
+  "completionYourTime": "Your time to finish",
+  "completionHowLong": "How long did it take?",
+  "completionOptional": "Optional. It adds to the times other players see, without your name.",
+  "hours": "Hours",
+  "hoursUnit": "h",
+  "minutes": "Minutes",
+  "minutesUnit": "min",
+  "completionPickCategory": "Pick {main}, {extras} or {completionist}.",
+  "@completionPickCategory": {
+    "placeholders": {
+      "main": {
+        "type": "String"
+      },
+      "extras": {
+        "type": "String"
+      },
+      "completionist": {
+        "type": "String"
+      }
+    }
+  },
+  "save": "Save",
+  "hoursMinutesShort": "{hours} h {minutes} min",
+  "@hoursMinutesShort": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "friends": "Friends",
+  "reviews": "Reviews",
+  "friendsCompletedIt": "{count, plural, =1{1 friend completed it} other{{count} friends completed it}}",
+  "@friendsCompletedIt": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "friendsArePlaying": "{count, plural, =1{1 friend is playing} other{{count} friends are playing}}",
+  "@friendsArePlaying": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "friendsWantToPlay": "{count, plural, =1{1 friend wants to play} other{{count} friends want to play}}",
+  "@friendsWantToPlay": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "openMemberProfile": "Open {name}'s profile",
+  "@openMemberProfile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sessions": "Sessions",
+  "gameSessions": "{title} sessions",
+  "@gameSessions": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "noSessions": "No sessions",
+  "noSessionsMessage": "Sessions you log for this game show up here.",
+  "sessionCount": "{count, plural, =1{1 session} other{{count} sessions}}",
+  "@sessionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hoursLogged": "{hours} h logged",
+  "@hoursLogged": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionHoursOn": "+{hours} h on {platform}",
+  "@sessionHoursOn": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "platform": {
+        "type": "String"
+      }
+    }
+  },
+  "fromSteamPlaytime": "From your Steam playtime",
+  "searching": "Searching…",
+  "suggestedPeople": "Suggested people",
+  "noUsersFound": "No users found",
+  "noUsersFoundMessage": "Try a different name or @handle.",
+  "logInToSearchGames": "Log in to search games",
+  "logInToSearchGamesMessage": "Games come from IGDB, which Checkpoint only reaches for signed-in users.",
+  "noGamesFound": "No games found",
+  "noGamesFoundMessage": "Try a different title. Looking for a publisher or developer? Try Studios.",
+  "noGamesMatchFilters": "No games match these filters",
+  "noGamesFoundFilteredMessage": "Try a different title, or fewer filters.",
+  "noGamesMatchFiltersMessage": "Try fewer filters, or a wider range of years.",
+  "clearFilters": "{count, plural, =1{Clear filter} other{Clear filters}}",
+  "@clearFilters": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "discover": "Discover",
+  "searchGamesHint": "Game titles…",
+  "searchStudiosHint": "Publishers, developers…",
+  "searchUsersHint": "Names or @handles…",
+  "searchKindGames": "Games",
+  "searchKindStudios": "Studios",
+  "searchKindUsers": "Users",
+  "logInToSearchStudios": "Log in to search studios",
+  "logInToSearchStudiosMessage": "Studios come from IGDB, which Checkpoint only reaches for signed-in users.",
+  "findStudio": "Find a studio",
+  "findStudioMessage": "Search publishers and developers by name, like Valve or Nintendo.",
+  "studioSearchFailed": "Couldn’t search studios",
+  "checkConnection": "Check your connection and try again.",
+  "tryAgain": "Try again",
+  "noStudiosFound": "No studios found",
+  "noStudiosFoundMessage": "Try a different name, or the start of it.",
+  "recentSearches": "Recent searches",
+  "noRecentSearches": "No recent searches yet.",
+  "browseBy": "Browse by",
+  "resultsMore": "{count}+ results",
+  "@resultsMore": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "results": "{count, plural, =1{1 result} other{{count} results}}",
+  "@results": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "gamesCountFormatted": "{count, plural, =1{{formatted} game} other{{formatted} games}}",
+  "@gamesCountFormatted": {
+    "description": "formatted is count written out for little room (1.2k).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "followersCountFormatted": "{count, plural, =1{{formatted} follower} other{{formatted} followers}}",
+  "@followersCountFormatted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "publishedCount": "{count, plural, other{{formatted} published}}",
+  "@publishedCount": {
+    "description": "How many games a studio published.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "developedCount": "{count, plural, other{{formatted} developed}}",
+  "@developedCount": {
+    "description": "How many games a studio developed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "addToLibrary": "Add to library",
+  "addedToStatus": "{title} added to {status}",
+  "@addedToStatus": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "gamesLoadFailed": "Couldn’t load games",
+  "logInToBrowseGames": "Log in to browse games",
+  "logInToBrowseGamesMessage": "Game lists come from IGDB, which Checkpoint only reaches for signed-in users.",
+  "nothingToShow": "Nothing to show",
+  "igdbNoGamesForList": "IGDB returned no games for this list.",
+  "yearInReview": "Year in Review",
+  "yearNothingLogged": "Nothing logged in {year}",
+  "@yearNothingLogged": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "yearNothingLoggedMessage": "Log your sessions (or start the timer on a game) and your year adds up here.",
+  "daysPlayed": "{count, plural, =1{Day played} other{Days played}}",
+  "@daysPlayed": {
+    "description": "Under the number of days played.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "longestStreakDays": "Longest streak (days)",
+  "gamesCompleted": "Games completed",
+  "gamesAdded": "Games added",
+  "mostPlayed": "Most played",
+  "topGenres": "Top genres",
+  "yearHoursFootnote": "Hours come from the sessions you logged, the timer and your Steam playtime. Hours a Steam import added without a session count in no year.",
+  "yearPlayedSummary": "played in {year}, over {sessions} {games}",
+  "@yearPlayedSummary": {
+    "description": "Under the hours played in a year: \"played in 2026, over 12 sessions of 3 games\".",
+    "placeholders": {
+      "year": {
+        "type": "int"
+      },
+      "sessions": {
+        "type": "String",
+        "example": "12 sessions"
+      },
+      "games": {
+        "type": "String",
+        "example": "of 3 games"
+      }
+    }
+  },
+  "ofGamesCount": "{count, plural, =1{of 1 game} other{of {count} games}}",
+  "@ofGamesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "yearBiggestDay": "Biggest day: {day}, {hours}",
+  "@yearBiggestDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "hours": {
+        "type": "String",
+        "example": "5 h"
+      }
+    }
+  },
+  "hoursByMonth": "Hours by month",
+  "chart": "Chart",
+  "table": "Table",
+  "hoursLong": "{count, plural, =1{{formatted} hour} other{{formatted} hours}}",
+  "@hoursLong": {
+    "description": "Hours spelled out, for screen readers. count is the hours (rounded down for the plural form).",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "completedInYear": "Completed in {year}",
+  "@completedInYear": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "sortedBy": "Sorted by {field} · {order}",
+  "@sortedBy": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      },
+      "order": {
+        "type": "String"
+      }
+    }
+  },
+  "highToLow": "high to low",
+  "lowToHigh": "low to high",
+  "all": "All",
+  "changesWillSync": "{count, plural, =1{1 change will sync when you're back online.} other{{count} changes will sync when you're back online.}}",
+  "@changesWillSync": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "changesWaitingToSync": "{count, plural, =1{1 change is waiting to sync…} other{{count} changes are waiting to sync…}}",
+  "@changesWaitingToSync": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "offlineSavedLibrary": "Can't reach Checkpoint. Showing your saved library.",
+  "offlineSavedLibraryUpdated": "Can't reach Checkpoint. Showing your saved library, updated {when}.",
+  "@offlineSavedLibraryUpdated": {
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "5m ago"
+      }
+    }
+  },
+  "retrying": "Retrying…",
+  "retry": "Retry",
+  "libraryLoadFailedTitle": "Could not load library",
+  "noMatchesFor": "No matches for \"{query}\"",
+  "@noMatchesFor": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "noMatchesFilteredMessage": "Try another title, or clear the filters.",
+  "noMatchesMessage": "Try a different title.",
+  "clearSearch": "Clear search",
+  "noGamesOnPlatform": "No games on {platform}",
+  "@noGamesOnPlatform": {
+    "placeholders": {
+      "platform": {
+        "type": "String"
+      }
+    }
+  },
+  "noStatusGamesOnPlatform": "{status, select, playing{No playing games on {platform}} toPlay{No to play games on {platform}} completed{No completed games on {platform}} dropped{No dropped games on {platform}} wishlist{No wishlist games on {platform}} other{No games on {platform}}}",
+  "@noStatusGamesOnPlatform": {
+    "description": "status is the library tab: playing, toPlay, completed, dropped or wishlist.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      },
+      "platform": {
+        "type": "String"
+      }
+    }
+  },
+  "noStatusGamesMatchFilters": "{status, select, playing{No playing games match these filters} toPlay{No to play games match these filters} completed{No completed games match these filters} dropped{No dropped games match these filters} wishlist{No wishlist games match these filters} other{No games match these filters}}",
+  "@noStatusGamesMatchFilters": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "libraryEmpty": "Your library is empty",
+  "nothingInStatusYet": "Nothing in {status} yet",
+  "@nothingInStatusYet": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "clearFiltersMissingDetails": "{count, plural, =1{Clear the filters to see everything. 1 game has no IGDB details yet, so a filter on them can't match.} other{Clear the filters to see everything. {count} games have no IGDB details yet, so a filter on them can't match.}}",
+  "@clearFiltersMissingDetails": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clearFiltersToSeeEverything": "Clear the filters to see everything.",
+  "libraryEmptyMessage": "Find something new in Discover and add it here.",
+  "discoverGames": "Discover games",
+  "yourProfile": "Your profile",
+  "currentlyPlaying": "Currently Playing",
+  "seeAllShort": "See all",
+  "hoursLoggedLabel": "Hours logged",
+  "pickMyNextGame": "Can't decide? Pick my next game",
+  "recentActivity": "Recent Activity",
+  "popularRightNow": "Popular Right Now",
+  "recentlyAdded": "Recently Added",
+  "wishlistReleases": "Wishlist Releases",
+  "nothingInProgress": "Nothing in progress. Pick something from your To Play list.",
+  "hrs": "{hours} hrs",
+  "@hrs": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "logged": "logged",
+  "logASession": "Log a session",
+  "openGame": "Open {title}",
+  "@openGame": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "logFirstSession": "Log your first session with the Log Game button.",
+  "hoursCompact": "{hours}h",
+  "@hoursCompact": {
+    "description": "Hours in the least room: \"+2h · 3h ago\".",
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "fromPeopleYouFollow": "From people you follow",
+  "ratedValue": "Rated {rating}",
+  "@ratedValue": {
+    "placeholders": {
+      "rating": {
+        "type": "String"
+      }
+    }
+  },
+  "signInMethodEmail": "Email and password",
+  "signedOutOtherDevices": "Signed out of your other devices",
+  "signInPanel": "Sign-in",
+  "signInMethod": "Method",
+  "manageGoogleAccount": "Manage your Google Account",
+  "googleSecurityNote": "You sign in with Google, so your password and Google's 2-Step Verification are managed in your Google Account. Two-factor authentication below adds a Checkpoint code on top.",
+  "sessionsPanel": "Sessions",
+  "sessionsPanelBody": "Signed in on a device you no longer use? This ends the sessions on every other device. This one stays signed in.",
+  "signOutOtherDevices": "Sign out other devices",
+  "twoFactorTurnOffTitle": "Turn off two-factor authentication?",
+  "twoFactorTurnOffBody": "Signing in will only need your password or your Google or Apple account again. You can turn it back on any time.",
+  "turnOff": "Turn off",
+  "twoFactorIsOff": "Two-factor authentication is off",
+  "authenticatorApp": "Authenticator app",
+  "authenticatorAppOn": "On. Signing in asks for a code from your authenticator app.",
+  "authenticatorAppOff": "Ask for a code from an authenticator app each time you sign in, after your password or Google or Apple account.",
+  "newBackupCodesTitle": "Make new backup codes?",
+  "newBackupCodesBody": "You get {count} new codes, each good for one sign-in without your authenticator app. The backup codes you have now stop working.",
+  "@newBackupCodesBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "makeNewCodes": "Make new codes",
+  "newBackupCodes": "New backup codes",
+  "newBackupCodesSubtitle": "One-time codes that sign you in without your authenticator app. New ones replace the ones you have.",
+  "exportedFile": "Exported {name}",
+  "@exportedFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSaveFailed": "Could not save the file.",
+  "fileReadFailed": "Could not read that file.",
+  "export": "Export",
+  "exportBody": "Your library and play sessions as CSV files, which any spreadsheet opens.",
+  "exportLibrary": "Export library",
+  "exportSessions": "Export play sessions",
+  "import": "Import",
+  "importBody": "Add games from a CSV file: a Checkpoint export, or a spreadsheet from another tracker with a \"title\" column, and optionally status, rating, hours, platform and review. Games already in your library are updated; hours never go down.",
+  "@importBody": {
+    "description": "\"title\" is a column name in the file: keep it in English."
+  },
+  "importFromCsv": "Import from CSV",
+  "importNothing": "Nothing to import in this file.",
+  "importGamesToImport": "{count, plural, =1{1 game to import} other{{count} games to import}}",
+  "@importGamesToImport": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importLookupNote": "Each game is looked up on IGDB by its title, a few a second.",
+  "importGamesButton": "{count, plural, =1{Import 1 game} other{Import {count} games}}",
+  "@importGamesButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importProgress": "Importing {done} of {total}…",
+  "@importProgress": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "importStopped": "Stopped after {done} of {total}",
+  "@importStopped": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "importDone": "Imported {done} of {total}",
+  "@importDone": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "stop": "Stop",
+  "done": "Done",
+  "importIgdbUnreachable": "IGDB couldn't be reached for some games. Import the file again later to add them.",
+  "importNotFound": "Not found ({count})",
+  "@importNotFound": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "importNotFoundNote": "No game on IGDB has exactly this title. Add them from Search.",
+  "importLine": "Line {line}: {title}",
+  "@importLine": {
+    "placeholders": {
+      "line": {
+        "type": "int"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "importLeftOut": "Left out ({count})",
+  "@importLeftOut": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "privacyVisibleTitle": "Visible to other signed-in members",
+  "privacyProfileText": "Display name, username, photo, bio and the month you joined.",
+  "privacyLibraryText": "Each game with its status, your rating, hours played, platform and favorite flag, and the totals made from them.",
+  "privacyRecentActivity": "Recent activity",
+  "privacyRecentActivityText": "Your latest play sessions: the game, hours, platform and when.",
+  "privacyFollows": "Followers and following",
+  "privacyFollowsText": "Who follows you and who you follow.",
+  "connectedAccounts": "Connected accounts",
+  "privacyConnectedText": "Your Steam ID and your PSN, Xbox, Discord, Instagram and Twitch names, which is what their links open.",
+  "privacyAchievementsText": "Your Steam achievement progress, unless you turn off {setting} above.",
+  "@privacyAchievementsText": {
+    "placeholders": {
+      "setting": {
+        "type": "String",
+        "example": "Show Steam Achievements"
+      }
+    }
+  },
+  "privacyPrivateTitle": "Private to you",
+  "emailAddress": "Email address",
+  "privacyEmailText": "Never shown to other members.",
+  "purchasePrices": "Purchase prices",
+  "privacyPricesText": "What you paid for a game stays on your account.",
+  "sessionNotes": "Session notes",
+  "privacyNotesText": "The notes you write on play sessions.",
+  "privacyFootnote": "None of this is visible to people who are not signed in. You can change what your profile shows under Edit Profile, in Connected accounts and with the switch above.",
+  "showSteamAchievements": "Show Steam Achievements",
+  "showSteamAchievementsSubtitle": "Allow other players to view your Steam achievements on your public profile.",
+  "twoFactorSetupEnterCode": "Enter the 6-digit code the app shows.",
+  "twoFactorOnMakeCodes": "Two-factor authentication is on. Make backup codes under Settings > Security.",
+  "twoFactorIsOn": "Two-factor authentication is on",
+  "setupKeyCopied": "Setup key copied",
+  "authenticatorNotOpened": "No authenticator app opened it. Enter the setup key in the app instead.",
+  "twoFactorStepSaveCodes": "Save your backup codes.",
+  "skipForNow": "Skip for now",
+  "twoFactorSetupIntro": "Each time you sign in, Checkpoint will also ask for a code from an authenticator app such as Google Authenticator, Microsoft Authenticator or 1Password.",
+  "twoFactorStepScan": "Scan this QR code with your authenticator app.",
+  "qrCodeLabel": "QR code for your authenticator app",
+  "cantScan": "Can't scan it? Enter this setup key instead:",
+  "copySetupKey": "Copy setup key",
+  "openInAuthenticator": "Open in authenticator app",
+  "twoFactorStepEnterCode": "Enter the 6-digit code the app shows for Checkpoint.",
+  "turnOn": "Turn on",
+  "twoFactorSignsOutOthers": "Turning it on signs your account out on your other devices.",
+  "backupCodes": "Backup codes",
+  "backupCodesCopied": "Backup codes copied",
+  "backupCodesIntro": "If you lose your authenticator app, one of these codes signs you in without it. Save them somewhere safe, such as a password manager.",
+  "backupCodesNote": "Each code works once, and using one turns two-factor authentication off, so you can set it up again on your new device. The codes are not shown again.",
+  "copy": "Copy",
+  "iSavedThem": "I saved them",
+  "connectService": "Connect {service}",
+  "@connectService": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "nintendoIdHint": "Enter your Nintendo Gamertag/ID",
+  "nintendoIdRequired": "Enter your Nintendo ID",
+  "changeServiceUsername": "Change {service} username",
+  "@changeServiceUsername": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "serviceUsernameHint": "Enter your {service} username",
+  "@serviceUsernameHint": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "connect": "Connect",
+  "serviceUsernameInvalid": "That isn't a valid {service} username",
+  "@serviceUsernameInvalid": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "disconnectServiceTitle": "Disconnect {service}?",
+  "@disconnectServiceTitle": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "disconnectSteamBody": "Your Steam ID is removed and library sync stops. Games already in your library stay.",
+  "disconnectServiceBody": "It's removed from your profile. You can connect it again any time.",
+  "disconnect": "Disconnect",
+  "connectSteamBody": "Sign in on Steam's page to show the account is yours. Checkpoint gets your Steam ID from Steam, never your password.",
+  "clearLibraryTitle": "Clear your library?",
+  "clearLibraryBody": "This removes every game from your library, along with your ratings, favorites, play logs and achievements. Your profile and connected accounts stay. It can't be undone.",
+  "clearLibrary": "Clear library",
+  "libraryCleared": "Your library was cleared",
+  "clearLibraryDescription": "Removes every game, rating and play log from your library, e.g. to start over with another Steam account. Your profile and connected accounts stay. This can't be undone.",
+  "deleteAccountTitle": "Delete your account?",
+  "deleteAccountBody": "This permanently deletes your profile, library, play logs, follows and photo, and removes your sign-in. It can't be undone.",
+  "deleteAccount": "Delete account",
+  "accountDeleted": "Your account was deleted",
+  "deleteAccountDescription": "Permanently deletes your profile, library, play logs, follows and photo, and removes your sign-in. This can't be undone.",
+  "librarySynced": "Library synced successfully",
+  "syncing": "Syncing…",
+  "retrySync": "Retry Sync",
+  "syncLibrary": "Sync Library",
+  "syncDelayedLabel": "Sync delayed. {message}",
+  "@syncDelayedLabel": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDelayed": "Sync Delayed",
+  "signedInAs": "Signed in as",
+  "editProfile": "Edit profile",
+  "settingsAccount": "Account",
+  "settingsSecurity": "Security",
+  "settingsPrivacy": "Privacy",
+  "settingsAppearance": "Appearance",
+  "settingsData": "Your data",
+  "settings": "Settings",
+  "displayNameRequired": "Enter a display name",
+  "usernameRequired": "Enter a username",
+  "minCharacters": "Use at least {count} characters",
+  "@minCharacters": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "usernameCharactersOnly": "Letters, numbers and underscores only",
+  "handleTaken": "@{handle} is already taken",
+  "@handleTaken": {
+    "placeholders": {
+      "handle": {
+        "type": "String"
+      }
+    }
+  },
+  "photoUpdateFailed": "Couldn't update your photo. Please try again.",
+  "profileUpdated": "Profile updated",
+  "changeProfilePhoto": "Change profile photo",
+  "checkingAvailability": "Checking availability…",
+  "handleAvailable": "@{handle} is available",
+  "@handleAvailable": {
+    "placeholders": {
+      "handle": {
+        "type": "String"
+      }
+    }
+  },
+  "availabilityUnknown": "Couldn't check availability. We'll verify when you save.",
+  "usernameCharacters": "Letters, numbers and underscores",
+  "editProfileTitle": "Edit Profile",
+  "username": "Username",
+  "bio": "Bio",
+  "bioHint": "Write your lore...",
+  "profileFlairButton": "Profile flair: frame, title and showcase",
+  "publicLibraryLoadFailed": "Could not load this library",
+  "noMatchesPlatformMessage": "Try another title, or clear the platform filter.",
+  "nothingHereYet": "Nothing here yet",
+  "clearPlatformFilterMessage": "Clear the platform filter to see everything.",
+  "theirGamesShowHere": "Games they add show up here.",
+  "profileNotFound": "Profile not found",
+  "profileNotFoundMessage": "This member may have deleted their account.",
+  "profileLoadFailed": "Could not load this profile",
+  "refreshFailedShowingLast": "Could not refresh. Showing the last copy.",
+  "followingButton": "Following",
+  "@followingButton": {
+    "description": "On the button of a member you follow (tapping it unfollows)."
+  },
+  "follow": "Follow",
+  "topRated": "Top rated",
+  "lists": "Lists",
+  "milestones": "Milestones",
+  "logInToFollow": "Log in to follow people",
+  "refreshAchievements": "Refresh achievements",
+  "showMoreLeft": "Show {count} more ({remaining} left)",
+  "@showMoreLeft": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "remaining": {
+        "type": "int"
+      }
+    }
+  },
+  "showLess": "Show less",
+  "noAchievementsOwn": "No achievements yet. Sync your Steam library (Settings > Account) to list every game you unlocked achievements in.",
+  "noAchievementsOther": "No Steam achievements to show yet.",
+  "gamesCount": "{count, plural, =1{1 game} other{{count} games}}",
+  "@gamesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "everyAchievementUnlocked": "Every achievement unlocked",
+  "completedCount": "{count, plural, other{{count} completed}}",
+  "@completedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "achievementsUnlockedOf": "{unlocked} of {total} achievements unlocked",
+  "@achievementsUnlockedOf": {
+    "placeholders": {
+      "unlocked": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "slashUnlocked": "/ {total} unlocked",
+  "@slashUnlocked": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "achievementsLoadFailedOffline": "Could not load achievements. Check your connection and try again.",
+  "showcaseFull": "You can show up to {count}. Take one off first.",
+  "@showcaseFull": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileFlair": "Profile flair",
+  "profileFlairSubtitle": "Earn milestones to unlock frames and titles.",
+  "flairFrame": "Frame",
+  "none": "None",
+  "flairTitle": "Title",
+  "unlockWith": "Unlock with {milestone}",
+  "@unlockWith": {
+    "placeholders": {
+      "milestone": {
+        "type": "String"
+      }
+    }
+  },
+  "showcaseHeading": "Showcase ({count}/{max})",
+  "@showcaseHeading": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "showcaseEmpty": "Milestones you earn can be shown here.",
+  "saving": "Saving...",
+  "frameLockedLabel": "{frame} frame, locked: earn {milestone}",
+  "@frameLockedLabel": {
+    "placeholders": {
+      "frame": {
+        "type": "String"
+      },
+      "milestone": {
+        "type": "String"
+      }
+    }
+  },
+  "frameLabel": "{frame} frame",
+  "@frameLabel": {
+    "placeholders": {
+      "frame": {
+        "type": "String"
+      }
+    }
+  },
+  "searchAchievements": "Search achievements",
+  "filterAllCount": "All {count}",
+  "@filterAllCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "filterUnlockedCount": "Unlocked {count}",
+  "@filterUnlockedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "filterLockedCount": "Locked {count}",
+  "@filterLockedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "achievementsLoadFailedShort": "Could not load the achievements.",
+  "showingLastSavedList": "Showing the last saved list. {error}",
+  "@showingLastSavedList": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "noAchievementsMatch": "No achievements match.",
+  "close": "Close",
+  "noFavoritesOwn": "No favorites selected yet. Tap the heart icon on a game to showcase it here.",
+  "noHoursOwn": "Log a session to see your breakdown.",
+  "thisIsYou": "This is you",
+  "memberSince": "Member since {date}",
+  "@memberSince": {
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "Oct 2026"
+      }
+    }
+  },
+  "favoriteGames": "Favorite Games",
+  "noFavoritesOther": "No favorites picked yet.",
+  "noHoursOther": "No hours logged yet.",
+  "totalPlaytime": "Total Playtime: {hours}",
+  "@totalPlaytime": {
+    "placeholders": {
+      "hours": {
+        "type": "String",
+        "example": "120 hours"
+      }
+    }
+  },
+  "memberMilestones": "{name}'s milestones",
+  "@memberMilestones": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "flairTooltip": "Frame, title and showcase",
+  "levelN": "Level {level}",
+  "@levelN": {
+    "placeholders": {
+      "level": {
+        "type": "int"
+      }
+    }
+  },
+  "pointsCount": "{count, plural, =1{{formatted} point} other{{formatted} points}}",
+  "@pointsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "pointsToLevel": "{count, plural, =1{{formatted} point to Level {level}} other{{formatted} points to Level {level}}}",
+  "@pointsToLevel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      },
+      "level": {
+        "type": "int"
+      }
+    }
+  },
+  "unlocksRewards": "Unlocks {rewards}",
+  "@unlocksRewards": {
+    "placeholders": {
+      "rewards": {
+        "type": "String"
+      }
+    }
+  },
+  "pointsShort": "{points} pts",
+  "@pointsShort": {
+    "placeholders": {
+      "points": {
+        "type": "int"
+      }
+    }
+  },
+  "earnedOf": "{count} / {total} earned",
+  "@earnedOf": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "noMilestonesOwn": "Add a game or log a session to earn your first milestone.",
+  "noMilestonesOther": "No milestones yet.",
+  "followingCountFormatted": "{count, plural, other{{formatted} following}}",
+  "@followingCountFormatted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "people": "People",
+  "followersLoadFailed": "Could not load followers",
+  "followingLoadFailed": "Could not load following",
+  "noFollowersYet": "No followers yet",
+  "notFollowingYet": "Not following anyone yet",
+  "noFollowersMessage": "When people follow {name}, they show up here.",
+  "@noFollowersMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "noFollowersMessageMember": "When people follow this member, they show up here.",
+  "notFollowingMessage": "People {name} follows show up here.",
+  "@notFollowingMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "notFollowingMessageMember": "People this member follows show up here.",
+  "studio": "Studio",
+  "logInToSeeStudios": "Log in to see studios",
+  "logInToSeeStudiosMessage": "Studios and their games come from IGDB, which Checkpoint only reaches for signed-in users.",
+  "sortGames": "Sort games",
+  "noRatedGames": "No rated games here",
+  "noRatedGamesMessage": "This list only has games with ratings on IGDB. The newest ones list them all.",
+  "showNewest": "Show newest",
+  "noGamesToShow": "No games to show",
+  "noGamesWithCover": "IGDB lists no games with a cover here.",
+  "foundedYear": "Founded {year}",
+  "@foundedYear": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "partOf": "Part of {name}",
+  "@partOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "studioDetailsLoadFailed": "Couldn’t load this studio’s details.",
+  "listsLoadFailed": "Could not load the lists",
+  "noListsYet": "No lists yet",
+  "noPublicLists": "No public lists",
+  "noListsYetMessage": "Make lists of games in any order: favorites of a genre, a backlog for the holidays, a ranking.",
+  "memberHasNoPublicLists": "This member has no public lists.",
+  "nameHasNoPublicLists": "{name} has no public lists.",
+  "@nameHasNoPublicLists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "newList": "New list",
+  "yourLists": "Your lists",
+  "theirLists": "Their lists",
+  "nameLists": "{name} lists",
+  "@nameLists": {
+    "description": "The lists of the member called name (the title of their Lists screen).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "listPublic": "Public",
+  "listPrivate": "Private",
+  "listNotFound": "List not found",
+  "listNotFoundMessage": "It may have been deleted, or it is private.",
+  "editList": "Edit list",
+  "deleteList": "Delete list",
+  "noGamesYet": "No games yet",
+  "listEmptyOwn": "Open a game and tap the list button at the top to put it here.",
+  "listEmptyOther": "Nothing on this list yet.",
+  "deleteListTitle": "Delete \"{title}\"?",
+  "@deleteListTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteListBody": "The list goes; its games stay in your library and the catalog.",
+  "delete": "Delete",
+  "takeOffList": "Take off the list",
+  "filter": "Filter",
+  "pickedCount": "{count} picked",
+  "@pickedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchIn": "Search {what}",
+  "@searchIn": {
+    "description": "The hint of a search box over a list of filters: \"Search developers\". what is the list's heading.",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "noMatch": "No match.",
+  "showFewer": "Show fewer",
+  "showAllCount": "Show all {count}",
+  "@showAllCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "releaseYear": "Release year",
+  "removeFilter": "Remove {filter}",
+  "@removeFilter": {
+    "placeholders": {
+      "filter": {
+        "type": "String"
+      }
+    }
+  },
+  "clearAll": "Clear all",
+  "filterGames": "Filter games",
+  "filterGamesSubtitle": "Browse IGDB by genre, mode, platform, theme and year.",
+  "filtersPicked": "{count, plural, =1{1 filter picked} other{{count} filters picked}}",
+  "@filtersPicked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sortBy": "Sort by",
+  "searchOrderNote": "A search is ordered by relevance. The order applies when you browse by filters alone.",
+  "platforms": "Platforms",
+  "showResults": "Show results",
+  "showingOfGames": "{total, plural, =1{Showing {shown} of 1 game} other{Showing {shown} of {total} games}}",
+  "@showingOfGames": {
+    "placeholders": {
+      "shown": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "narrowLibrary": "Narrow your library down.",
+  "platform": "Platform",
+  "loadingGameDetails": "Loading game details…",
+  "gameDetailsLoadFailed": "Could not load themes, modes, engines and companies.",
+  "igdbDetailsNoneSaved": "IGDB details are not saved for any of your games yet. They fill in over time, and when you open a game.",
+  "igdbDetailsSomeMissing": "IGDB details are not saved for {missing} of {total} games yet, so the filters below leave them out. They fill in over time, and when you open a game.",
+  "@igdbDetailsSomeMissing": {
+    "placeholders": {
+      "missing": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "gamesMissingDetails": "{count, plural, =1{1 game has no IGDB details yet, so these filters leave it out.} other{{count} games have no IGDB details yet, so these filters leave them out.}}",
+  "@gamesMissingDetails": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchInTab": "Search in {tab}",
+  "@searchInTab": {
+    "placeholders": {
+      "tab": {
+        "type": "String"
+      }
+    }
+  },
+  "posterGrid": "Poster grid",
+  "listView": "List",
+  "sort": "Sort",
+  "filterByPlatform": "Filter by platform",
+  "allPlatforms": "All platforms",
+  "ratedOutOf5": "rated {rating} out of 5",
+  "@ratedOutOf5": {
+    "placeholders": {
+      "rating": {
+        "type": "String"
+      }
+    }
+  },
+  "hoursPlayedLabel": "{count, plural, =1{{formatted} hour played} other{{formatted} hours played}}",
+  "@hoursPlayedLabel": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "notRated": "Not rated",
+  "loggedHoursOf": "Logged {hours}h of {title} on your platform",
+  "@loggedHoursOf": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "loggedHoursOfOn": "Logged {hours}h of {title} on {platform}",
+  "@loggedHoursOfOn": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      },
+      "platform": {
+        "type": "String"
+      }
+    }
+  },
+  "logYourTimer": "Log your timer",
+  "logSessionSubtitle": "Track your time and where you played.",
+  "game": "Game",
+  "showGames": "Show games",
+  "hideGames": "Hide games",
+  "hoursThisSession": "Hours played this session",
+  "hrsUnit": "hrs",
+  "sessionTooLong": "One session is at most {hours} hours. To change a game's total, use Log Hours on its page.",
+  "@sessionTooLong": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "noteOptional": "Note (optional)",
+  "saveSession": "Save session",
+  "discardTimer": "Discard timer",
+  "whatShouldIPlay": "What should I play?",
+  "gamesToPickFrom": "{count, plural, =1{1 game to pick from} other{{count} games to pick from}}",
+  "@gamesToPickFrom": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "anyPlatform": "Any platform",
+  "nothingToPick": "Nothing here to pick from. Choose other statuses, or add games to your library.",
+  "pickAnother": "Pick another",
+  "playIt": "Play it",
+  "hoursShortPlayed": "{hours} h played",
+  "@hoursShortPlayed": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "hoursInvalid": "Enter a valid number of hours.",
+  "totalHoursMax": "The total can be at most {hours} hours.",
+  "@totalHoursMax": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "addsSession": "Adds a {hours} h session on your platform.",
+  "@addsSession": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "addsSessionOn": "Adds a {hours} h session on {platform}.",
+  "@addsSessionOn": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      },
+      "platform": {
+        "type": "String"
+      }
+    }
+  },
+  "correctsTotal": "Corrects your total by {hours} h.",
+  "@correctsTotal": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "noChangeToTotal": "No change to your total time.",
+  "logHoursTitle": "Log hours",
+  "totalPlayed": "Total played",
+  "artLoadFailed": "Could not load the art for this game.",
+  "defaultBackdrop": "Default",
+  "screenshots": "Screenshots",
+  "noArtworks": "IGDB has no artworks or screenshots for this game yet.",
+  "backdrop": "Backdrop",
+  "deletedSession": "Deleted the {hours} h session",
+  "@deletedSession": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "editSession": "Edit session",
+  "hoursPlayed": "Hours played",
+  "enterMoreThanZeroHours": "Enter more than 0 hours.",
+  "saveChanges": "Save changes",
+  "deleteSession": "Delete session",
+  "listTitle": "Title",
+  "descriptionOptional": "Description (optional)",
+  "listPublicSubtitle": "Shown on your profile, and anyone signed in can open its link.",
+  "listPrivateSubtitle": "Only you can see it.",
+  "createList": "Create list",
+  "writeReview": "Write a review",
+  "yourReview": "Your review",
+  "whatDidYouThink": "What did you think?",
+  "reviewVisibility": "Members who follow you see it on the game's page, with your rating.",
+  "saveReview": "Save review",
+  "removeReview": "Remove review",
+  "anotherGame": "another game",
+  "replaceTimerTitle": "Replace the running timer?",
+  "replaceTimerBody": "A timer is running for {other}. Starting one for {game} throws its time away. To keep it, stop it and log it first.",
+  "@replaceTimerBody": {
+    "placeholders": {
+      "other": {
+        "type": "String"
+      },
+      "game": {
+        "type": "String"
+      }
+    }
+  },
+  "replace": "Replace",
+  "startTimer": "Start timer",
+  "openServiceProfile": "Open {service} profile",
+  "@openServiceProfile": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "copyServiceUsername": "Copy {service} username",
+  "@copyServiceUsername": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "openTwitchChannel": "Open Twitch channel",
+  "serviceUsernameCopied": "{service} username copied to clipboard",
+  "@serviceUsernameCopied": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "lockedLower": "locked",
+  "levelShort": "Lv {level}",
+  "@levelShort": {
+    "placeholders": {
+      "level": {
+        "type": "int"
+      }
+    }
+  },
+  "unlockedOn": "Unlocked {day}",
+  "@unlockedOn": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "locked": "Locked",
+  "titleReward": "Title: {title}",
+  "@titleReward": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "ratings": "Ratings",
+  "noRatedGamesYet": "No rated games yet.",
+  "ratedCount": "{count, plural, other{{count} rated}}",
+  "@ratedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "oneStarOrLess": "1 star or less",
+  "starsCount": "{count, plural, =1{{formatted} star} other{{formatted} stars}}",
+  "@starsCount": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "you": "You",
+  "connectAccounts": "Connect accounts",
+  "notConnected": "Not connected",
+  "connected": "Connected",
+  "serviceOptions": "{service} options",
+  "@serviceOptions": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "changeUsername": "Change username",
+  "hoursByPlatform": "Hours by platform",
+  "noSessionsLoggedYet": "No sessions logged yet.",
+  "dayPlayed": "Day played",
+  "timePlayed": "Time played",
+  "now": "Now",
+  "when": "When",
+  "playedJustNow": "Played just now",
+  "outOf5Stars": "{rating} out of 5 stars",
+  "@outOf5Stars": {
+    "placeholders": {
+      "rating": {
+        "type": "String"
+      }
+    }
+  },
+  "playersHaveThis": "{percent} of players have this",
+  "@playersHaveThis": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "linkCopied": "Link copied",
+  "sixDigitCode": "6-digit code",
+  "readMore": "Read more",
+  "loadMoreFailed": "Couldn’t load more. Tap to retry",
+  "authPortInUse": "Port {port} is already in use. Close whatever is using it and try again.",
+  "@authPortInUse": {
+    "placeholders": {
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "authGoogleFailed": "Google sign-in failed ({code}). Check the OAuth client IDs in Google Cloud.",
+  "@authGoogleFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "appearanceLanguagePicked": "Picked for this device.",
+  "hiddenAchievement": "Hidden achievement",
+  "translatedByDeepL": "Translated by DeepL",
+  "originalText": "Original text",
+  "showOriginal": "Show original",
+  "showTranslation": "Show translation"
+}

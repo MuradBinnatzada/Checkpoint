@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -84,15 +85,15 @@ class _LibraryScreenState extends State<LibraryScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+            padding: const EdgeInsetsDirectional.fromSTEB(20, 16, 8, 0),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'My Library',
+                    context.l10n.navLibrary,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                   ),
                 ),
                 LibrarySortButton(
@@ -108,7 +109,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
             child: Text(
-              'Sorted by ${view.sortField.label} · ${view.sortDescending ? 'high to low' : 'low to high'}',
+              context.l10n.sortedBy(view.sortField.label, view.sortDescending ? context.l10n.highToLow : context.l10n.lowToHigh),
               style: TextStyle(color: context.palette.muted, fontSize: 12.5),
             ),
           ),
@@ -126,7 +127,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           const SizedBox(height: 8),
           LibrarySearchField(
             controller: _searchController,
-            tabLabel: view.selectedStatus?.label ?? 'All',
+            tabLabel: view.selectedStatus?.label ?? context.l10n.all,
             hasText: _searchQuery.isNotEmpty,
             onChanged: _onSearchChanged,
             onClear: _clearSearch,
@@ -201,13 +202,12 @@ class _OfflineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final synced = syncedAt;
-    final pending = pendingCount == 0
-        ? ''
-        : ' $pendingCount ${pendingCount == 1 ? 'change' : 'changes'} will sync when you\'re back online.';
+    final l10n = context.l10n;
+    final pending = pendingCount == 0 ? '' : ' ${l10n.changesWillSync(pendingCount)}';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 4, 4, 4),
         decoration: BoxDecoration(
           color: context.palette.surfaceHigh,
           borderRadius: BorderRadius.circular(12),
@@ -219,17 +219,16 @@ class _OfflineBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 !offline
-                    ? '$pendingCount ${pendingCount == 1 ? 'change is' : 'changes are'} waiting to sync…'
+                    ? l10n.changesWaitingToSync(pendingCount)
                     : synced == null
-                    ? 'Can\'t reach Checkpoint. Showing your saved library.$pending'
-                    : 'Can\'t reach Checkpoint. Showing your saved library, '
-                          'updated ${timeAgo(synced)}.$pending',
+                    ? '${l10n.offlineSavedLibrary}$pending'
+                    : '${l10n.offlineSavedLibraryUpdated(timeAgo(synced))}$pending',
                 style: TextStyle(color: context.palette.muted, fontSize: 12.5),
               ),
             ),
             TextButton(
               onPressed: retrying ? null : onRetry,
-              child: Text(retrying ? 'Retrying…' : 'Retry'),
+              child: Text(retrying ? l10n.retrying : l10n.retry),
             ),
           ],
         ),
@@ -263,9 +262,9 @@ class LibraryCollection extends StatelessWidget {
     if (error != null) {
       return EmptyState(
         icon: Icons.cloud_off_rounded,
-        title: 'Could not load library',
+        title: context.l10n.libraryLoadFailedTitle,
         message: error,
-        actionLabel: 'Retry',
+        actionLabel: context.l10n.retry,
         onAction: () {
           library.refresh();
           context.read<ProfileStore>().refresh();
@@ -285,11 +284,11 @@ class LibraryCollection extends StatelessWidget {
       if (query.isNotEmpty) {
         return EmptyState(
           icon: Icons.search_off_rounded,
-          title: 'No matches for "${searchQuery.trim()}"',
+          title: context.l10n.noMatchesFor(searchQuery.trim()),
           message: filtered
-              ? 'Try another title, or clear the filters.'
-              : 'Try a different title.',
-          actionLabel: 'Clear search',
+              ? context.l10n.noMatchesFilteredMessage
+              : context.l10n.noMatchesMessage,
+          actionLabel: context.l10n.clearSearch,
           onAction: () => onClearSearch?.call(),
         );
       }
@@ -298,29 +297,28 @@ class LibraryCollection extends StatelessWidget {
       final missing = view.hasDetailFilters
           ? view.gamesWithoutDetails(library.libraryGames) ?? 0
           : 0;
+      final l10n = context.l10n;
       return EmptyState(
         icon: s?.icon ?? Icons.apps_rounded,
         title: onlyPlatform
             ? (s == null
-                  ? 'No games on ${p.label}'
-                  : 'No ${s.label.toLowerCase()} games on ${p.label}')
+                  ? l10n.noGamesOnPlatform(p.label)
+                  : l10n.noStatusGamesOnPlatform(s.name, p.label))
             : filtered
             ? (s == null
-                  ? 'No games match these filters'
-                  : 'No ${s.label.toLowerCase()} games match these filters')
+                  ? l10n.noGamesMatchFilters
+                  : l10n.noStatusGamesMatchFilters(s.name))
             : (s == null
-                  ? 'Your library is empty'
-                  : 'Nothing in ${s.label} yet'),
+                  ? l10n.libraryEmpty
+                  : l10n.nothingInStatusYet(s.label)),
         message: filtered
             ? (missing > 0
-                  ? 'Clear the filters to see everything. $missing '
-                        '${missing == 1 ? 'game has' : 'games have'} no IGDB '
-                        'details yet, so a filter on them can\'t match.'
-                  : 'Clear the filters to see everything.')
-            : 'Find something new in Discover and add it here.',
+                  ? l10n.clearFiltersMissingDetails(missing)
+                  : l10n.clearFiltersToSeeEverything)
+            : l10n.libraryEmptyMessage,
         actionLabel: filtered
-            ? (view.filterCount > 1 ? 'Clear filters' : 'Clear filter')
-            : 'Discover games',
+            ? l10n.clearFilters(view.filterCount)
+            : l10n.discoverGames,
         onAction: () => filtered
             ? context.read<LibraryViewStore>().clearFilters()
             : context.read<NavStore>().select(NavTab.search),

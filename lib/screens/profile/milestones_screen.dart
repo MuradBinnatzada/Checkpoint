@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/milestone_progress.dart';
 import 'package:checkpoint/screens/profile/profile_flair_sheet.dart';
@@ -61,12 +62,12 @@ class MilestonesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          own || ownerName == null ? 'Milestones' : '$ownerName\'s milestones',
+          own || ownerName == null ? context.l10n.milestones : context.l10n.memberMilestones(ownerName!),
         ),
         actions: [
           if (own)
             IconButton(
-              tooltip: 'Frame, title and showcase',
+              tooltip: context.l10n.flairTooltip,
               onPressed: () => unawaited(showProfileFlairSheet(context)),
               icon: const Icon(Icons.auto_awesome_rounded),
             ),
@@ -108,7 +109,7 @@ class MilestonesSummary extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                'Level ${level.level}',
+                context.l10n.levelN(level.level),
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -117,7 +118,7 @@ class MilestonesSummary extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '${fmtThousands(level.points)} points',
+                  context.l10n.pointsCount(level.points, fmtThousands(level.points)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -145,7 +146,11 @@ class MilestonesSummary extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${fmtThousands(level.nextLevelAt - level.points)} points to Level ${level.level + 1}',
+            context.l10n.pointsToLevel(
+              level.nextLevelAt - level.points,
+              fmtThousands(level.nextLevelAt - level.points),
+              level.level + 1,
+            ),
             style: TextStyle(fontSize: 12.5, color: palette.muted),
           ),
         ],
@@ -258,7 +263,7 @@ class MilestoneTile extends StatelessWidget {
                       if (rewards.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
-                          'Unlocks ${rewards.join(' · ')}',
+                          context.l10n.unlocksRewards(rewards.join(' · ')),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -285,7 +290,7 @@ class MilestoneTile extends StatelessWidget {
                   )
                 else
                   Text(
-                    '${m.points} pts',
+                    context.l10n.pointsShort(m.points),
                     style: TextStyle(fontSize: 12, color: palette.muted),
                   ),
               ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/connected_service.dart';
 
 /// Where tapping a connected account leads: a page to open, or text to copy for
@@ -23,31 +24,31 @@ ServiceLink? serviceLink(ConnectedService service, String? name) {
   switch (service) {
     case ConnectedService.steam:
       return ServiceLink(
-        tooltip: 'Open Steam profile',
+        tooltip: L10n.current.openServiceProfile('Steam'),
         url: Uri.https('steamcommunity.com', '/profiles/$id'),
       );
     case ConnectedService.xbox:
       return ServiceLink(
-        tooltip: 'Open Xbox profile',
+        tooltip: L10n.current.openServiceProfile('Xbox'),
         url: Uri.https('xboxgamertag.com', '/search/$id'),
       );
     case ConnectedService.psn:
       return ServiceLink(
-        tooltip: 'Open PSN profile',
+        tooltip: L10n.current.openServiceProfile('PSN'),
         url: Uri.https('psnprofiles.com', '/$id'),
       );
     case ConnectedService.discord:
-      return ServiceLink(tooltip: 'Copy Discord username', copyText: id);
+      return ServiceLink(tooltip: L10n.current.copyServiceUsername('Discord'), copyText: id);
     case ConnectedService.instagram:
       if (cleanAccountName(service, id) != id) return null;
       return ServiceLink(
-        tooltip: 'Open Instagram profile',
+        tooltip: L10n.current.openServiceProfile('Instagram'),
         url: Uri.https('www.instagram.com', '/$id'),
       );
     case ConnectedService.twitch:
       if (cleanAccountName(service, id) != id) return null;
       return ServiceLink(
-        tooltip: 'Open Twitch channel',
+        tooltip: L10n.current.openTwitchChannel,
         url: Uri.https('www.twitch.tv', '/$id'),
       );
     case ConnectedService.nintendo:
@@ -64,12 +65,13 @@ Future<void> openServiceLink(
   final copy = link.copyText;
   if (copy != null) {
     final messenger = ScaffoldMessenger.of(context);
+    final copied = context.l10n.serviceUsernameCopied(service.label);
     await Clipboard.setData(ClipboardData(text: copy));
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('${service.label} username copied to clipboard'),
+          content: Text(copied),
         ),
       );
     return;

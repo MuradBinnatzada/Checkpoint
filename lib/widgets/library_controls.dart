@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/state/library_state.dart';
 import 'package:checkpoint/state/library_view_store.dart';
@@ -54,12 +55,12 @@ class LibrarySearchField extends StatelessWidget {
         filled: true,
         fillColor: context.palette.surfaceHigh,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        hintText: 'Search in $tabLabel',
+        hintText: context.l10n.searchInTab(tabLabel),
         hintStyle: TextStyle(color: context.palette.muted),
         prefixIcon: Icon(Icons.search_rounded, color: context.palette.muted),
         suffixIcon: hasText
             ? IconButton(
-                tooltip: 'Clear search',
+                tooltip: context.l10n.clearSearch,
                 icon: Icon(Icons.close_rounded, color: context.palette.muted),
                 onPressed: onClear,
               )
@@ -75,7 +76,7 @@ class LibrarySearchField extends StatelessWidget {
     );
     final trailing = this.trailing;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, trailing == null ? 16 : 6, 4),
+      padding: EdgeInsetsDirectional.fromSTEB(16, 0, trailing == null ? 16 : 6, 4),
       child: trailing == null
           ? field
           : Row(
@@ -140,8 +141,8 @@ class LibraryViewToggle extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          cell(LibraryView.grid, Icons.grid_view_rounded, 'Poster grid'),
-          cell(LibraryView.list, Icons.view_list_rounded, 'List'),
+          cell(LibraryView.grid, Icons.grid_view_rounded, context.l10n.posterGrid),
+          cell(LibraryView.list, Icons.view_list_rounded, context.l10n.listView),
         ],
       ),
     );
@@ -160,7 +161,7 @@ class LibrarySortButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<SortField>(
-      tooltip: 'Sort',
+      tooltip: context.l10n.sort,
       icon: const Icon(Icons.sort_rounded),
       onSelected: context.read<LibraryViewStore>().setSort,
       itemBuilder: (_) => [
@@ -208,7 +209,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<Object>(
-      tooltip: 'Filter by platform',
+      tooltip: context.l10n.filterByPlatform,
       icon: Icon(
         Icons.filter_list_rounded,
         color: selected != null ? context.palette.accent : null,
@@ -220,7 +221,7 @@ class LibraryPlatformFilterButton extends StatelessWidget {
         PopupMenuItem<Object>(
           value: 'all',
           child: Text(
-            'All platforms',
+            context.l10n.allPlatforms,
             style: TextStyle(
               fontWeight: selected == null ? FontWeight.w800 : FontWeight.w500,
               color: selected == null ? context.palette.accent : null,
@@ -296,8 +297,8 @@ class _PosterTile extends StatelessWidget {
     // nothing, and the badges alone would be read as "4.5, 12h".
     final label = [
       game.title,
-      if (game.rating > 0) 'rated ${fmtHours(game.rating)} out of 5',
-      if (game.hoursPlayed > 0) '${fmtHours(game.hoursPlayed)} hours played',
+      if (game.rating > 0) context.l10n.ratedOutOf5(fmtHours(game.rating)),
+      if (game.hoursPlayed > 0) context.l10n.hoursPlayedLabel(game.hoursPlayed, fmtHours(game.hoursPlayed)),
       if (game.isPerfected) game.perfectMark.title,
     ].join(', ');
     return Semantics(
@@ -316,8 +317,8 @@ class _PosterTile extends StatelessWidget {
         // The rating and the Platinum (or 100%) share the corner: a cover
         // with no image has its title along the bottom.
         if (game.rating > 0 || game.isPerfected)
-          Positioned(
-            left: 6,
+          PositionedDirectional(
+            start: 6,
             top: 6,
             child: _badge(
               Row(
@@ -349,12 +350,12 @@ class _PosterTile extends StatelessWidget {
             ),
           ),
         if (game.hoursPlayed > 0)
-          Positioned(
-            right: 6,
+          PositionedDirectional(
+            end: 6,
             top: 6,
             child: _badge(
               Text(
-                '${fmtHours(game.hoursPlayed)}h',
+                context.l10n.hoursCompact(fmtHours(game.hoursPlayed)),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -467,7 +468,7 @@ class _LibraryListTile extends StatelessWidget {
                       game.rating > 0
                           ? StarRating(rating: game.rating, size: 15)
                           : Text(
-                              'Not rated',
+                              context.l10n.notRated,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: context.palette.muted,
@@ -496,7 +497,7 @@ class _LibraryListTile extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         game.hoursPlayed > 0
-                            ? '${fmtHours(game.hoursPlayed)} h'
+                            ? context.l10n.hoursShort(fmtHours(game.hoursPlayed))
                             : '—',
                         style: const TextStyle(
                           fontSize: 12.5,
@@ -572,7 +573,7 @@ class LibraryStatusTabBar extends StatelessWidget {
         border: Border.all(color: context.palette.accent.withValues(alpha: 0.5)),
       ),
       tabs: [
-        statusTab('All', counts[0]),
+        statusTab(context.l10n.all, counts[0]),
         for (var i = 0; i < GameStatus.values.length; i++)
           statusTab(GameStatus.values[i].label, counts[i + 1]),
       ],

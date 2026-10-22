@@ -1,16 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+
 /// How hard a milestone is to reach: the colour of its badge and the points it
 /// gives towards the member's level ([MilestoneLevel]).
 enum MilestoneTier {
-  bronze('Bronze', Color(0xFFD08C57), 10),
-  silver('Silver', Color(0xFFB9C3CF), 25),
-  gold('Gold', Color(0xFFFFC857), 50),
-  platinum('Platinum', Color(0xFF8FE3EC), 100);
+  bronze(Color(0xFFD08C57), 10),
+  silver(Color(0xFFB9C3CF), 25),
+  gold(Color(0xFFFFC857), 50),
+  platinum(Color(0xFF8FE3EC), 100);
 
-  const MilestoneTier(this.label, this.color, this.points);
-  final String label;
+  const MilestoneTier(this.color, this.points);
+
+  String get label => switch (this) {
+    bronze => L10n.current.tierBronze,
+    silver => L10n.current.tierSilver,
+    gold => L10n.current.tierGold,
+    platinum => L10n.current.tierPlatinum,
+  };
 
   /// Picked for the dark theme; pass it through `Palette.legible` for text and
   /// icons on the light one.
@@ -20,96 +28,153 @@ enum MilestoneTier {
 
 /// The sections of the Milestones screen, in the order it lists them.
 enum MilestoneCategory {
-  library('Library', Icons.collections_bookmark_rounded),
-  logbook('Logbook', Icons.edit_calendar_rounded),
-  playtime('Playtime', Icons.schedule_rounded),
-  finisher('Finisher', Icons.verified_rounded),
-  streaks('Streaks', Icons.local_fire_department_rounded),
-  critic('Critic', Icons.star_rounded),
-  curator('Curator', Icons.format_list_bulleted_rounded),
-  variety('Variety', Icons.explore_rounded),
-  social('Social', Icons.people_alt_rounded),
-  membership('Membership', Icons.cake_rounded),
-  account('Account', Icons.person_rounded);
+  library(Icons.collections_bookmark_rounded),
+  logbook(Icons.edit_calendar_rounded),
+  playtime(Icons.schedule_rounded),
+  finisher(Icons.verified_rounded),
+  streaks(Icons.local_fire_department_rounded),
+  critic(Icons.star_rounded),
+  curator(Icons.format_list_bulleted_rounded),
+  variety(Icons.explore_rounded),
+  social(Icons.people_alt_rounded),
+  membership(Icons.cake_rounded),
+  account(Icons.person_rounded);
 
-  const MilestoneCategory(this.label, this.icon);
-  final String label;
+  const MilestoneCategory(this.icon);
   final IconData icon;
+
+  String get label {
+    final l10n = L10n.current;
+    return switch (this) {
+      library => l10n.milestoneCategoryLibrary,
+      logbook => l10n.milestoneCategoryLogbook,
+      playtime => l10n.milestoneCategoryPlaytime,
+      finisher => l10n.milestoneCategoryFinisher,
+      streaks => l10n.milestoneCategoryStreaks,
+      critic => l10n.milestoneCategoryCritic,
+      curator => l10n.milestoneCategoryCurator,
+      variety => l10n.milestoneCategoryVariety,
+      social => l10n.milestoneCategorySocial,
+      membership => l10n.milestoneCategoryMembership,
+      account => l10n.milestoneCategoryAccount,
+    };
+  }
 }
 
 /// What a milestone counts: `milestones.metric` in the database, where
 /// `award_milestones` works each one out (20261020120100_milestones.sql, as
 /// changed by 20261020140337_milestones_without_steam.sql).
-/// [unit] names what is counted in a progress line ("37 / 50 games"); empty for
-/// a milestone that is a yes or no.
+/// [unit] names what is counted in a progress line ("37 / 50 games"); a
+/// milestone that is a yes or no counts nothing ([counted] false).
 enum MilestoneMetric {
-  libraryGames('library_games', 'games'),
-  sessions('sessions', 'sessions'),
-  hours('hours', 'hours'),
-  gameHours('game_hours', 'hours'),
-  completed('completed', 'completed'),
-  completionTimes('completion_times', 'times'),
-  streakDays('streak_days', 'days'),
-  nightSessions('night_sessions', ''),
-  rated('rated', 'rated'),
-  reviews('reviews', 'reviews'),
-  lists('lists', 'lists'),
-  publicLists('public_lists', ''),
-  listSize('list_size', 'games'),
-  platforms('platforms', 'platforms'),
-  genres('genres', 'genres'),
-  retroGames('retro_games', ''),
-  decades('decades', 'decades'),
-  following('following', ''),
-  followers('followers', 'followers'),
-  memberMonths('member_months', 'months'),
-  foundingMember('founding_member', ''),
-  profileComplete('profile_complete', ''),
-  favorites('favorites', 'favorites'),
-  wishlist('wishlist', 'wishlisted'),
-  dropped('dropped', ''),
-  gameAccount('game_account', ''),
-  twoFactor('two_factor', ''),
-  perfectGames('perfect_games', '');
+  libraryGames('library_games'),
+  sessions('sessions'),
+  hours('hours'),
+  gameHours('game_hours'),
+  completed('completed'),
+  completionTimes('completion_times'),
+  streakDays('streak_days'),
+  nightSessions('night_sessions', counted: false),
+  rated('rated'),
+  reviews('reviews'),
+  lists('lists'),
+  publicLists('public_lists', counted: false),
+  listSize('list_size'),
+  platforms('platforms'),
+  genres('genres'),
+  retroGames('retro_games', counted: false),
+  decades('decades'),
+  following('following', counted: false),
+  followers('followers'),
+  memberMonths('member_months'),
+  foundingMember('founding_member', counted: false),
+  profileComplete('profile_complete', counted: false),
+  favorites('favorites'),
+  wishlist('wishlist'),
+  dropped('dropped', counted: false),
+  gameAccount('game_account', counted: false),
+  twoFactor('two_factor', counted: false),
+  perfectGames('perfect_games', counted: false);
 
-  const MilestoneMetric(this.wire, this.unit);
+  const MilestoneMetric(this.wire, {this.counted = true});
   final String wire;
-  final String unit;
+  final bool counted;
+
+  /// What [count] of it is called: "games" in "37 / 50 games". Empty when not
+  /// [counted].
+  String unit(int count) {
+    final l10n = L10n.current;
+    return switch (this) {
+      libraryGames || listSize => l10n.milestoneUnitGames(count),
+      sessions => l10n.milestoneUnitSessions(count),
+      hours || gameHours => l10n.milestoneUnitHours(count),
+      completed => l10n.milestoneUnitCompleted(count),
+      completionTimes => l10n.milestoneUnitTimes(count),
+      streakDays => l10n.milestoneUnitDays(count),
+      rated => l10n.milestoneUnitRated(count),
+      reviews => l10n.milestoneUnitReviews(count),
+      lists => l10n.milestoneUnitLists(count),
+      platforms => l10n.milestoneUnitPlatforms(count),
+      genres => l10n.milestoneUnitGenres(count),
+      decades => l10n.milestoneUnitDecades(count),
+      followers => l10n.milestoneUnitFollowers(count),
+      memberMonths => l10n.milestoneUnitMonths(count),
+      favorites => l10n.milestoneUnitFavorites(count),
+      wishlist => l10n.milestoneUnitWishlisted(count),
+      _ => '',
+    };
+  }
 }
 
 /// A ring drawn around a member's photo, unlocked by one milestone
 /// ([Milestone.frame]). [id] is what `profiles.avatar_frame` stores.
 enum AvatarFrame {
-  bronze('bronze', 'Bronze', [Color(0xFFB87333), Color(0xFFE6B07E)]),
-  silver('silver', 'Silver', [Color(0xFF8E99A6), Color(0xFFE6EBF0)]),
-  gold('gold', 'Gold', [Color(0xFFFFA000), Color(0xFFFFE082)]),
-  prism('prism', 'Prism', [
+  bronze('bronze', [Color(0xFFB87333), Color(0xFFE6B07E)]),
+  silver('silver', [Color(0xFF8E99A6), Color(0xFFE6EBF0)]),
+  gold('gold', [Color(0xFFFFA000), Color(0xFFFFE082)]),
+  prism('prism', [
     Color(0xFFBB86FC),
     Color(0xFF4FC3F7),
     Color(0xFF7DDC9C),
     Color(0xFFBB86FC),
   ]),
-  platinum('platinum', 'Platinum', [
+  platinum('platinum', [
     Color(0xFF80DEEA),
     Color(0xFFFFFFFF),
     Color(0xFF9FA8DA),
     Color(0xFF80DEEA),
   ], animated: true),
-  neon('neon', 'Neon', [Color(0xFFBB86FC), Color(0xFF4FC3F7)]),
-  laurel('laurel', 'Laurel', [Color(0xFF2E7D32), Color(0xFF9CE5B3)]),
-  ember('ember', 'Ember', [Color(0xFFFF5722), Color(0xFFFFC857)]),
-  shield('shield', 'Shield', [Color(0xFF1565C0), Color(0xFF4FC3F7)]),
-  veteran('veteran', 'Veteran', [Color(0xFF7B1FA2), Color(0xFFFFC857)]),
-  founder('founder', 'Founder', [
+  neon('neon', [Color(0xFFBB86FC), Color(0xFF4FC3F7)]),
+  laurel('laurel', [Color(0xFF2E7D32), Color(0xFF9CE5B3)]),
+  ember('ember', [Color(0xFFFF5722), Color(0xFFFFC857)]),
+  shield('shield', [Color(0xFF1565C0), Color(0xFF4FC3F7)]),
+  veteran('veteran', [Color(0xFF7B1FA2), Color(0xFFFFC857)]),
+  founder('founder', [
     Color(0xFFFFC857),
     Color(0xFFBB86FC),
     Color(0xFF4FC3F7),
     Color(0xFFFFC857),
   ], animated: true);
 
-  const AvatarFrame(this.id, this.label, this.colors, {this.animated = false});
+  const AvatarFrame(this.id, this.colors, {this.animated = false});
   final String id;
-  final String label;
+
+  String get label {
+    final l10n = L10n.current;
+    return switch (this) {
+      bronze => l10n.frameBronze,
+      silver => l10n.frameSilver,
+      gold => l10n.frameGold,
+      prism => l10n.framePrism,
+      platinum => l10n.framePlatinum,
+      neon => l10n.frameNeon,
+      laurel => l10n.frameLaurel,
+      ember => l10n.frameEmber,
+      shield => l10n.frameShield,
+      veteran => l10n.frameVeteran,
+      founder => l10n.frameFounder,
+    };
+  }
 
   /// The ring's gradient, swept around the photo.
   final List<Color> colors;
@@ -134,21 +199,17 @@ enum AvatarFrame {
 class Milestone {
   const Milestone({
     required this.id,
-    required this.title,
-    required this.description,
     required this.category,
     required this.tier,
     required this.icon,
     required this.metric,
     required this.threshold,
     this.frame,
-    this.rewardTitle,
+    this.rewardsTitle = false,
   });
 
   /// `milestones.id` and `user_milestones.milestone_id`.
   final String id;
-  final String title;
-  final String description;
   final MilestoneCategory category;
   final MilestoneTier tier;
   final IconData icon;
@@ -160,13 +221,23 @@ class Milestone {
   /// The avatar frame it unlocks, if any.
   final AvatarFrame? frame;
 
-  /// The title it lets the member show under their name, if any.
-  final String? rewardTitle;
+  /// Whether it lets the member show a title under their name ([rewardTitle]).
+  final bool rewardsTitle;
+
+  /// Its name, in the app's language ("Shelf Starter").
+  String get title => _titleOf(L10n.current, id) ?? id;
+
+  /// What it asks for, in the app's language ("Have 10 games in your library.").
+  String get description => _descriptionOf(L10n.current, id) ?? '';
+
+  /// The title it lets the member show under their name, if any: mostly its
+  /// own name. The English ones are `milestones.title` on the server.
+  String? get rewardTitle => rewardsTitle ? _rewardTitleOf(L10n.current, id) ?? title : null;
 
   int get points => tier.points;
 
   /// Reached or not, with nothing to count towards it.
-  bool get isYesNo => metric.unit.isEmpty;
+  bool get isYesNo => !metric.counted;
 }
 
 /// Every milestone, by category, easiest first. Must match the `milestones` rows
@@ -177,8 +248,6 @@ const List<Milestone> milestones = [
   // Library
   Milestone(
     id: 'library_1',
-    title: 'First Pick',
-    description: 'Add your first game to your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.bronze,
     icon: Icons.add_box_rounded,
@@ -187,8 +256,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'library_10',
-    title: 'Shelf Starter',
-    description: 'Have 10 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.bronze,
     icon: Icons.collections_bookmark_rounded,
@@ -198,8 +265,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'library_50',
-    title: 'Bookshelf',
-    description: 'Have 50 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.silver,
     icon: Icons.library_books_rounded,
@@ -209,20 +274,16 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'library_100',
-    title: 'Collector',
-    description: 'Have 100 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.gold,
     icon: Icons.inventory_2_rounded,
     metric: MilestoneMetric.libraryGames,
     threshold: 100,
     frame: AvatarFrame.gold,
-    rewardTitle: 'Collector',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'library_200',
-    title: 'Archivist',
-    description: 'Have 200 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.gold,
     icon: Icons.warehouse_rounded,
@@ -232,20 +293,16 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'library_500',
-    title: 'Hoarder',
-    description: 'Have 500 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.platinum,
     icon: Icons.museum_rounded,
     metric: MilestoneMetric.libraryGames,
     threshold: 500,
     frame: AvatarFrame.platinum,
-    rewardTitle: 'Hoarder',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'library_1000',
-    title: 'Living Museum',
-    description: 'Have 1,000 games in your library.',
     category: MilestoneCategory.library,
     tier: MilestoneTier.platinum,
     icon: Icons.account_balance_rounded,
@@ -256,8 +313,6 @@ const List<Milestone> milestones = [
   // Logbook
   Milestone(
     id: 'sessions_1',
-    title: 'Checkpoint Reached',
-    description: 'Log your first play session.',
     category: MilestoneCategory.logbook,
     tier: MilestoneTier.bronze,
     icon: Icons.flag_rounded,
@@ -266,8 +321,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'sessions_10',
-    title: 'Getting Into It',
-    description: 'Log 10 play sessions.',
     category: MilestoneCategory.logbook,
     tier: MilestoneTier.bronze,
     icon: Icons.edit_note_rounded,
@@ -276,8 +329,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'sessions_50',
-    title: 'Regular Logger',
-    description: 'Log 50 play sessions.',
     category: MilestoneCategory.logbook,
     tier: MilestoneTier.silver,
     icon: Icons.menu_book_rounded,
@@ -286,8 +337,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'sessions_100',
-    title: 'Diarist',
-    description: 'Log 100 play sessions.',
     category: MilestoneCategory.logbook,
     tier: MilestoneTier.gold,
     icon: Icons.auto_stories_rounded,
@@ -296,21 +345,17 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'sessions_500',
-    title: 'Chronicler',
-    description: 'Log 500 play sessions.',
     category: MilestoneCategory.logbook,
     tier: MilestoneTier.platinum,
     icon: Icons.history_edu_rounded,
     metric: MilestoneMetric.sessions,
     threshold: 500,
-    rewardTitle: 'Chronicler',
+    rewardsTitle: true,
   ),
 
   // Playtime
   Milestone(
     id: 'hours_10',
-    title: 'Warming Up',
-    description: 'Play 10 hours in total.',
     category: MilestoneCategory.playtime,
     tier: MilestoneTier.bronze,
     icon: Icons.hourglass_bottom_rounded,
@@ -319,8 +364,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'hours_100',
-    title: 'Hundred Hours',
-    description: 'Play 100 hours in total.',
     category: MilestoneCategory.playtime,
     tier: MilestoneTier.silver,
     icon: Icons.schedule_rounded,
@@ -329,8 +372,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'hours_500',
-    title: 'Dedicated',
-    description: 'Play 500 hours in total.',
     category: MilestoneCategory.playtime,
     tier: MilestoneTier.gold,
     icon: Icons.timer_rounded,
@@ -340,32 +381,26 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'hours_1000',
-    title: 'Touch Grass',
-    description: 'Play 1,000 hours in total.',
     category: MilestoneCategory.playtime,
     tier: MilestoneTier.platinum,
     icon: Icons.nature_people_rounded,
     metric: MilestoneMetric.hours,
     threshold: 1000,
-    rewardTitle: 'Touch Grass',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'game_hours_100',
-    title: 'Devoted',
-    description: 'Play one game for 100 hours.',
     category: MilestoneCategory.playtime,
     tier: MilestoneTier.gold,
     icon: Icons.favorite_rounded,
     metric: MilestoneMetric.gameHours,
     threshold: 100,
-    rewardTitle: 'Devoted',
+    rewardsTitle: true,
   ),
 
   // Finisher
   Milestone(
     id: 'completed_1',
-    title: 'The End',
-    description: 'Complete your first game.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.bronze,
     icon: Icons.verified_rounded,
@@ -374,8 +409,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'completed_10',
-    title: 'Credits Roll',
-    description: 'Complete 10 games.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.silver,
     icon: Icons.movie_filter_rounded,
@@ -384,20 +417,16 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'completed_25',
-    title: 'Finisher',
-    description: 'Complete 25 games.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.gold,
     icon: Icons.military_tech_rounded,
     metric: MilestoneMetric.completed,
     threshold: 25,
     frame: AvatarFrame.laurel,
-    rewardTitle: 'Finisher',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'completed_50',
-    title: 'Closer',
-    description: 'Complete 50 games.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.gold,
     icon: Icons.workspace_premium_rounded,
@@ -406,19 +435,15 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'completed_100',
-    title: 'Completionist',
-    description: 'Complete 100 games.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.platinum,
     icon: Icons.emoji_events_rounded,
     metric: MilestoneMetric.completed,
     threshold: 100,
-    rewardTitle: 'Completionist',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'completion_time_1',
-    title: 'Stopwatch',
-    description: 'Add how long a game took you to finish.',
     category: MilestoneCategory.finisher,
     tier: MilestoneTier.bronze,
     icon: Icons.av_timer_rounded,
@@ -429,8 +454,6 @@ const List<Milestone> milestones = [
   // Streaks
   Milestone(
     id: 'streak_3',
-    title: 'Hat Trick',
-    description: 'Log a session 3 days in a row.',
     category: MilestoneCategory.streaks,
     tier: MilestoneTier.bronze,
     icon: Icons.whatshot_rounded,
@@ -439,8 +462,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'streak_7',
-    title: 'On a Roll',
-    description: 'Log a session 7 days in a row.',
     category: MilestoneCategory.streaks,
     tier: MilestoneTier.silver,
     icon: Icons.bolt_rounded,
@@ -449,33 +470,27 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'streak_30',
-    title: 'Unstoppable',
-    description: 'Log a session 30 days in a row.',
     category: MilestoneCategory.streaks,
     tier: MilestoneTier.gold,
     icon: Icons.local_fire_department_rounded,
     metric: MilestoneMetric.streakDays,
     threshold: 30,
     frame: AvatarFrame.ember,
-    rewardTitle: 'Marathoner',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'night_owl',
-    title: 'Night Owl',
-    description: 'Log a session between midnight and 4 am.',
     category: MilestoneCategory.streaks,
     tier: MilestoneTier.bronze,
     icon: Icons.nights_stay_rounded,
     metric: MilestoneMetric.nightSessions,
     threshold: 1,
-    rewardTitle: 'Night Owl',
+    rewardsTitle: true,
   ),
 
   // Critic
   Milestone(
     id: 'rated_1',
-    title: 'First Impressions',
-    description: 'Rate a game.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.bronze,
     icon: Icons.star_half_rounded,
@@ -484,8 +499,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'rated_25',
-    title: 'Opinionated',
-    description: 'Rate 25 games.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.silver,
     icon: Icons.star_rounded,
@@ -494,8 +507,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'rated_100',
-    title: 'Tastemaker',
-    description: 'Rate 100 games.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.gold,
     icon: Icons.stars_rounded,
@@ -504,8 +515,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'reviews_1',
-    title: 'First Review',
-    description: 'Write a review.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.bronze,
     icon: Icons.rate_review_rounded,
@@ -514,19 +523,15 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'reviews_10',
-    title: 'Critic',
-    description: 'Write 10 reviews.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.silver,
     icon: Icons.reviews_rounded,
     metric: MilestoneMetric.reviews,
     threshold: 10,
-    rewardTitle: 'Critic',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'reviews_50',
-    title: 'Columnist',
-    description: 'Write 50 reviews.',
     category: MilestoneCategory.critic,
     tier: MilestoneTier.gold,
     icon: Icons.newspaper_rounded,
@@ -537,19 +542,15 @@ const List<Milestone> milestones = [
   // Curator
   Milestone(
     id: 'lists_1',
-    title: 'Curator',
-    description: 'Make your first list.',
     category: MilestoneCategory.curator,
     tier: MilestoneTier.bronze,
     icon: Icons.playlist_add_rounded,
     metric: MilestoneMetric.lists,
     threshold: 1,
-    rewardTitle: 'Curator',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'public_list',
-    title: 'On Display',
-    description: 'Make a list public.',
     category: MilestoneCategory.curator,
     tier: MilestoneTier.bronze,
     icon: Icons.public_rounded,
@@ -558,8 +559,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'list_size_25',
-    title: 'Big List',
-    description: 'Put 25 games on one list.',
     category: MilestoneCategory.curator,
     tier: MilestoneTier.silver,
     icon: Icons.format_list_numbered_rounded,
@@ -570,8 +569,6 @@ const List<Milestone> milestones = [
   // Variety
   Milestone(
     id: 'platforms_3',
-    title: 'Multi-Platform',
-    description: 'Play on 3 different platforms.',
     category: MilestoneCategory.variety,
     tier: MilestoneTier.silver,
     icon: Icons.devices_rounded,
@@ -580,8 +577,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'platforms_5',
-    title: 'Platform Hopper',
-    description: 'Play on 5 different platforms.',
     category: MilestoneCategory.variety,
     tier: MilestoneTier.gold,
     icon: Icons.devices_other_rounded,
@@ -590,8 +585,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'genres_10',
-    title: 'Genre Hopper',
-    description: 'Play games from 10 different genres.',
     category: MilestoneCategory.variety,
     tier: MilestoneTier.silver,
     icon: Icons.category_rounded,
@@ -600,8 +593,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'retro_1',
-    title: 'Old School',
-    description: 'Play a game released before 1995.',
     category: MilestoneCategory.variety,
     tier: MilestoneTier.bronze,
     icon: Icons.videogame_asset_rounded,
@@ -610,21 +601,17 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'decades_4',
-    title: 'Time Traveler',
-    description: 'Play games from 4 different decades.',
     category: MilestoneCategory.variety,
     tier: MilestoneTier.gold,
     icon: Icons.history_rounded,
     metric: MilestoneMetric.decades,
     threshold: 4,
-    rewardTitle: 'Time Traveler',
+    rewardsTitle: true,
   ),
 
   // Social
   Milestone(
     id: 'following_1',
-    title: 'Say Hi',
-    description: 'Follow another member.',
     category: MilestoneCategory.social,
     tier: MilestoneTier.bronze,
     icon: Icons.waving_hand_rounded,
@@ -633,8 +620,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'followers_1',
-    title: 'Fan Club',
-    description: 'Get your first follower.',
     category: MilestoneCategory.social,
     tier: MilestoneTier.bronze,
     icon: Icons.person_add_alt_1_rounded,
@@ -643,8 +628,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'followers_10',
-    title: 'Rising Star',
-    description: 'Have 10 followers.',
     category: MilestoneCategory.social,
     tier: MilestoneTier.silver,
     icon: Icons.trending_up_rounded,
@@ -653,21 +636,17 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'followers_50',
-    title: 'Socialite',
-    description: 'Have 50 followers.',
     category: MilestoneCategory.social,
     tier: MilestoneTier.gold,
     icon: Icons.groups_rounded,
     metric: MilestoneMetric.followers,
     threshold: 50,
-    rewardTitle: 'Socialite',
+    rewardsTitle: true,
   ),
 
   // Membership
   Milestone(
     id: 'member_1m',
-    title: 'Welcome Aboard',
-    description: 'Be a member for a month.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.bronze,
     icon: Icons.celebration_rounded,
@@ -676,8 +655,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'member_3m',
-    title: 'Settling In',
-    description: 'Be a member for 3 months.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.bronze,
     icon: Icons.event_available_rounded,
@@ -686,8 +663,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'member_6m',
-    title: 'Regular',
-    description: 'Be a member for 6 months.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.silver,
     icon: Icons.calendar_month_rounded,
@@ -696,20 +671,16 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'member_1y',
-    title: 'Veteran',
-    description: 'Be a member for a year.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.gold,
     icon: Icons.cake_rounded,
     metric: MilestoneMetric.memberMonths,
     threshold: 12,
     frame: AvatarFrame.veteran,
-    rewardTitle: 'Veteran',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'member_2y',
-    title: 'Two Years Strong',
-    description: 'Be a member for 2 years.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.gold,
     icon: Icons.event_repeat_rounded,
@@ -718,44 +689,36 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'member_3y',
-    title: 'Old Guard',
-    description: 'Be a member for 3 years.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.platinum,
     icon: Icons.shield_moon_rounded,
     metric: MilestoneMetric.memberMonths,
     threshold: 36,
-    rewardTitle: 'Old Guard',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'member_5y',
-    title: 'Legend',
-    description: 'Be a member for 5 years.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.platinum,
     icon: Icons.diamond_rounded,
     metric: MilestoneMetric.memberMonths,
     threshold: 60,
-    rewardTitle: 'Legend',
+    rewardsTitle: true,
   ),
   Milestone(
     id: 'founding_member',
-    title: 'Founding Member',
-    description: 'Join Checkpoint in its first year, 2026.',
     category: MilestoneCategory.membership,
     tier: MilestoneTier.gold,
     icon: Icons.rocket_launch_rounded,
     metric: MilestoneMetric.foundingMember,
     threshold: 1,
     frame: AvatarFrame.founder,
-    rewardTitle: 'Founder',
+    rewardsTitle: true,
   ),
 
   // Account
   Milestone(
     id: 'profile_complete',
-    title: 'Looking Sharp',
-    description: 'Add a profile photo and a bio.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
     icon: Icons.face_retouching_natural_rounded,
@@ -764,8 +727,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'favorites_4',
-    title: 'Top Four',
-    description: 'Pick 4 favorite games.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
     icon: Icons.looks_4_rounded,
@@ -774,8 +735,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'wishlist_10',
-    title: 'Window Shopper',
-    description: 'Wishlist 10 games.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
     icon: Icons.bookmark_add_rounded,
@@ -784,8 +743,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'dropped_1',
-    title: 'Know When to Fold',
-    description: 'Drop a game.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
     icon: Icons.do_not_disturb_on_rounded,
@@ -796,8 +753,6 @@ const List<Milestone> milestones = [
   // it kept it (20261020140337_milestones_without_steam.sql).
   Milestone(
     id: 'steam_connected',
-    title: 'Plugged In',
-    description: 'Connect a game account: Steam, PSN, Xbox or Nintendo.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.bronze,
     icon: Icons.cable_rounded,
@@ -806,8 +761,6 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'two_factor',
-    title: 'Locked Down',
-    description: 'Turn on two-factor authentication.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.silver,
     icon: Icons.verified_user_rounded,
@@ -817,16 +770,152 @@ const List<Milestone> milestones = [
   ),
   Milestone(
     id: 'perfect_game',
-    title: 'Perfectionist',
-    description: 'Earn a Platinum trophy, every achievement or 100% in a game.',
     category: MilestoneCategory.account,
     tier: MilestoneTier.gold,
     icon: Icons.fact_check_rounded,
     metric: MilestoneMetric.perfectGames,
     threshold: 1,
-    rewardTitle: 'Perfectionist',
+    rewardsTitle: true,
   ),
 ];
+
+/// [id]'s name, in the app's language (app_en.arb: `milestone<Id>`).
+String? _titleOf(AppLocalizations l10n, String id) => switch (id) {
+    'library_1' => l10n.milestoneLibrary1,
+    'library_10' => l10n.milestoneLibrary10,
+    'library_50' => l10n.milestoneLibrary50,
+    'library_100' => l10n.milestoneLibrary100,
+    'library_200' => l10n.milestoneLibrary200,
+    'library_500' => l10n.milestoneLibrary500,
+    'library_1000' => l10n.milestoneLibrary1000,
+    'sessions_1' => l10n.milestoneSessions1,
+    'sessions_10' => l10n.milestoneSessions10,
+    'sessions_50' => l10n.milestoneSessions50,
+    'sessions_100' => l10n.milestoneSessions100,
+    'sessions_500' => l10n.milestoneSessions500,
+    'hours_10' => l10n.milestoneHours10,
+    'hours_100' => l10n.milestoneHours100,
+    'hours_500' => l10n.milestoneHours500,
+    'hours_1000' => l10n.milestoneHours1000,
+    'game_hours_100' => l10n.milestoneGameHours100,
+    'completed_1' => l10n.milestoneCompleted1,
+    'completed_10' => l10n.milestoneCompleted10,
+    'completed_25' => l10n.milestoneCompleted25,
+    'completed_50' => l10n.milestoneCompleted50,
+    'completed_100' => l10n.milestoneCompleted100,
+    'completion_time_1' => l10n.milestoneCompletionTime1,
+    'streak_3' => l10n.milestoneStreak3,
+    'streak_7' => l10n.milestoneStreak7,
+    'streak_30' => l10n.milestoneStreak30,
+    'night_owl' => l10n.milestoneNightOwl,
+    'rated_1' => l10n.milestoneRated1,
+    'rated_25' => l10n.milestoneRated25,
+    'rated_100' => l10n.milestoneRated100,
+    'reviews_1' => l10n.milestoneReviews1,
+    'reviews_10' => l10n.milestoneReviews10,
+    'reviews_50' => l10n.milestoneReviews50,
+    'lists_1' => l10n.milestoneLists1,
+    'public_list' => l10n.milestonePublicList,
+    'list_size_25' => l10n.milestoneListSize25,
+    'platforms_3' => l10n.milestonePlatforms3,
+    'platforms_5' => l10n.milestonePlatforms5,
+    'genres_10' => l10n.milestoneGenres10,
+    'retro_1' => l10n.milestoneRetro1,
+    'decades_4' => l10n.milestoneDecades4,
+    'following_1' => l10n.milestoneFollowing1,
+    'followers_1' => l10n.milestoneFollowers1,
+    'followers_10' => l10n.milestoneFollowers10,
+    'followers_50' => l10n.milestoneFollowers50,
+    'member_1m' => l10n.milestoneMember1m,
+    'member_3m' => l10n.milestoneMember3m,
+    'member_6m' => l10n.milestoneMember6m,
+    'member_1y' => l10n.milestoneMember1y,
+    'member_2y' => l10n.milestoneMember2y,
+    'member_3y' => l10n.milestoneMember3y,
+    'member_5y' => l10n.milestoneMember5y,
+    'founding_member' => l10n.milestoneFoundingMember,
+    'profile_complete' => l10n.milestoneProfileComplete,
+    'favorites_4' => l10n.milestoneFavorites4,
+    'wishlist_10' => l10n.milestoneWishlist10,
+    'dropped_1' => l10n.milestoneDropped1,
+    'steam_connected' => l10n.milestoneSteamConnected,
+    'two_factor' => l10n.milestoneTwoFactor,
+    'perfect_game' => l10n.milestonePerfectGame,
+    _ => null,
+};
+
+/// What [id] asks for, in the app's language (`milestone<Id>Description`).
+String? _descriptionOf(AppLocalizations l10n, String id) => switch (id) {
+    'library_1' => l10n.milestoneLibrary1Description,
+    'library_10' => l10n.milestoneLibrary10Description,
+    'library_50' => l10n.milestoneLibrary50Description,
+    'library_100' => l10n.milestoneLibrary100Description,
+    'library_200' => l10n.milestoneLibrary200Description,
+    'library_500' => l10n.milestoneLibrary500Description,
+    'library_1000' => l10n.milestoneLibrary1000Description,
+    'sessions_1' => l10n.milestoneSessions1Description,
+    'sessions_10' => l10n.milestoneSessions10Description,
+    'sessions_50' => l10n.milestoneSessions50Description,
+    'sessions_100' => l10n.milestoneSessions100Description,
+    'sessions_500' => l10n.milestoneSessions500Description,
+    'hours_10' => l10n.milestoneHours10Description,
+    'hours_100' => l10n.milestoneHours100Description,
+    'hours_500' => l10n.milestoneHours500Description,
+    'hours_1000' => l10n.milestoneHours1000Description,
+    'game_hours_100' => l10n.milestoneGameHours100Description,
+    'completed_1' => l10n.milestoneCompleted1Description,
+    'completed_10' => l10n.milestoneCompleted10Description,
+    'completed_25' => l10n.milestoneCompleted25Description,
+    'completed_50' => l10n.milestoneCompleted50Description,
+    'completed_100' => l10n.milestoneCompleted100Description,
+    'completion_time_1' => l10n.milestoneCompletionTime1Description,
+    'streak_3' => l10n.milestoneStreak3Description,
+    'streak_7' => l10n.milestoneStreak7Description,
+    'streak_30' => l10n.milestoneStreak30Description,
+    'night_owl' => l10n.milestoneNightOwlDescription,
+    'rated_1' => l10n.milestoneRated1Description,
+    'rated_25' => l10n.milestoneRated25Description,
+    'rated_100' => l10n.milestoneRated100Description,
+    'reviews_1' => l10n.milestoneReviews1Description,
+    'reviews_10' => l10n.milestoneReviews10Description,
+    'reviews_50' => l10n.milestoneReviews50Description,
+    'lists_1' => l10n.milestoneLists1Description,
+    'public_list' => l10n.milestonePublicListDescription,
+    'list_size_25' => l10n.milestoneListSize25Description,
+    'platforms_3' => l10n.milestonePlatforms3Description,
+    'platforms_5' => l10n.milestonePlatforms5Description,
+    'genres_10' => l10n.milestoneGenres10Description,
+    'retro_1' => l10n.milestoneRetro1Description,
+    'decades_4' => l10n.milestoneDecades4Description,
+    'following_1' => l10n.milestoneFollowing1Description,
+    'followers_1' => l10n.milestoneFollowers1Description,
+    'followers_10' => l10n.milestoneFollowers10Description,
+    'followers_50' => l10n.milestoneFollowers50Description,
+    'member_1m' => l10n.milestoneMember1mDescription,
+    'member_3m' => l10n.milestoneMember3mDescription,
+    'member_6m' => l10n.milestoneMember6mDescription,
+    'member_1y' => l10n.milestoneMember1yDescription,
+    'member_2y' => l10n.milestoneMember2yDescription,
+    'member_3y' => l10n.milestoneMember3yDescription,
+    'member_5y' => l10n.milestoneMember5yDescription,
+    'founding_member' => l10n.milestoneFoundingMemberDescription,
+    'profile_complete' => l10n.milestoneProfileCompleteDescription,
+    'favorites_4' => l10n.milestoneFavorites4Description,
+    'wishlist_10' => l10n.milestoneWishlist10Description,
+    'dropped_1' => l10n.milestoneDropped1Description,
+    'steam_connected' => l10n.milestoneSteamConnectedDescription,
+    'two_factor' => l10n.milestoneTwoFactorDescription,
+    'perfect_game' => l10n.milestonePerfectGameDescription,
+    _ => null,
+};
+
+/// The title [id] unlocks where it is not the milestone's own name
+/// (`milestone<Id>RewardTitle`).
+String? _rewardTitleOf(AppLocalizations l10n, String id) => switch (id) {
+    'streak_30' => l10n.milestoneStreak30RewardTitle,
+    'founding_member' => l10n.milestoneFoundingMemberRewardTitle,
+    _ => null,
+};
 
 final Map<String, Milestone> _byId = {for (final m in milestones) m.id: m};
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -16,76 +17,71 @@ class PrivacySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
         Panel(
-          title: 'Your profile',
+          title: l10n.yourProfile,
           child: _ShowAchievementsSwitch(),
         ),
         SizedBox(height: 14),
         Panel(
-          title: 'Visible to other signed-in members',
+          title: l10n.privacyVisibleTitle,
           child: Column(
             children: [
               _Item(
                 icon: Icons.badge_rounded,
-                title: 'Profile',
-                text: 'Display name, username, photo, bio and the month you joined.',
+                title: l10n.navProfile,
+                text: l10n.privacyProfileText,
               ),
               _Item(
                 icon: Icons.collections_bookmark_rounded,
-                title: 'Library',
-                text:
-                    'Each game with its status, your rating, hours played, platform and '
-                    'favorite flag, and the totals made from them.',
+                title: l10n.milestoneCategoryLibrary,
+                text: l10n.privacyLibraryText,
               ),
               _Item(
                 icon: Icons.history_rounded,
-                title: 'Recent activity',
-                text: 'Your latest play sessions: the game, hours, platform and when.',
+                title: l10n.privacyRecentActivity,
+                text: l10n.privacyRecentActivityText,
               ),
               _Item(
                 icon: Icons.people_alt_rounded,
-                title: 'Followers and following',
-                text: 'Who follows you and who you follow.',
+                title: l10n.privacyFollows,
+                text: l10n.privacyFollowsText,
               ),
               _Item(
                 icon: Icons.link_rounded,
-                title: 'Connected accounts',
-                text:
-                    'Your Steam ID and your PSN, Xbox, Discord, Instagram and Twitch '
-                    'names, which is what their links open.',
+                title: l10n.connectedAccounts,
+                text: l10n.privacyConnectedText,
               ),
               _Item(
                 icon: Icons.emoji_events_rounded,
-                title: 'Achievements',
-                text:
-                    'Your Steam achievement progress, unless you turn off Show Steam '
-                    'Achievements above.',
+                title: l10n.achievements,
+                text: l10n.privacyAchievementsText(l10n.showSteamAchievements),
               ),
             ],
           ),
         ),
         SizedBox(height: 14),
         Panel(
-          title: 'Private to you',
+          title: l10n.privacyPrivateTitle,
           child: Column(
             children: [
               _Item(
                 icon: Icons.mail_outline_rounded,
-                title: 'Email address',
-                text: 'Never shown to other members.',
+                title: l10n.emailAddress,
+                text: l10n.privacyEmailText,
               ),
               _Item(
                 icon: Icons.sell_outlined,
-                title: 'Purchase prices',
-                text: 'What you paid for a game stays on your account.',
+                title: l10n.purchasePrices,
+                text: l10n.privacyPricesText,
               ),
               _Item(
                 icon: Icons.sticky_note_2_outlined,
-                title: 'Session notes',
-                text: 'The notes you write on play sessions.',
+                title: l10n.sessionNotes,
+                text: l10n.privacyNotesText,
               ),
             ],
           ),
@@ -93,9 +89,7 @@ class PrivacySection extends StatelessWidget {
         Padding(
           padding: EdgeInsets.fromLTRB(4, 12, 4, 0),
           child: Text(
-            'None of this is visible to people who are not signed in. You can change '
-            'what your profile shows under Edit Profile, in Connected accounts and '
-            'with the switch above.',
+            l10n.privacyFootnote,
             style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.4),
           ),
         ),
@@ -121,13 +115,12 @@ class _ShowAchievementsSwitch extends StatelessWidget {
           Icons.emoji_events_rounded,
           color: context.palette.accent,
         ),
-        title: const Text(
-          'Show Steam Achievements',
-          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+        title: Text(
+          context.l10n.showSteamAchievements,
+          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
-          'Allow other players to view your Steam achievements on your public '
-          'profile.',
+          context.l10n.showSteamAchievementsSubtitle,
           style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         value: store.showSteamAchievements,

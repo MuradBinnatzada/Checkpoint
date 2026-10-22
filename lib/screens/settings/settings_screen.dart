@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/settings/account_section.dart';
 import 'package:checkpoint/screens/settings/appearance_section.dart';
 import 'package:checkpoint/screens/settings/data_section.dart';
@@ -10,15 +11,22 @@ import 'package:checkpoint/widgets/app_choice_chip.dart';
 
 /// The parts of Settings, in the order they are listed.
 enum SettingsSection {
-  account('Account', Icons.person_rounded),
-  security('Security', Icons.shield_rounded),
-  privacy('Privacy', Icons.lock_rounded),
-  appearance('Appearance', Icons.palette_rounded),
-  data('Your data', Icons.import_export_rounded);
+  account(Icons.person_rounded),
+  security(Icons.shield_rounded),
+  privacy(Icons.lock_rounded),
+  appearance(Icons.palette_rounded),
+  data(Icons.import_export_rounded);
 
-  const SettingsSection(this.label, this.icon);
-  final String label;
+  const SettingsSection(this.icon);
   final IconData icon;
+
+  String get label => switch (this) {
+    account => L10n.current.settingsAccount,
+    security => L10n.current.settingsSecurity,
+    privacy => L10n.current.settingsPrivacy,
+    appearance => L10n.current.settingsAppearance,
+    data => L10n.current.settingsData,
+  };
 }
 
 /// Settings, split into sections. On a wide window the sections are a sidebar on
@@ -69,7 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return PopScope(
       canPop: !_deleting,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
+        appBar: AppBar(title: Text(context.l10n.settings)),
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {

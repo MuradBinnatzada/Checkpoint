@@ -2,39 +2,57 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/theme/palette.dart';
 
-String fmtCount(int n) => n < 1000 ? '$n' : '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}k';
+// Numbers and dates follow the app's language (L10n.use sets intl's locale):
+// "1,280" and "Oct 14" in English, "1 280" and "14 окт." in Russian.
+
+/// "." in English, "," in Russian.
+String get _decimalSeparator => NumberFormat.decimalPattern().symbols.DECIMAL_SEP;
+
+/// [fixed] (made with toStringAsFixed) with the language's decimal separator.
+String _decimal(String fixed) => fixed.replaceFirst('.', _decimalSeparator);
+
+/// 980 -> "980", 1280 -> "1.3k", 12800 -> "13k": a count in little room.
+String fmtCount(int n) =>
+    n < 1000 ? '$n' : L10n.current.countThousands(_decimal((n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)));
 
 /// 1280 -> "1,280": the exact number, for places that have room for it.
-String fmtThousands(int n) => n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+String fmtThousands(int n) => NumberFormat.decimalPattern().format(n);
 
-String fmtHours(double h) => (h - h.roundToDouble()).abs() < 0.05 ? h.round().toString() : h.toStringAsFixed(1);
-String fmtMoney(double v) => '\$${v.toStringAsFixed(2)}';
+String fmtHours(double h) =>
+    (h - h.roundToDouble()).abs() < 0.05 ? h.round().toString() : _decimal(h.toStringAsFixed(1));
+
+/// 12.5 -> "$12.50": a price in US dollars, written the language's way.
+String fmtMoney(double v) => NumberFormat.simpleCurrency(name: 'USD').format(v);
 
 /// 40.9 -> "40.9%", 100 -> "100%", 0.04 -> "<0.1%": a share out of 100, one decimal.
 String fmtPercent(double p) {
-  if (p > 0 && p < 0.05) return '<0.1%';
+  if (p > 0 && p < 0.05) return '<${_decimal('0.1')}%';
   final rounded = (p * 10).round() / 10;
-  return rounded == rounded.roundToDouble() ? '${rounded.round()}%' : '${rounded.toStringAsFixed(1)}%';
+  return rounded == rounded.roundToDouble() ? '${rounded.round()}%' : '${_decimal(rounded.toStringAsFixed(1))}%';
 }
 
 double? parseNum(String s) => double.tryParse(s.trim().replaceAll(',', '.'));
 
 String timeAgo(DateTime t) {
   final d = DateTime.now().difference(t);
-  if (d.inMinutes < 60) return '${math.max(1, d.inMinutes)}m ago';
-  if (d.inHours < 24) return '${d.inHours}h ago';
-  if (d.inDays < 7) return '${d.inDays}d ago';
-  if (d.inDays < 60) return '${d.inDays ~/ 7}w ago';
-  return '${d.inDays ~/ 30}mo ago';
+  final l10n = L10n.current;
+  if (d.inMinutes < 60) return l10n.timeAgoMinutes(math.max(1, d.inMinutes));
+  if (d.inHours < 24) return l10n.timeAgoHours(d.inHours);
+  if (d.inDays < 7) return l10n.timeAgoDays(d.inDays);
+  if (d.inDays < 60) return l10n.timeAgoWeeks(d.inDays ~/ 7);
+  return l10n.timeAgoMonths(d.inDays ~/ 30);
 }
 
-const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 /// "Oct 14": the calendar day of [d] as stored, without shifting it to local time.
-String fmtMonthDay(DateTime d) => '${_monthNames[d.month - 1]} ${d.day}';
+String fmtMonthDay(DateTime d) => DateFormat.MMMd().format(d);
+
+/// "Oct": the month of [d], short.
+String fmtMonthShort(DateTime d) => DateFormat.MMM().format(d);
 
 String initials(String name) => name
     .trim()
@@ -46,10 +64,11 @@ String initials(String name) => name
 
 String greeting() {
   final h = DateTime.now().hour;
-  if (h < 5) return 'Late night';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  final l10n = L10n.current;
+  if (h < 5) return l10n.greetingLateNight;
+  if (h < 12) return l10n.greetingMorning;
+  if (h < 18) return l10n.greetingAfternoon;
+  return l10n.greetingEvening;
 }
 
 /// The largest text size the app follows from the device's setting: twice the
@@ -93,7 +112,7 @@ final decimalFormatter = FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'));
 const decimalKeyboard = TextInputType.numberWithOptions(decimal: true);
 
 /// "Oct 2026": the month and year of [d], as stored, without shifting it to local time.
-String fmtMonthYear(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+String fmtMonthYear(DateTime d) => DateFormat.yMMM().format(d);
 
 /// "Today", "Yesterday", "Oct 14", or "Oct 14, 2025" in another year: the day of
 /// [d] as the device sees it, relative to [now].
@@ -103,10 +122,9 @@ String fmtDay(DateTime d, {DateTime? now}) {
   final daysAgo = DateTime.utc(today.year, today.month, today.day)
       .difference(DateTime.utc(d.year, d.month, d.day))
       .inDays;
-  if (daysAgo == 0) return 'Today';
-  if (daysAgo == 1) return 'Yesterday';
-  final monthDay = '${_monthNames[d.month - 1]} ${d.day}';
-  return d.year == today.year ? monthDay : '$monthDay, ${d.year}';
+  if (daysAgo == 0) return L10n.current.today;
+  if (daysAgo == 1) return L10n.current.yesterday;
+  return d.year == today.year ? DateFormat.MMMd().format(d) : DateFormat.yMMMd().format(d);
 }
 
 /// 0:04:09, 1:02:33: a running timer, hours first.

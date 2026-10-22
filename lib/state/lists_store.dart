@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
@@ -139,7 +140,7 @@ class ListsStore extends AccountScopedStore {
       debugPrint('Opening list $listId failed: $e\n$st');
       if (isStale(epoch)) return;
       _opened.remove(listId);
-      _setNotice('Could not open that list. Check your connection and try again.');
+      _setNotice(L10n.current.listOpenFailed);
     }
     notifyIfAlive();
   }
@@ -155,7 +156,7 @@ class ListsStore extends AccountScopedStore {
   }) async {
     if (accountId == null) return null;
     if (_lists.length >= GameList.maxLists) {
-      _setNotice('You can have up to ${GameList.maxLists} lists.');
+      _setNotice(L10n.current.listsLimit(GameList.maxLists));
       return null;
     }
     final epoch = this.epoch;
@@ -212,7 +213,7 @@ class ListsStore extends AccountScopedStore {
       return;
     }
     if (before.games.length >= GameList.maxGames) {
-      _setNotice('A list can hold up to ${GameList.maxGames} games.');
+      _setNotice(L10n.current.listGamesLimit(GameList.maxGames));
       return;
     }
     final catalogGame = game.withoutUserState();
@@ -265,8 +266,8 @@ class ListsStore extends AccountScopedStore {
 
   void _failed(Object e) => _setNotice(
     isConnectionFailure(e)
-        ? 'Lists need a connection. Check it and try again.'
-        : 'Could not save that change to your list.',
+        ? L10n.current.listsNeedConnection
+        : L10n.current.listSaveFailed,
   );
 
   void _setNotice(String message) {

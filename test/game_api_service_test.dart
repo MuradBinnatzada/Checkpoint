@@ -53,8 +53,8 @@ void main() {
       final game = GameApiService.gameFromHit({'id': 7})!;
 
       expect(game.title, 'Unknown');
-      expect(game.publisher, 'Unknown Publisher');
-      expect(game.developer, 'Unknown Publisher');
+      expect(game.publisher, 'Unknown publisher');
+      expect(game.developer, 'Unknown publisher');
       expect(game.releaseYear, 0);
       expect(game.hasReleaseYear, isFalse);
       expect(game.platforms, isEmpty);
@@ -166,7 +166,7 @@ void main() {
           final game = GameApiService.gameFromHit(
             hit({'involved_companies': involved}),
           )!;
-          expect(game.publisher, 'Unknown Publisher', reason: '$involved');
+          expect(game.publisher, 'Unknown publisher', reason: '$involved');
         }
       });
     });

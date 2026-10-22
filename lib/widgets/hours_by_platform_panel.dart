@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -11,23 +12,23 @@ class HoursByPlatformPanel extends StatelessWidget {
   const HoursByPlatformPanel({
     super.key,
     required this.hours,
-    this.emptyText = 'Log a session to see your breakdown.',
+    this.emptyText,
   });
 
   /// Hours per platform, most played first.
   final Map<GamePlatform, double> hours;
 
-  /// Said when there are no hours at all.
-  final String emptyText;
+  /// Said when there are no hours at all; null: a hint to log a session.
+  final String? emptyText;
 
   @override
   Widget build(BuildContext context) {
     final entries = hours.entries.toList();
     final max = entries.isEmpty ? 1.0 : entries.first.value;
     return Panel(
-      title: 'Hours by platform',
+      title: context.l10n.hoursByPlatform,
       child: entries.isEmpty
-          ? Text(emptyText, style: TextStyle(color: context.palette.muted))
+          ? Text(emptyText ?? context.l10n.noHoursOwn, style: TextStyle(color: context.palette.muted))
           : Column(
               children: [
                 for (final e in entries)
@@ -64,7 +65,7 @@ class HoursByPlatformPanel extends StatelessWidget {
                         SizedBox(
                           width: 52,
                           child: Text(
-                            '${fmtHours(e.value)} h',
+                            context.l10n.hoursShort(fmtHours(e.value)),
                             textAlign: TextAlign.end,
                             style: TextStyle(
                               fontSize: 12.5,

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/auth_gate.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
@@ -62,25 +63,25 @@ class _BrowseResultsScreenState extends State<BrowseResultsScreen> {
       return loggedIn
           ? EmptyState(
               icon: Icons.cloud_off_rounded,
-              title: 'Couldn’t load games',
-              message: 'Check your connection and try again.',
-              actionLabel: 'Try again',
+              title: context.l10n.gamesLoadFailed,
+              message: context.l10n.checkConnection,
+              actionLabel: context.l10n.tryAgain,
               onAction: () => unawaited(store.refresh(mode)),
             )
           : EmptyState(
               icon: Icons.lock_outline_rounded,
-              title: 'Log in to browse games',
-              message: 'Game lists come from IGDB, which Checkpoint only reaches for signed-in users.',
-              actionLabel: 'Log in',
+              title: context.l10n.logInToBrowseGames,
+              message: context.l10n.logInToBrowseGamesMessage,
+              actionLabel: context.l10n.logIn,
               onAction: () => logIn(context),
             );
     }
     if (store.isLoaded(mode) && !store.isLoading(mode)) {
       return EmptyState(
         icon: Icons.search_off_rounded,
-        title: 'Nothing to show',
-        message: 'IGDB returned no games for this list.',
-        actionLabel: 'Try again',
+        title: context.l10n.nothingToShow,
+        message: context.l10n.igdbNoGamesForList,
+        actionLabel: context.l10n.tryAgain,
         onAction: () => unawaited(store.refresh(mode)),
       );
     }

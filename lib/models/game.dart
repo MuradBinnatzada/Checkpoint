@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game_cover.dart';
 
 enum GameStatus {
-  playing('Playing', Icons.play_circle_rounded, Color(0xFFBB86FC)),
-  toPlay('To Play', Icons.inventory_2_rounded, Color(0xFF4FC3F7)),
-  completed('Completed', Icons.verified_rounded, Color(0xFF7DDC9C)),
-  dropped('Dropped', Icons.block_rounded, Color(0xFFCF6679)),
-  wishlist('Wishlist', Icons.bookmark_rounded, Color(0xFFFFC857));
+  playing(Icons.play_circle_rounded, Color(0xFFBB86FC)),
+  toPlay(Icons.inventory_2_rounded, Color(0xFF4FC3F7)),
+  completed(Icons.verified_rounded, Color(0xFF7DDC9C)),
+  dropped(Icons.block_rounded, Color(0xFFCF6679)),
+  wishlist(Icons.bookmark_rounded, Color(0xFFFFC857));
 
-  const GameStatus(this.label, this.icon, this.color);
-  final String label;
+  const GameStatus(this.icon, this.color);
   final IconData icon;
   final Color color;
+
+  String get label => switch (this) {
+    playing => L10n.current.statusPlaying,
+    toPlay => L10n.current.statusToPlay,
+    completed => L10n.current.statusCompleted,
+    dropped => L10n.current.statusDropped,
+    wishlist => L10n.current.statusWishlist,
+  };
 }
 
 String gameStatusToDb(GameStatus status) => switch (status) {
@@ -123,10 +131,19 @@ enum GamePlatform {
   vr('VR', PlatformFamily.vr),
   emulator('Emulator', PlatformFamily.other);
 
-  const GamePlatform(this.label, this.family, {this._icon, this._color});
+  const GamePlatform(this._label, this.family, {this._icon, this._color});
 
-  final String label;
+  final String _label;
   final PlatformFamily family;
+
+  /// Its name: the console's own, which no language translates, except for
+  /// the few that are words.
+  String get label => switch (this) {
+    xboxOriginal => L10n.current.platformXboxOriginal,
+    mobile => L10n.current.platformMobile,
+    emulator => L10n.current.platformEmulator,
+    _ => _label,
+  };
   final IconData? _icon;
   final Color? _color;
 
@@ -237,42 +254,39 @@ List<GamePlatform> releasePlatformsFromDb(Iterable<Object?> values) {
 /// every achievement on PC and the Xboxes that have them, and 100% anywhere
 /// else (Nintendo has neither). It is one flag whatever the name.
 enum PerfectMark {
-  platinum(
-    'Platinum',
-    'Platinum trophy',
-    'You earned every trophy in it',
-    'Platinum trophy earned',
-    Icons.emoji_events_rounded,
-    Color(0xFF8FE3EC),
-  ),
-  achievements(
-    'All achievements',
-    'All achievements',
-    'You unlocked every achievement in it',
-    'All achievements unlocked',
-    Icons.military_tech_rounded,
-    Color(0xFFFFC857),
-  ),
-  complete(
-    '100%',
-    '100% complete',
-    'You did everything there is to do in it',
-    'Marked 100% complete',
-    Icons.workspace_premium_rounded,
-    Color(0xFFFFC857),
-  );
+  platinum(Icons.emoji_events_rounded, Color(0xFF8FE3EC)),
+  achievements(Icons.military_tech_rounded, Color(0xFFFFC857)),
+  complete(Icons.workspace_premium_rounded, Color(0xFFFFC857));
 
-  const PerfectMark(this.label, this.title, this.description, this.done, this.icon, this.color);
+  const PerfectMark(this.icon, this.color);
 
   /// On the game's badges.
-  final String label;
+  String get label => switch (this) {
+    platinum => L10n.current.perfectPlatinumLabel,
+    achievements => L10n.current.perfectAchievementsLabel,
+    complete => L10n.current.perfectCompleteLabel,
+  };
 
   /// On the switch that marks it.
-  final String title;
-  final String description;
+  String get title => switch (this) {
+    platinum => L10n.current.perfectPlatinumTitle,
+    achievements => L10n.current.perfectAchievementsTitle,
+    complete => L10n.current.perfectCompleteTitle,
+  };
+
+  String get description => switch (this) {
+    platinum => L10n.current.perfectPlatinumDescription,
+    achievements => L10n.current.perfectAchievementsDescription,
+    complete => L10n.current.perfectCompleteDescription,
+  };
 
   /// Said when it is marked.
-  final String done;
+  String get done => switch (this) {
+    platinum => L10n.current.perfectPlatinumDone,
+    achievements => L10n.current.perfectAchievementsDone,
+    complete => L10n.current.perfectCompleteDone,
+  };
+
   final IconData icon;
 
   /// Picked for the dark theme, like the milestone tiers; pass it through

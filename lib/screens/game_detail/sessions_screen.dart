@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/sheets/edit_session_sheet.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -21,12 +22,12 @@ class SessionsScreen extends StatelessWidget {
     final logs = store.logsFor(gameId);
     final total = logs.fold<double>(0, (sum, l) => sum + l.hours);
     return Scaffold(
-      appBar: AppBar(title: Text(game == null ? 'Sessions' : '${game.title} sessions')),
+      appBar: AppBar(title: Text(game == null ? context.l10n.sessions : context.l10n.gameSessions(game.title))),
       body: logs.isEmpty
-          ? const EmptyState(
+          ? EmptyState(
               icon: Icons.timer_outlined,
-              title: 'No sessions',
-              message: 'Sessions you log for this game show up here.',
+              title: context.l10n.noSessions,
+              message: context.l10n.noSessionsMessage,
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
@@ -34,7 +35,7 @@ class SessionsScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                   child: Text(
-                    '${logs.length} session${logs.length == 1 ? '' : 's'} · ${fmtHours(total)} h logged',
+                    '${context.l10n.sessionCount(logs.length)} · ${context.l10n.hoursLogged(fmtHours(total))}',
                     style: TextStyle(color: context.palette.muted),
                   ),
                 ),
@@ -75,12 +76,12 @@ class SessionTile extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('+${fmtHours(l.hours)} h on ${l.platform.label}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(context.l10n.sessionHoursOn(fmtHours(l.hours), l.platform.label), style: const TextStyle(fontWeight: FontWeight.w600)),
               if (l.fromSteam)
                 Row(children: [
                   FaIcon(FontAwesomeIcons.steam, size: 11, color: context.palette.muted),
                   SizedBox(width: 5),
-                  Flexible(child: Text('From your Steam playtime', style: TextStyle(fontSize: 12, color: context.palette.muted))),
+                  Flexible(child: Text(context.l10n.fromSteamPlaytime, style: TextStyle(fontSize: 12, color: context.palette.muted))),
                 ]),
               if (l.note.isNotEmpty)
                 Text(l.note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: context.palette.muted)),

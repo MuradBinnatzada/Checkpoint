@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/app/new_password_screen.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/settings/backup_codes_screen.dart';
 import 'package:checkpoint/screens/settings/two_factor_setup_screen.dart';
 import 'package:checkpoint/services/connection_failure.dart';
@@ -29,25 +30,26 @@ class _SecuritySectionState extends State<SecuritySection> {
 
   bool _signingOut = false;
 
-  static String _methodLabel(String? provider) => switch (provider) {
+  static String _methodLabel(AppLocalizations l10n, String? provider) => switch (provider) {
     'google' => 'Google',
-    'email' => 'Email and password',
-    null => 'Unknown',
+    'email' => l10n.signInMethodEmail,
+    null => l10n.unknownGame,
     final other => other[0].toUpperCase() + other.substring(1),
   };
 
   Future<void> _signOutOthers() async {
     final auth = context.read<AuthStore>();
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     setState(() => _signingOut = true);
     String message;
     try {
       await auth.signOutOtherDevices();
-      message = 'Signed out of your other devices';
+      message = l10n.signedOutOtherDevices;
     } catch (e) {
       debugPrint('Signing out other devices failed: $e');
       message = e is SessionPending || isConnectionFailure(e)
-          ? 'Could not reach the server. Check your connection and try again.'
+          ? l10n.serverUnreachable
           : auth.messageFor(e);
     }
     if (mounted) setState(() => _signingOut = false);
@@ -61,16 +63,17 @@ class _SecuritySectionState extends State<SecuritySection> {
     final auth = context.watch<AuthStore>();
     final provider = auth.provider;
     final email = auth.email;
+    final l10n = context.l10n;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
         Panel(
-          title: 'Sign-in',
+          title: l10n.signInPanel,
           child: Column(
             children: [
-              _InfoRow(label: 'Method', value: _methodLabel(provider)),
-              if (email != null) _InfoRow(label: 'Email', value: email),
+              _InfoRow(label: l10n.signInMethod, value: _methodLabel(l10n, provider)),
+              if (email != null) _InfoRow(label: l10n.email, value: email),
             ],
           ),
         ),
@@ -80,7 +83,7 @@ class _SecuritySectionState extends State<SecuritySection> {
             links: [
               ProfileLink(
                 icon: Icons.password_rounded,
-                label: 'Change password',
+                label: l10n.changePassword,
                 onTap: () => changePassword(context),
               ),
             ],
@@ -92,7 +95,7 @@ class _SecuritySectionState extends State<SecuritySection> {
             links: [
               ProfileLink(
                 icon: Icons.manage_accounts_rounded,
-                label: 'Manage your Google Account',
+                label: l10n.manageGoogleAccount,
                 onTap: () => launchUrl(
                   _googleSecurity,
                   mode: LaunchMode.externalApplication,
@@ -103,9 +106,7 @@ class _SecuritySectionState extends State<SecuritySection> {
           Padding(
             padding: EdgeInsets.fromLTRB(4, 8, 4, 0),
             child: Text(
-              'You sign in with Google, so your password and Google\'s 2-Step '
-              'Verification are managed in your Google Account. Two-factor '
-              'authentication below adds a Checkpoint code on top.',
+              l10n.googleSecurityNote,
               style: TextStyle(
                 color: context.palette.muted,
                 fontSize: 12.5,
@@ -116,7 +117,7 @@ class _SecuritySectionState extends State<SecuritySection> {
         ],
         const SizedBox(height: 14),
         Panel(
-          title: 'Two-factor authentication',
+          title: l10n.twoFactorAuthentication,
           child: Column(
             children: [
               const _TwoFactorSwitch(),
@@ -126,13 +127,12 @@ class _SecuritySectionState extends State<SecuritySection> {
         ),
         const SizedBox(height: 14),
         Panel(
-          title: 'Sessions',
+          title: l10n.sessionsPanel,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Signed in on a device you no longer use? This ends the sessions on '
-                'every other device. This one stays signed in.',
+                l10n.sessionsPanelBody,
                 style: TextStyle(color: context.palette.muted, height: 1.4),
               ),
               const SizedBox(height: 12),
@@ -145,7 +145,7 @@ class _SecuritySectionState extends State<SecuritySection> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.devices_other_rounded, size: 18),
-                label: const Text('Sign out other devices'),
+                label: Text(l10n.signOutOtherDevices),
               ),
             ],
           ),
@@ -183,19 +183,16 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Turn off two-factor authentication?'),
-        content: const Text(
-          'Signing in will only need your password or your Google or Apple '
-          'account again. You can turn it back on any time.',
-        ),
+        title: Text(context.l10n.twoFactorTurnOffTitle),
+        content: Text(context.l10n.twoFactorTurnOffBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Turn off'),
+            child: Text(context.l10n.turnOff),
           ),
         ],
       ),
@@ -204,11 +201,11 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
     String message;
     try {
       await auth.disableTwoFactor();
-      message = 'Two-factor authentication is off';
+      message = L10n.current.twoFactorIsOff;
     } catch (e) {
       debugPrint('Turning off two-factor authentication failed: $e');
       message = e is SessionPending || (e is! AuthException && isConnectionFailure(e))
-          ? 'Could not reach the server. Check your connection and try again.'
+          ? L10n.current.serverUnreachable
           : auth.messageFor(e);
     }
     messenger
@@ -228,15 +225,14 @@ class _TwoFactorSwitchState extends State<_TwoFactorSwitch> {
           Icons.phonelink_lock_rounded,
           color: context.palette.accent,
         ),
-        title: const Text(
-          'Authenticator app',
-          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+        title: Text(
+          context.l10n.authenticatorApp,
+          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
           on
-              ? 'On. Signing in asks for a code from your authenticator app.'
-              : 'Ask for a code from an authenticator app each time you sign '
-                    'in, after your password or Google or Apple account.',
+              ? context.l10n.authenticatorAppOn
+              : context.l10n.authenticatorAppOff,
           style: TextStyle(
             color: context.palette.muted,
             fontSize: 12.5,
@@ -268,19 +264,16 @@ class _NewBackupCodesTileState extends State<_NewBackupCodesTile> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Make new backup codes?'),
-        content: const Text(
-          'You get 10 new codes, each good for one sign-in without your '
-          'authenticator app. The backup codes you have now stop working.',
-        ),
+        title: Text(context.l10n.newBackupCodesTitle),
+        content: Text(context.l10n.newBackupCodesBody(10)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Make new codes'),
+            child: Text(context.l10n.makeNewCodes),
           ),
         ],
       ),
@@ -308,13 +301,12 @@ class _NewBackupCodesTileState extends State<_NewBackupCodesTile> {
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(Icons.key_rounded, color: context.palette.accent),
-        title: const Text(
-          'New backup codes',
-          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+        title: Text(
+          context.l10n.newBackupCodes,
+          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
-          'One-time codes that sign you in without your authenticator app. '
-          'New ones replace the ones you have.',
+          context.l10n.newBackupCodesSubtitle,
           style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         trailing: _busy

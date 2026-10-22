@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/share_link.dart';
@@ -43,10 +44,10 @@ class _ListScreenState extends State<ListScreen> {
       return Scaffold(
         appBar: AppBar(),
         body: store.wasOpened(widget.listId)
-            ? const EmptyState(
+            ? EmptyState(
                 icon: Icons.lock_outline_rounded,
-                title: 'List not found',
-                message: 'It may have been deleted, or it is private.',
+                title: context.l10n.listNotFound,
+                message: context.l10n.listNotFoundMessage,
               )
             : const Center(child: CircularProgressIndicator()),
       );
@@ -60,12 +61,12 @@ class _ListScreenState extends State<ListScreen> {
           if (list.isPublic) ShareLinkButton(target: ListLink(list.id)),
           if (own) ...[
             IconButton(
-              tooltip: 'Edit list',
+              tooltip: context.l10n.editList,
               onPressed: () => showEditListSheet(context, list: list),
               icon: const Icon(Icons.edit_rounded),
             ),
             IconButton(
-              tooltip: 'Delete list',
+              tooltip: context.l10n.deleteList,
               onPressed: () => _confirmDelete(context, list),
               icon: const Icon(Icons.delete_outline_rounded),
             ),
@@ -80,7 +81,7 @@ class _ListScreenState extends State<ListScreen> {
               Icon(list.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded, size: 14, color: context.palette.muted),
               const SizedBox(width: 6),
               Text(
-                '${list.isPublic ? 'Public' : 'Private'} · ${list.games.length} game${list.games.length == 1 ? '' : 's'}',
+                '${list.isPublic ? context.l10n.listPublic : context.l10n.listPrivate} · ${context.l10n.gamesCount(list.games.length)}',
                 style: TextStyle(color: context.palette.muted, fontSize: 12.5),
               ),
             ]),
@@ -94,10 +95,10 @@ class _ListScreenState extends State<ListScreen> {
           child: list.games.isEmpty
               ? EmptyState(
                   icon: Icons.playlist_add_rounded,
-                  title: 'No games yet',
+                  title: context.l10n.noGamesYet,
                   message: own
-                      ? 'Open a game and tap the list button at the top to put it here.'
-                      : 'Nothing on this list yet.',
+                      ? context.l10n.listEmptyOwn
+                      : context.l10n.listEmptyOther,
                 )
               : own
               ? ReorderableListView.builder(
@@ -128,14 +129,14 @@ class _ListScreenState extends State<ListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete "${list.title}"?'),
-        content: const Text('The list goes; its games stay in your library and the catalog.'),
+        title: Text(context.l10n.deleteListTitle(list.title)),
+        content: Text(context.l10n.deleteListBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.l10n.cancel)),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: context.palette.danger),
-            child: const Text('Delete'),
+            child: Text(context.l10n.delete),
           ),
         ],
       ),
@@ -177,7 +178,7 @@ class _GameRow extends StatelessWidget {
           ),
           if (onRemove != null) ...[
             IconButton(
-              tooltip: 'Take off the list',
+              tooltip: context.l10n.takeOffList,
               onPressed: onRemove,
               icon: Icon(Icons.remove_circle_outline_rounded, color: context.palette.muted),
             ),

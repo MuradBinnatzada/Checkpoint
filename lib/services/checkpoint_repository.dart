@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/data/db_schema.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
@@ -92,7 +93,13 @@ class CheckpointRepository {
     return _profileFromRow(inserted, fallbackUser: user);
   }
 
-  /// The name of a profile whose account came without one.
+  /// The app's language for an Edge Function that translates what it sends
+  /// (`lang`); nothing for English, which is what they send anyway.
+  static Map<String, String> get _language =>
+      L10n.languageCode == 'en' ? const {} : {'lang': L10n.languageCode};
+
+  /// The name of a profile whose account came without one, as stored: the
+  /// app shows a missing name in its own language (defaultPlayerName).
   static const _defaultName = 'Player';
 
   Future<UserProfile> fetchProfile(User user) async {
@@ -541,14 +548,14 @@ class CheckpointRepository {
   }
 
   /// Loads one game's Steam achievements through the `sync-achievements` Edge
-  /// Function. Only the game goes in the body; the function reads the Steam ID
-  /// from `profiles` and ignores any `steam_id` sent by the client. Throws
-  /// [FunctionException] when the function answers with an error. Returns the
-  /// function's response data.
+  /// Function. Only the game (and the app's language, for Steam's translations)
+  /// goes in the body; the function reads the Steam ID from `profiles` and
+  /// ignores any `steam_id` sent by the client. Throws [FunctionException] when
+  /// the function answers with an error. Returns the function's response data.
   Future<Object?> syncGameAchievements(String gameId) async {
     final response = await _client.functions.invoke(
       'sync-achievements',
-      body: {'game_id': gameId},
+      body: {'game_id': gameId, ..._language},
     );
     return response.data;
   }
@@ -1069,7 +1076,7 @@ class CheckpointRepository {
   ) async {
     final response = await _client.functions.invoke(
       'sync-achievements',
-      body: {'game_id': gameId, 'user_id': userId},
+      body: {'game_id': gameId, 'user_id': userId, ..._language},
     );
     final data = response.data;
     return data is Map ? Achievement.listFromJson(data['achievements']) : null;
@@ -1398,7 +1405,7 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
         metadata['full_name'],
         metadata['name'],
       ]) ??
-      'Player';
+      L10n.current.defaultPlayerName;
 
   return UserProfile(
     name: name,
@@ -1424,7 +1431,7 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
 }
 
 SocialUser _socialUserFromProfile(Map<String, dynamic> row) {
-  final name = _firstText([row[Db.displayName], row[Db.handle]]) ?? 'Player';
+  final name = _firstText([row[Db.displayName], row[Db.handle]]) ?? L10n.current.defaultPlayerName;
   return SocialUser(
     id: '${row[Db.id]}',
     name: name,
@@ -1449,7 +1456,7 @@ ProfileFlair _flairFromRow(Map<String, dynamic> row) => ProfileFlair(
 );
 
 PublicProfile _publicProfileFromRow(Map<String, dynamic> row) {
-  final name = _firstText([row[Db.displayName], row[Db.handle]]) ?? 'Player';
+  final name = _firstText([row[Db.displayName], row[Db.handle]]) ?? L10n.current.defaultPlayerName;
   return PublicProfile(
     id: '${row[Db.id]}',
     name: name,
@@ -1510,7 +1517,7 @@ GameAttributes _attributesFromRow(Map<String, dynamic> row) => GameAttributes(
 GameAchievementSummary _achievementSummaryFromRow(Map<String, dynamic> row) =>
     GameAchievementSummary(
       gameId: '${row[Db.gameId]}',
-      title: _firstText([row[Db.title]]) ?? 'Untitled Game',
+      title: _firstText([row[Db.title]]) ?? L10n.current.untitledGame,
       coverUrl: _firstText([row[Db.coverUrl]]),
       unlocked: _int(row['unlocked']),
       total: _int(row['total']),
@@ -1518,7 +1525,7 @@ GameAchievementSummary _achievementSummaryFromRow(Map<String, dynamic> row) =>
 
 Game _gameFromCatalogRow(Map<String, dynamic> row) {
   final id = '${row[Db.id]}';
-  final title = _firstText([row[Db.title]]) ?? 'Untitled Game';
+  final title = _firstText([row[Db.title]]) ?? L10n.current.untitledGame;
   final steamAppId = _intOrNull(row[Db.steamAppId]);
   // Release platforms only: a stored Steam Deck / Emulator is stray data (see
   // releasePlatformsFromDb). Steam sync used to leave the list empty, and a game
@@ -1533,8 +1540,8 @@ Game _gameFromCatalogRow(Map<String, dynamic> row) {
   return Game(
     id: id,
     title: title,
-    publisher: _firstText([row[Db.publisher]]) ?? 'Unknown publisher',
-    developer: _firstText([row[Db.developer]]) ?? 'Unknown developer',
+    publisher: _firstText([row[Db.publisher]]) ?? L10n.current.unknownPublisher,
+    developer: _firstText([row[Db.developer]]) ?? L10n.current.unknownDeveloper,
     releaseYear: _int(row[Db.releaseYear]),
     platforms: platforms,
     genres: genres,
@@ -1585,7 +1592,7 @@ GameList _listFromRow(Map<String, dynamic> row) {
   return GameList(
     id: '${row[Db.id]}',
     ownerId: '${row[Db.userId]}',
-    title: _firstText([row[Db.title]]) ?? 'Untitled list',
+    title: _firstText([row[Db.title]]) ?? L10n.current.untitledList,
     description: _firstText([row[Db.description]]) ?? '',
     isPublic: row[Db.isPublic] == true,
     games: [

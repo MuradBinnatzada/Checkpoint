@@ -167,7 +167,7 @@ void main() {
 
     test("a platform that can't open the sign-in says so", () async {
       await profile.initialize();
-      steam.openError = const SteamLinkException(SteamLinkFlow.unsupportedMessage);
+      steam.openError = SteamLinkException(SteamLinkFlow.unsupportedMessage);
 
       expect(await profile.connectSteam(), SteamLinkFlow.unsupportedMessage);
       expect(profile.steamConnected, isFalse);

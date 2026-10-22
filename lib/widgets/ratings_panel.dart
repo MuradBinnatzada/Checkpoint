@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/library_stats.dart';
 import 'package:checkpoint/theme/palette.dart';
+import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/star_rating.dart';
 
@@ -49,9 +51,9 @@ class _RatingsPanelState extends State<RatingsPanel> {
     final stats = widget.stats;
     if (stats.ratedCount == 0) {
       return Panel(
-        title: 'Ratings',
+        title: context.l10n.ratings,
         child: Text(
-          'No rated games yet.',
+          context.l10n.noRatedGamesYet,
           style: TextStyle(color: context.palette.muted, fontSize: 13),
         ),
       );
@@ -63,7 +65,7 @@ class _RatingsPanelState extends State<RatingsPanel> {
     final selected = _selected;
 
     return Panel(
-      title: 'Ratings',
+      title: context.l10n.ratings,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -87,7 +89,7 @@ class _RatingsPanelState extends State<RatingsPanel> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${stats.ratedCount} rated',
+                  context.l10n.ratedCount(stats.ratedCount),
                   style: TextStyle(color: context.palette.muted, fontSize: 12),
                 ),
               ],
@@ -121,10 +123,10 @@ class _RatingsPanelState extends State<RatingsPanel> {
                         ),
                       ),
                       if (selected != null)
-                        Positioned(
+                        PositionedDirectional(
                           top: 0,
-                          left: 0,
-                          right: 0,
+                          start: 0,
+                          end: 0,
                           height: RatingsPanel._bubbleHeight,
                           // Centered over its bar, but never out of the chart.
                           child: IgnorePointer(
@@ -203,7 +205,7 @@ class _Bubble extends StatelessWidget {
             // Only the first bar spans two ratings (½ and 1).
             if (orLess)
               Padding(
-                padding: EdgeInsets.only(right: 3),
+                padding: EdgeInsetsDirectional.only(end: 3),
                 child: Text(
                   '≤',
                   style: TextStyle(color: context.palette.muted, fontSize: 12),
@@ -212,7 +214,7 @@ class _Bubble extends StatelessWidget {
             StarRating(rating: rating, size: 11),
             const SizedBox(width: 6),
             Text(
-              '$count ${count == 1 ? 'game' : 'games'}',
+              context.l10n.gamesCount(count),
               style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
@@ -254,12 +256,12 @@ class _Bar extends StatelessWidget {
       color = context.palette.star.withValues(alpha: 0.35 + 0.65 * count / tallest);
     }
     final stars = rating == RatingsPanel.bars.first
-        ? '1 star or less'
-        : '${rating == rating.roundToDouble() ? rating.toInt() : rating} stars';
+        ? context.l10n.oneStarOrLess
+        : context.l10n.starsCount(rating, fmtHours(rating));
     return Semantics(
       button: true,
       selected: selected,
-      label: '$stars: $count ${count == 1 ? 'game' : 'games'}',
+      label: '$stars: ${context.l10n.gamesCount(count)}',
       excludeSemantics: true,
       onTap: onTap,
       // The whole column is the target, so a one-game bar is as easy to hit as a

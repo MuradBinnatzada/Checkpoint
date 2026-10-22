@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/next_game_picker.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -74,8 +75,8 @@ class _PickNextSheetState extends State<PickNextSheet> {
     final platforms = NextGamePicker.platformsOf(library, _statuses);
     final pick = _pick;
     return SheetFrame(
-      title: 'What should I play?',
-      subtitle: '${_picker.candidates.length} game${_picker.candidates.length == 1 ? '' : 's'} to pick from',
+      title: context.l10n.whatShouldIPlay,
+      subtitle: context.l10n.gamesToPickFrom(_picker.candidates.length),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final status in NextGamePicker.choosable)
@@ -93,9 +94,9 @@ class _PickNextSheetState extends State<PickNextSheet> {
             initialValue: _platform,
             // Fills the field, so a long name (or large text) gets an ellipsis.
             isExpanded: true,
-            decoration: fieldDecoration(context, 'Platform'),
+            decoration: fieldDecoration(context, context.l10n.platform),
             items: [
-              const DropdownMenuItem(value: null, child: Text('Any platform', overflow: TextOverflow.ellipsis)),
+              DropdownMenuItem(value: null, child: Text(context.l10n.anyPlatform, overflow: TextOverflow.ellipsis)),
               for (final p in platforms) DropdownMenuItem(value: p, child: Text(p.label, overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (p) => _refilter(() => _platform = p),
@@ -106,7 +107,7 @@ class _PickNextSheetState extends State<PickNextSheet> {
           Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Text(
-              'Nothing here to pick from. Choose other statuses, or add games to your library.',
+              context.l10n.nothingToPick,
               style: TextStyle(color: context.palette.muted, height: 1.4),
             ),
           )
@@ -118,7 +119,7 @@ class _PickNextSheetState extends State<PickNextSheet> {
             child: OutlinedButton.icon(
               onPressed: _picker.candidates.length < 2 ? null : () => setState(() => _pick = _picker.next()),
               icon: const Icon(Icons.casino_rounded, size: 18),
-              label: const Text('Pick another'),
+              label: Text(context.l10n.pickAnother),
             ),
           ),
           const SizedBox(width: 10),
@@ -126,7 +127,7 @@ class _PickNextSheetState extends State<PickNextSheet> {
             child: FilledButton.icon(
               onPressed: pick == null ? null : () => _play(pick),
               icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('Play it'),
+              label: Text(context.l10n.playIt),
             ),
           ),
         ]),
@@ -144,7 +145,7 @@ class _PickCard extends StatelessWidget {
     final details = [
       game.status!.label,
       if (game.hasReleaseYear) '${game.releaseYear}',
-      if (game.hoursPlayed > 0) '${fmtHours(game.hoursPlayed)} h played',
+      if (game.hoursPlayed > 0) L10n.current.hoursShortPlayed(fmtHours(game.hoursPlayed)),
       if (game.genres.isNotEmpty) game.genres.first,
     ].join(' · ');
     return InkWell(

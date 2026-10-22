@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/panel.dart';
@@ -68,7 +69,7 @@ class ConnectedAccountsPanel extends StatelessWidget {
       );
     }
     return Panel(
-      title: 'Connect accounts',
+      title: context.l10n.connectAccounts,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -133,9 +134,9 @@ class _AccountRow extends StatelessWidget {
   /// What the row says under the service: the name, "Connected" while it has none,
   /// or "Not connected".
   String get _subtitle {
-    if (!connected) return 'Not connected';
+    if (!connected) return L10n.current.notConnected;
     final text = name;
-    if (text == null || text.isEmpty) return 'Connected';
+    if (text == null || text.isEmpty) return L10n.current.connected;
     return service == ConnectedService.instagram ? '@$text' : text;
   }
 
@@ -147,7 +148,7 @@ class _AccountRow extends StatelessWidget {
     if (!connected) {
       trailing = TextButton(
         onPressed: () => editor.onConnect(service),
-        child: const Text('Connect'),
+        child: Text(context.l10n.connect),
       );
     } else {
       trailing = Row(
@@ -162,7 +163,7 @@ class _AccountRow extends StatelessWidget {
               color: context.palette.muted,
             ),
           PopupMenuButton<_MenuAction>(
-            tooltip: '${service.label} options',
+            tooltip: context.l10n.serviceOptions(service.label),
             icon: Icon(Icons.more_vert_rounded, color: context.palette.muted),
             onSelected: (action) => switch (action) {
               _MenuAction.edit => editor.onEdit(service),
@@ -173,13 +174,13 @@ class _AccountRow extends StatelessWidget {
               // typed: another account is Disconnect, then Connect.
               if (service != ConnectedService.nintendo &&
                   service != ConnectedService.steam)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _MenuAction.edit,
-                  child: Text('Change username'),
+                  child: Text(context.l10n.changeUsername),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _MenuAction.disconnect,
-                child: Text('Disconnect'),
+                child: Text(context.l10n.disconnect),
               ),
             ],
           ),

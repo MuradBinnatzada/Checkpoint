@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/second_factor_gate.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/appearance_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -51,10 +52,12 @@ class _CheckpointAppState extends State<CheckpointApp> {
 }
 
 /// The MaterialApp, dressed the way Settings > Appearance and the device ask:
-/// the theme (light, dark or the device's; high contrast when the switch or the
-/// device's setting is on), the text size (the device's, up to [maxTextScale])
-/// and motion (less of it when the switch, Android's Remove animations or iOS's
-/// Reduce Motion asks). [appearance] is in scope below it, for the settings.
+/// the language (the one picked, else the device's when the app has it, else
+/// English), the theme (light, dark or the device's; high contrast when the
+/// switch or the device's setting is on), the text size (the device's, up to
+/// [maxTextScale]) and motion (less of it when the switch, Android's Remove
+/// animations or iOS's Reduce Motion asks). [appearance] is in scope below it,
+/// for the settings.
 class AppearanceApp extends StatefulWidget {
   const AppearanceApp({
     super.key,
@@ -103,6 +106,9 @@ class _AppearanceAppState extends State<AppearanceApp> with WidgetsBindingObserv
             navigatorKey: widget.navigatorKey,
             title: 'Checkpoint',
             debugShowCheckedModeBanner: false,
+            locale: appearance.locale,
+            supportedLocales: L10n.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
             theme: highContrast ? lightHighContrastTheme : lightTheme,
             darkTheme: highContrast ? darkHighContrastTheme : darkTheme,
             // What the device's own high contrast setting picks.
@@ -110,25 +116,43 @@ class _AppearanceAppState extends State<AppearanceApp> with WidgetsBindingObserv
             highContrastDarkTheme: darkHighContrastTheme,
             themeMode: appearance.themeMode,
             themeAnimationDuration: reduceMotion ? Duration.zero : kThemeAnimationDuration,
-            builder: (context, child) => MediaQuery(
-              // Read by motion() and the page transitions. (Flutter's own
-              // animations follow Android's Remove animations by themselves.)
-              data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
-              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                // Screens without an app bar: the system bars follow the theme.
-                value: systemBarsStyle(context.palette),
-                child: MediaQuery.withClampedTextScaling(
-                  minScaleFactor: 0.9,
-                  maxScaleFactor: maxTextScale,
-                  // Over every route: a sign-in that still owes its two-factor code.
-                  child: SecondFactorGate(child: child!),
+            builder: (context, child) {
+              if (L10n.use(Localizations.localeOf(context))) {
+                // Labels that stores and models made with L10n.current are in
+                // widgets that don't depend on the language: rebuild them all.
+                WidgetsBinding.instance.addPostFrameCallback((_) => _rebuildAll());
+              }
+              return MediaQuery(
+                // Read by motion() and the page transitions. (Flutter's own
+                // animations follow Android's Remove animations by themselves.)
+                data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  // Screens without an app bar: the system bars follow the theme.
+                  value: systemBarsStyle(context.palette),
+                  child: MediaQuery.withClampedTextScaling(
+                    minScaleFactor: 0.9,
+                    maxScaleFactor: maxTextScale,
+                    // Over every route: a sign-in that still owes its two-factor code.
+                    child: SecondFactorGate(child: child!),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
             home: widget.home,
           );
         },
       ),
     );
   }
+}
+
+/// Marks every widget for a rebuild, the way a hot reload does: after the
+/// language changes, nothing keeps text in the old one.
+void _rebuildAll() {
+  void mark(Element element) {
+    element.markNeedsBuild();
+    element.visitChildren(mark);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(mark);
 }

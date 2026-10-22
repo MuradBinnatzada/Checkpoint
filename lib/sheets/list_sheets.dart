@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/state/lists_store.dart';
@@ -62,7 +63,7 @@ class _EditListSheetState extends State<EditListSheet> {
   Widget build(BuildContext context) {
     final valid = _title.text.trim().isNotEmpty;
     return SheetFrame(
-      title: widget.list == null ? 'New list' : 'Edit list',
+      title: widget.list == null ? context.l10n.newList : context.l10n.editList,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         TextField(
           controller: _title,
@@ -70,7 +71,7 @@ class _EditListSheetState extends State<EditListSheet> {
           maxLength: GameList.titleMax,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration(context, 'Title').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, context.l10n.listTitle).copyWith(counterText: ''),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -79,17 +80,17 @@ class _EditListSheetState extends State<EditListSheet> {
           maxLines: 5,
           maxLength: GameList.descriptionMax,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration(context, 'Description (optional)'),
+          decoration: fieldDecoration(context, context.l10n.descriptionOptional),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _public,
           onChanged: (v) => setState(() => _public = v),
-          title: const Text('Public'),
+          title: Text(context.l10n.listPublic),
           subtitle: Text(
             _public
-                ? 'Shown on your profile, and anyone signed in can open its link.'
-                : 'Only you can see it.',
+                ? context.l10n.listPublicSubtitle
+                : context.l10n.listPrivateSubtitle,
             style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ),
@@ -99,7 +100,7 @@ class _EditListSheetState extends State<EditListSheet> {
           child: FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             onPressed: !valid || _saving ? null : _save,
-            child: Text(widget.list == null ? 'Create list' : 'Save'),
+            child: Text(widget.list == null ? context.l10n.createList : context.l10n.save),
           ),
         ),
       ]),
@@ -129,7 +130,7 @@ class _AddToListSheet extends StatelessWidget {
     final store = context.watch<ListsStore>();
     final lists = store.lists;
     return SheetFrame(
-      title: 'Add to list',
+      title: context.l10n.addToList,
       subtitle: game.title,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (lists.isEmpty && store.status == LoadStatus.loading)
@@ -144,7 +145,7 @@ class _AddToListSheet extends StatelessWidget {
             onChanged: (_) => store.toggleGame(list.id, game),
             title: Text(list.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
-              '${list.games.length} game${list.games.length == 1 ? '' : 's'}${list.isPublic ? ' · Public' : ''}',
+              '${context.l10n.gamesCount(list.games.length)}${list.isPublic ? ' · ${context.l10n.listPublic}' : ''}',
               style: TextStyle(color: context.palette.muted, fontSize: 12.5),
             ),
           ),
@@ -155,7 +156,7 @@ class _AddToListSheet extends StatelessWidget {
             if (made != null) await store.toggleGame(made.id, game);
           },
           icon: const Icon(Icons.add_rounded),
-          label: const Text('New list'),
+          label: Text(context.l10n.newList),
         ),
       ]),
     );

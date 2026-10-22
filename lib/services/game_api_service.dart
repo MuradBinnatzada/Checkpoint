@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
@@ -187,12 +188,12 @@ class GameApiService {
         if (company != null) break;
       }
     }
-    company ??= 'Unknown Publisher';
+    company ??= L10n.current.unknownPublisher;
 
     return Game(
       id: gameIdForIgdb(igdbId),
       igdbId: igdbId,
-      title: _text(hit['name']) ?? 'Unknown',
+      title: _text(hit['name']) ?? L10n.current.unknownGame,
       developer: company,
       publisher: company,
       // 4-digit UTC year, or null if missing / outside 1950-2100. The model has
@@ -299,6 +300,7 @@ class GameApiService {
       publishers: publishers.toList(growable: false),
       companyIds: Map.unmodifiable(companyIds),
       storyline: _text(game['storyline']),
+      translation: IgdbTranslation.fromJson(response['translations']),
       similarGames: [
         if (similar is List)
           for (final hit in similar)
@@ -461,6 +463,11 @@ class GameApiService {
     );
   }
 
+  /// The app's language, for the requests whose texts the function translates
+  /// (`details`, `company`); nothing for English.
+  static Map<String, Object> get _language =>
+      L10n.languageCode == 'en' ? const {} : {'lang': L10n.languageCode};
+
   // 6. One game's whole page: exact platforms, genres, themes, game modes,
   //    perspectives, engines, developers, publishers, storyline, similar games
   //    and time to beat. Null when the request failed or IGDB has no such game.
@@ -469,7 +476,7 @@ class GameApiService {
     try {
       final res = await Supabase.instance.client.functions.invoke(
         'igdb-handler',
-        body: {'mode': 'details', 'igdb_id': igdbId},
+        body: {'mode': 'details', 'igdb_id': igdbId, ..._language},
       );
       final raw = res.data;
       return detailsFromResponse(raw is String ? json.decode(raw) : raw);
@@ -525,7 +532,7 @@ class GameApiService {
     try {
       final res = await Supabase.instance.client.functions.invoke(
         'igdb-handler',
-        body: {'mode': 'company', 'company_id': companyId},
+        body: {'mode': 'company', 'company_id': companyId, ..._language},
       );
       final raw = res.data;
       return Company.fromResponse(raw is String ? json.decode(raw) : raw);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthRetryableFetchException;
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -88,7 +89,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     try {
       await _auth.updatePassword(_password.text);
       saved = true;
-      message = 'Password changed';
+      message = L10n.current.passwordChanged;
     } catch (e) {
       debugPrint('Changing the password failed: $e');
       // No live session yet (the app started offline) is a connection problem.
@@ -107,26 +108,25 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
   }
 
   String? _validatePassword(String? value) =>
-      (value ?? '').isEmpty ? 'Choose a password' : null;
+      (value ?? '').isEmpty ? context.l10n.signInChoosePassword : null;
 
   String? _validateConfirm(String? value) =>
-      value != _password.text ? "The passwords don't match" : null;
+      value != _password.text ? context.l10n.passwordsDontMatch : null;
 
   @override
   Widget build(BuildContext context) {
-    final account = context.watch<AuthStore>().email ?? 'your account';
+    final l10n = context.l10n;
+    final account = context.watch<AuthStore>().email ?? l10n.yourAccount;
     final intro = widget.afterReset
-        ? 'You opened the password reset link for $account. Choose the '
-              'password you will sign in with from now on.'
-        : 'Choose a new password for $account. You will use it the next time '
-              'you sign in.';
+        ? l10n.newPasswordAfterReset(account)
+        : l10n.newPasswordIntro(account);
 
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            widget.afterReset ? 'Choose a new password' : 'Change password',
+            widget.afterReset ? l10n.chooseNewPassword : l10n.changePassword,
           ),
         ),
         body: SafeArea(
@@ -160,11 +160,11 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                           enableSuggestions: false,
                           autofillHints: const [AutofillHints.newPassword],
                           decoration: InputDecoration(
-                            labelText: 'New password',
+                            labelText: l10n.newPassword,
                             suffixIcon: IconButton(
                               tooltip: _hidePassword
-                                  ? 'Show password'
-                                  : 'Hide password',
+                                  ? l10n.showPassword
+                                  : l10n.hidePassword,
                               icon: Icon(
                                 _hidePassword
                                     ? Icons.visibility_outlined
@@ -186,8 +186,8 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                           autocorrect: false,
                           enableSuggestions: false,
                           autofillHints: const [AutofillHints.newPassword],
-                          decoration: const InputDecoration(
-                            labelText: 'Confirm new password',
+                          decoration: InputDecoration(
+                            labelText: l10n.confirmNewPassword,
                           ),
                           validator: _validateConfirm,
                           onFieldSubmitted: (_) => _save(),
@@ -203,13 +203,13 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text('Save password'),
+                              : Text(l10n.savePassword),
                         ),
                         if (widget.afterReset) ...[
                           const SizedBox(height: 8),
                           TextButton(
                             onPressed: _saving ? null : _close,
-                            child: const Text('Not now'),
+                            child: Text(l10n.notNow),
                           ),
                         ],
                       ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/theme/palette.dart';
 
 /// [text] cut to [collapsedLines], with "Read more" when it is longer than that.
@@ -45,9 +46,9 @@ class _ExpandableTextState extends State<ExpandableText> {
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(0, 36),
-                  alignment: Alignment.centerLeft,
+                  alignment: AlignmentDirectional.centerStart,
                 ),
-                child: Text(_expanded ? 'Show less' : 'Read more'),
+                child: Text(_expanded ? context.l10n.showLess : context.l10n.readMore),
               ),
           ],
         );

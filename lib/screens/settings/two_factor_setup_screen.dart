@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/settings/backup_codes_screen.dart';
 import 'package:checkpoint/services/auth_service.dart' show TotpSetup;
 import 'package:checkpoint/services/connection_failure.dart';
@@ -112,7 +113,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
     final setup = _setup;
     if (setup == null || _confirming) return;
     if (_code.text.length != OneTimeCodeField.length) {
-      setState(() => _codeError = 'Enter the 6-digit code the app shows.');
+      setState(() => _codeError = context.l10n.twoFactorSetupEnterCode);
       return;
     }
     setState(() {
@@ -159,9 +160,8 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       SnackBar(
         content: Text(
           _codes == null
-              ? 'Two-factor authentication is on. Make backup codes under '
-                    'Settings > Security.'
-              : 'Two-factor authentication is on',
+              ? L10n.current.twoFactorOnMakeCodes
+              : L10n.current.twoFactorIsOn,
         ),
       ),
     );
@@ -174,19 +174,21 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
   }
 
   String _messageFor(Object e) => e is! AuthException && isConnectionFailure(e)
-      ? 'Could not reach the server. Check your connection and try again.'
+      ? L10n.current.serverUnreachable
       : _auth.messageFor(e);
 
   Future<void> _copyKey(String secret) async {
     final messenger = ScaffoldMessenger.of(context);
+    final copied = context.l10n.setupKeyCopied;
     await Clipboard.setData(ClipboardData(text: secret));
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Setup key copied')));
+      ..showSnackBar(SnackBar(content: Text(copied)));
   }
 
   Future<void> _openInApp(String uri) async {
     final messenger = ScaffoldMessenger.of(context);
+    final notOpened = context.l10n.authenticatorNotOpened;
     var opened = false;
     try {
       opened = await launchUrl(
@@ -200,11 +202,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No authenticator app opened it. Enter the setup key in the app instead.',
-          ),
-        ),
+        SnackBar(content: Text(notOpened)),
       );
   }
 
@@ -223,7 +221,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         if (!didPop && _turnedOn) _finish();
       },
       child: Scaffold(
-        appBar: AppBar(title: const Text('Two-factor authentication')),
+        appBar: AppBar(title: Text(context.l10n.twoFactorAuthentication)),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -253,23 +251,23 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Two-factor authentication is on',
+                context.l10n.twoFactorIsOn,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        const _Step(number: 3, text: 'Save your backup codes.'),
+        _Step(number: 3, text: context.l10n.twoFactorStepSaveCodes),
         const SizedBox(height: 12),
         if (codes != null)
           BackupCodesList(codes: codes, onDone: _finish)
         else if (error != null) ...[
           Text(error, style: const TextStyle(height: 1.4)),
           const SizedBox(height: 16),
-          OutlinedButton(onPressed: _makeCodes, child: const Text('Try again')),
+          OutlinedButton(onPressed: _makeCodes, child: Text(context.l10n.tryAgain)),
           const SizedBox(height: 8),
-          TextButton(onPressed: _finish, child: const Text('Skip for now')),
+          TextButton(onPressed: _finish, child: Text(context.l10n.skipForNow)),
         ] else
           const Padding(
             padding: EdgeInsets.all(32),
@@ -289,7 +287,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         children: [
           Text(startError, textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          OutlinedButton(onPressed: _start, child: const Text('Try again')),
+          OutlinedButton(onPressed: _start, child: Text(context.l10n.tryAgain)),
         ],
       );
     }
@@ -306,15 +304,13 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Each time you sign in, Checkpoint will also ask for a code from an '
-          'authenticator app such as Google Authenticator, Microsoft '
-          'Authenticator or 1Password.',
+          context.l10n.twoFactorSetupIntro,
           style: muted,
         ),
         const SizedBox(height: 20),
-        const _Step(
+        _Step(
           number: 1,
-          text: 'Scan this QR code with your authenticator app.',
+          text: context.l10n.twoFactorStepScan,
         ),
         const SizedBox(height: 12),
         Center(
@@ -322,13 +318,13 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
             borderRadius: BorderRadius.circular(12),
             child: QrCodeView(
               data: setup.uri,
-              label: 'QR code for your authenticator app',
+              label: context.l10n.qrCodeLabel,
             ),
           ),
         ),
         const SizedBox(height: 12),
         Text(
-          "Can't scan it? Enter this setup key instead:",
+          context.l10n.cantScan,
           style: muted,
         ),
         const SizedBox(height: 6),
@@ -346,7 +342,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
               ),
             ),
             IconButton(
-              tooltip: 'Copy setup key',
+              tooltip: context.l10n.copySetupKey,
               icon: const Icon(Icons.copy_rounded, size: 20),
               onPressed: () => _copyKey(setup.secret),
             ),
@@ -354,17 +350,17 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         ),
         if (_opensAuthenticatorLinks)
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
               onPressed: () => _openInApp(setup.uri),
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('Open in authenticator app'),
+              label: Text(context.l10n.openInAuthenticator),
             ),
           ),
         const SizedBox(height: 20),
-        const _Step(
+        _Step(
           number: 2,
-          text: 'Enter the 6-digit code the app shows for Checkpoint.',
+          text: context.l10n.twoFactorStepEnterCode,
         ),
         const SizedBox(height: 12),
         OneTimeCodeField(
@@ -382,11 +378,11 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Turn on'),
+              : Text(context.l10n.turnOn),
         ),
         const SizedBox(height: 12),
         Text(
-          'Turning it on signs your account out on your other devices.',
+          context.l10n.twoFactorSignsOutOthers,
           style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.4),
         ),
       ],

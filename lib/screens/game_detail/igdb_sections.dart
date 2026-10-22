@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
@@ -15,6 +16,7 @@ import 'package:checkpoint/utils/navigation.dart';
 import 'package:checkpoint/widgets/expandable_text.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/panel.dart';
+import 'package:checkpoint/widgets/translation_note.dart';
 
 /// Everything there is to read about a game, in one panel: its description,
 /// IGDB's story and the game info (genres, main developers, publishers, themes,
@@ -23,13 +25,26 @@ import 'package:checkpoint/widgets/panel.dart';
 /// when IGDB answers (see [GameInfoSections], which asks). A genre, theme or game
 /// mode the Discover tab can filter by is a button: it opens Discover on it. So
 /// is a developer or publisher IGDB gave an id for: it opens its page.
-class AboutPanel extends StatelessWidget {
+///
+/// In another language than English, the description and story show in it when
+/// the server translated them (see [IgdbTranslation]), with a note and a button
+/// for the original.
+class AboutPanel extends StatefulWidget {
   const AboutPanel({super.key, required this.game});
 
   final Game game;
 
   @override
+  State<AboutPanel> createState() => _AboutPanelState();
+}
+
+class _AboutPanelState extends State<AboutPanel> {
+  /// The English texts show, though there is a translation.
+  bool _original = false;
+
+  @override
   Widget build(BuildContext context) {
+    final game = widget.game;
     final details = context
         .watch<GameDetailsStore>()
         .viewOf(game.id)
@@ -37,33 +52,44 @@ class AboutPanel extends StatelessWidget {
     final hasInfo = details?.hasInfo ?? false;
     final companyIds = details?.companyIds ?? const <String, int>{};
     // (label, values, as chips, what a chip filters Discover by, chips are companies)
+    final l10n = context.l10n;
     final rows = <(String, List<String>, bool, GameAttribute?, bool)>[
-      ('Genres', game.genres, true, GameAttribute.genre, false),
+      (l10n.attributeGenres, game.genres, true, GameAttribute.genre, false),
       if (hasInfo) ...[
-        ('Main developers', details!.developers, true, null, true),
-        ('Publishers', details.publishers, true, null, true),
-        ('Themes', details.themes, true, GameAttribute.theme, false),
-        ('Game modes', details.gameModes, true, GameAttribute.gameMode, false),
-        ('Player perspectives', details.perspectives, true, null, false),
-        ('Game engine', details.engines, true, null, false),
+        (l10n.mainDevelopers, details!.developers, true, null, true),
+        (l10n.attributePublishers, details.publishers, true, null, true),
+        (l10n.attributeThemes, details.themes, true, GameAttribute.theme, false),
+        (l10n.attributeGameModes, details.gameModes, true, GameAttribute.gameMode, false),
+        (l10n.playerPerspectives, details.perspectives, true, null, false),
+        (l10n.gameEngine, details.engines, true, null, false),
       ] else
-        ('Developer', [game.developer], false, null, false),
+        (l10n.attributeDeveloper, [game.developer], false, null, false),
     ].where((row) => row.$2.any((v) => v.trim().isNotEmpty)).toList();
-    final synopsis = game.synopsis.trim();
-    final storyline = details?.storyline?.trim() ?? '';
+    final translation = details?.translation;
+    final translated = translation != null && translation.language == L10n.languageCode;
+    final shown = translated && !_original ? translation : null;
+    final synopsis = shown?.summary ?? game.synopsis.trim();
+    final storyline = shown?.storyline ?? details?.storyline?.trim() ?? '';
 
     final text = <Widget>[
       if (synopsis.isNotEmpty) ExpandableText(synopsis, collapsedLines: 6),
       if (storyline.isNotEmpty) ...[
         if (synopsis.isNotEmpty) const SizedBox(height: 14),
-        const _Label('Story'),
+        _Label(l10n.story),
         const SizedBox(height: 6),
         ExpandableText(storyline, collapsedLines: 4),
+      ],
+      if (translated && (synopsis.isNotEmpty || storyline.isNotEmpty)) ...[
+        const SizedBox(height: 4),
+        TranslationNote(
+          showingOriginal: _original,
+          onToggle: () => setState(() => _original = !_original),
+        ),
       ],
     ];
 
     return Panel(
-      title: 'About',
+      title: l10n.about,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -108,10 +134,10 @@ class _TagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = attribute;
     final tag = a == null ? null : CatalogTags.find(a, value);
-    if (a == null || tag == null) return Chip(label: Text(value));
+    if (a == null || tag == null) return Chip(label: Text(tagName(value)));
     return ActionChip(
-      label: Text(value),
-      tooltip: 'Browse ${tag.label} games',
+      label: Text(tagName(value)),
+      tooltip: context.l10n.browseTagGames(tag.label),
       onPressed: () => openDiscover(context, FilterOptions.only(a, tag.name)),
     );
   }
@@ -132,7 +158,7 @@ class _CompanyChip extends StatelessWidget {
     return ActionChip(
       avatar: const Icon(Icons.business_rounded, size: 16),
       label: Text(name),
-      tooltip: 'See $name',
+      tooltip: context.l10n.seeCompany(name),
       onPressed: () => openCompany(context, id, name: name),
     );
   }
@@ -227,8 +253,9 @@ class _Label extends StatelessWidget {
 }
 
 /// "42 h", "12.5 h", or "45 min" for under an hour.
-String fmtDuration(Duration d) =>
-    d.inMinutes < 60 ? '${d.inMinutes} min' : '${fmtHours(d.inMinutes / 60)} h';
+String fmtDuration(Duration d) => d.inMinutes < 60
+    ? L10n.current.minutesShort(d.inMinutes)
+    : L10n.current.hoursShort(fmtHours(d.inMinutes / 60));
 
 /// Fewer reports than this and IGDB's times are flagged as rough.
 const _fewTimeToBeatReports = 10;
@@ -280,15 +307,15 @@ class _TimeToBeatPanel extends StatelessWidget {
       return Expanded(
         child: Padding(
           // A gap between the columns, none after the last.
-          padding: EdgeInsets.only(
-            right: category == CompletionCategory.values.last ? 0 : 8,
+          padding: EdgeInsetsDirectional.only(
+            end: category == CompletionCategory.values.last ? 0 : 8,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               FittedBox(
                 fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: Text(
                   value == null ? '–' : fmtDuration(value),
                   style: figureStyle,
@@ -297,7 +324,7 @@ class _TimeToBeatPanel extends StatelessWidget {
               // Shrinks rather than breaking "Completionist" on a narrow screen.
               FittedBox(
                 fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: Text(
                   category.label,
                   style: TextStyle(fontSize: 12, color: context.palette.muted),
@@ -305,7 +332,7 @@ class _TimeToBeatPanel extends StatelessWidget {
               ),
               if (ours != null)
                 Text(
-                  '${fmtThousands(ours.count)} Checkpoint players',
+                  context.l10n.checkpointPlayers(ours.count, fmtThousands(ours.count)),
                   style: sourceStyle.copyWith(color: context.palette.accent),
                 )
               else if (value != null)
@@ -324,12 +351,12 @@ class _TimeToBeatPanel extends StatelessWidget {
     );
     final count = timeToBeat?.count ?? 0;
     return Panel(
-      title: 'Time to beat',
+      title: context.l10n.timeToBeat,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!showsOurs && !showsIgdb)
-            Text('IGDB has no times for this game yet.', style: caption)
+            Text(context.l10n.timeToBeatNone, style: caption)
           else ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,16 +365,16 @@ class _TimeToBeatPanel extends StatelessWidget {
             if (showsOurs) ...[
               const SizedBox(height: 10),
               Text(
-                'Checkpoint players: the median of the times reported here.',
+                context.l10n.timeToBeatOursCaption,
                 style: caption,
               ),
             ],
             if (showsIgdb && count > 0) ...[
               SizedBox(height: showsOurs ? 4 : 10),
               Text(
-                'From ${fmtThousands(count)} '
-                '${count == 1 ? 'player' : 'players'} on IGDB'
-                '${count < _fewTimeToBeatReports ? ', so it may be off' : ''}',
+                count < _fewTimeToBeatReports
+                    ? context.l10n.timeToBeatFromIgdbFew(count, fmtThousands(count))
+                    : context.l10n.timeToBeatFromIgdb(count, fmtThousands(count)),
                 style: caption,
               ),
             ],
@@ -361,10 +388,10 @@ class _TimeToBeatPanel extends StatelessWidget {
             style: TextButton.styleFrom(
               padding: EdgeInsets.zero,
               minimumSize: const Size(0, 36),
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
             ),
             icon: const Icon(Icons.open_in_new_rounded, size: 16),
-            label: const Text('Compare on HowLongToBeat'),
+            label: Text(context.l10n.compareOnHowLongToBeat),
           ),
         ],
       ),
@@ -384,11 +411,11 @@ class _SimilarGames extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(2, 10, 0, 12),
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(2, 10, 0, 12),
           child: Text(
-            'Similar games',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            context.l10n.similarGames,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ),
         SizedBox(

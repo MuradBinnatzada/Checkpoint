@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/profile/edit_profile_screen.dart';
 import 'package:checkpoint/screens/settings/clear_library_panel.dart';
 import 'package:checkpoint/screens/settings/connect_account.dart';
@@ -34,7 +35,7 @@ class AccountSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
         Panel(
-          title: 'Signed in as',
+          title: context.l10n.signedInAs,
           child: Row(
             children: [
               ProfileAvatar(
@@ -86,7 +87,7 @@ class AccountSection extends StatelessWidget {
           links: [
             ProfileLink(
               icon: Icons.edit_rounded,
-              label: 'Edit profile',
+              label: context.l10n.editProfile,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const EditProfileScreen(),
@@ -113,7 +114,7 @@ class AccountSection extends StatelessWidget {
             navigator.popUntil((route) => route.isFirst);
           },
           icon: const Icon(Icons.logout_rounded, size: 18),
-          label: const Text('Sign out'),
+          label: Text(context.l10n.signOut),
         ),
         const SizedBox(height: 40),
         const ClearLibraryPanel(),

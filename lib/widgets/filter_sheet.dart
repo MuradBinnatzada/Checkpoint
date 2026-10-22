@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
@@ -25,7 +26,7 @@ class FilterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      tooltip: 'Filter',
+      tooltip: context.l10n.filter,
       onPressed: onPressed,
       icon: Badge(
         isLabelVisible: count > 0,
@@ -97,7 +98,7 @@ class FilterSection extends StatelessWidget {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          summary ?? '$selected picked',
+                          summary ?? context.l10n.pickedCount(selected),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -117,7 +118,7 @@ class FilterSection extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     minimumSize: const Size(0, 28),
                   ),
-                  child: const Text('Clear'),
+                  child: Text(context.l10n.clear),
                 ),
             ],
           ),
@@ -210,7 +211,7 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
                 isDense: true,
                 filled: true,
                 fillColor: context.palette.surfaceHigh,
-                hintText: 'Search ${widget.title.toLowerCase()}',
+                hintText: context.l10n.searchIn(widget.title.toLowerCase()),
                 hintStyle: TextStyle(color: context.palette.muted),
                 prefixIcon: const Icon(Icons.search_rounded, size: 18),
                 border: OutlineInputBorder(
@@ -232,7 +233,7 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
         if (query.isNotEmpty && listed.isEmpty)
           Padding(
             padding: EdgeInsets.symmetric(vertical: 6),
-            child: Text('No match.', style: TextStyle(color: context.palette.muted)),
+            child: Text(context.l10n.noMatch, style: TextStyle(color: context.palette.muted)),
           ),
         if (folds && query.isEmpty)
           TextButton(
@@ -241,7 +242,7 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
               _query = '';
             }),
             child: Text(
-              _expanded ? 'Show fewer' : 'Show all ${options.length}',
+              _expanded ? context.l10n.showFewer : context.l10n.showAllCount(options.length),
             ),
           ),
       ],
@@ -274,7 +275,7 @@ class YearRangeSection extends StatelessWidget {
     final from = (value.from ?? min).clamp(min, max);
     final to = (value.to ?? max).clamp(min, max);
     return FilterSection(
-      title: 'Release year',
+      title: context.l10n.releaseYear,
       icon: Icons.event_rounded,
       selected: value.isAny ? 0 : 1,
       summary: value.label,
@@ -282,7 +283,7 @@ class YearRangeSection extends StatelessWidget {
       children: [
         for (final d in decades)
           AppChoiceChip(
-            label: '${d}s',
+            label: context.l10n.yearsDecade(d),
             selected: value == YearRange.decade(d),
             onSelected: () => onChanged(
               value == YearRange.decade(d)
@@ -345,13 +346,13 @@ class ActiveFilterChips extends StatelessWidget {
       required String label,
       required FilterOptions without,
     }) => Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsetsDirectional.only(end: 6),
       child: InputChip(
         avatar: Icon(icon, size: 16, color: color),
         label: Text(label, style: const TextStyle(fontSize: 12.5)),
         onDeleted: () => onChanged(without),
         deleteIcon: const Icon(Icons.close_rounded, size: 16),
-        deleteButtonTooltipMessage: 'Remove $label',
+        deleteButtonTooltipMessage: context.l10n.removeFilter(label),
         backgroundColor: context.palette.surfaceHigh,
         side: BorderSide(color: context.palette.accent.withValues(alpha: 0.5)),
         shape: const StadiumBorder(),
@@ -384,13 +385,13 @@ class ActiveFilterChips extends StatelessWidget {
               chip(
                 icon: a.icon,
                 color: context.palette.muted,
-                label: labelOf?.call(a, value) ?? value,
+                label: labelOf?.call(a, value) ?? tagName(value),
                 without: filters.toggle(a, value),
               ),
           if (filters.count > 1)
             TextButton(
               onPressed: () => onChanged(filters.cleared()),
-              child: const Text('Clear all'),
+              child: Text(context.l10n.clearAll),
             ),
         ],
       ),
@@ -454,15 +455,15 @@ class DiscoverFilterSheet extends StatelessWidget {
           children: [
             Flexible(
               child: SheetFrame(
-                title: 'Filter games',
+                title: context.l10n.filterGames,
                 subtitle: count == 0
-                    ? 'Browse IGDB by genre, mode, platform, theme and year.'
-                    : '$count ${count == 1 ? 'filter' : 'filters'} picked',
+                    ? context.l10n.filterGamesSubtitle
+                    : context.l10n.filtersPicked(count),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     FilterSection(
-                      title: 'Sort by',
+                      title: context.l10n.sortBy,
                       icon: Icons.sort_rounded,
                       selected: 0,
                       onClear: null,
@@ -477,8 +478,7 @@ class DiscoverFilterSheet extends StatelessWidget {
                           Padding(
                             padding: EdgeInsets.only(top: 4),
                             child: Text(
-                              'A search is ordered by relevance. The order '
-                              'applies when you browse by filters alone.',
+                              context.l10n.searchOrderNote,
                               style: TextStyle(
                                 color: context.palette.muted,
                                 fontSize: 12.5,
@@ -490,7 +490,7 @@ class DiscoverFilterSheet extends StatelessWidget {
                     _tagSection(GameAttribute.genre, filters, edit),
                     _tagSection(GameAttribute.gameMode, filters, edit),
                     ChipFilterSection<GamePlatform>(
-                      title: 'Platforms',
+                      title: context.l10n.platforms,
                       icon: Icons.sports_esports_rounded,
                       options: GameApiService.discoverPlatforms,
                       labelOf: (p) => p.label,
@@ -569,12 +569,12 @@ class _SheetFooter extends StatelessWidget {
           children: [
             TextButton(
               onPressed: canClear ? onClear : null,
-              child: const Text('Clear all'),
+              child: Text(context.l10n.clearAll),
             ),
             const Spacer(),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Show results'),
+              child: Text(context.l10n.showResults),
             ),
           ],
         ),

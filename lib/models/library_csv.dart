@@ -1,4 +1,5 @@
 import 'package:checkpoint/data/db_schema.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -89,7 +90,8 @@ class ImportRow {
   /// listed in [ImportFile.skipped] with why.
   static ImportFile parse(String text) {
     final rows = parseCsv(text);
-    if (rows.isEmpty) return const ImportFile(rows: [], skipped: ['The file is empty.']);
+    final l10n = L10n.current;
+    if (rows.isEmpty) return ImportFile(rows: const [], skipped: [l10n.importFileEmpty]);
     final header = [for (final h in rows.first) _key(h)];
     int? col(List<String> names) {
       for (final name in names) {
@@ -101,7 +103,7 @@ class ImportRow {
 
     final title = col(['title', 'name', 'game', 'gametitle', 'gamename']);
     if (title == null) {
-      return const ImportFile(rows: [], skipped: ['No "title" column in the first row.']);
+      return ImportFile(rows: const [], skipped: [l10n.importNoTitleColumn]);
     }
     final igdb = col(['igdbid', 'igdb']);
     final year = col(['releaseyear', 'year', 'released']);
@@ -124,17 +126,17 @@ class ImportRow {
       final line = r + 1;
       final name = cell(row, title);
       if (name == null) {
-        skipped.add('Line $line: no title.');
+        skipped.add(l10n.importLineNoTitle(line));
         continue;
       }
       if (parsed.length >= maxRows) {
-        skipped.add('Lines $line and after: an import takes up to $maxRows games.');
+        skipped.add(l10n.importTooManyRows(line, maxRows));
         break;
       }
       final statusText = cell(row, status);
       final readStatus = statusText == null ? GameStatus.toPlay : _status(statusText);
       if (readStatus == null) {
-        skipped.add('Line $line ($name): unknown status "$statusText".');
+        skipped.add(l10n.importUnknownStatus(line, name, statusText!));
         continue;
       }
       var reviewText = cell(row, review);

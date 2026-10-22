@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/library_stats.dart';
@@ -77,7 +78,7 @@ class ProfileScreen extends StatelessWidget {
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 ShareLinkButton(target: MemberLink(userId)),
                 IconButton(
-                  tooltip: 'Sign out',
+                  tooltip: context.l10n.signOut,
                   onPressed: () => context.read<AuthStore>().logOut(),
                   icon: const Icon(Icons.logout_rounded),
                 ),
@@ -100,7 +101,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('Edit Profile'),
+                    label: Text(context.l10n.editProfileTitle),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -112,7 +113,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.settings_rounded, size: 18),
-                    label: const Text('Settings'),
+                    label: Text(context.l10n.settings),
                   ),
                 ),
               ],
@@ -121,10 +122,10 @@ class ProfileScreen extends StatelessWidget {
               for (final g in games)
                 if (g.isFavorite) g,
             ].take(FavoriteGamesRow.slots).toList(),
-            emptyFavorites: 'No favorites selected yet. Tap the heart icon on a game to showcase it here.',
+            emptyFavorites: context.l10n.noFavoritesOwn,
             activity: activity,
             library: stats,
-            emptyHours: 'Log a session to see your breakdown.',
+            emptyHours: context.l10n.noHoursOwn,
             onStatus: viewStore.openTab,
             // Your own achievements show whatever the privacy setting says; that
             // only hides them from others.
@@ -138,51 +139,51 @@ class ProfileScreen extends StatelessWidget {
             links: [
               ProfileLink(
                 icon: Icons.collections_bookmark_rounded,
-                label: 'Library',
+                label: context.l10n.milestoneCategoryLibrary,
                 count: stats.games,
                 onTap: () => viewStore.openTab(null),
               ),
               ProfileLink(
                 icon: Icons.bookmark_rounded,
-                label: 'Wishlist',
+                label: GameStatus.wishlist.label,
                 count: stats.count(GameStatus.wishlist),
                 onTap: () => viewStore.openTab(GameStatus.wishlist),
               ),
               ProfileLink(
                 icon: Icons.star_rounded,
-                label: 'Top rated',
+                label: context.l10n.topRated,
                 count: stats.ratedCount,
                 onTap: () => viewStore.openTab(null, sortBy: SortField.rating),
               ),
               ProfileLink(
                 icon: Icons.format_list_bulleted_rounded,
-                label: 'Lists',
+                label: context.l10n.lists,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const ListsScreen()),
                 ),
               ),
               ProfileLink(
                 icon: Icons.emoji_events_rounded,
-                label: 'Milestones',
+                label: context.l10n.milestones,
                 count: milestones.earned.count,
                 onTap: () => openMilestones(context, userId: userId),
               ),
               ProfileLink(
                 icon: Icons.insights_rounded,
-                label: 'Year in Review',
+                label: context.l10n.yearInReview,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const YearReviewScreen()),
                 ),
               ),
               ProfileLink(
                 icon: Icons.people_alt_rounded,
-                label: 'Followers',
+                label: context.l10n.followers,
                 count: profileStore.followersCount,
                 onTap: () => openList(FollowListKind.followers),
               ),
               ProfileLink(
                 icon: Icons.person_add_alt_1_rounded,
-                label: 'Following',
+                label: context.l10n.following,
                 count: profileStore.followingCount,
                 onTap: () => openList(FollowListKind.following),
               ),

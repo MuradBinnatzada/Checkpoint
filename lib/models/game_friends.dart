@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
 
@@ -28,13 +29,18 @@ class FriendWithGame {
 /// The rows of the Friends panel on a game's screen. Dropped is left out: the
 /// panel is about who liked, is playing or wants to play the game.
 enum FriendGroup {
-  completed('Completed', {GameStatus.completed}),
-  playing('Playing', {GameStatus.playing}),
-  wantToPlay('Want to play', {GameStatus.toPlay, GameStatus.wishlist});
+  completed({GameStatus.completed}),
+  playing({GameStatus.playing}),
+  wantToPlay({GameStatus.toPlay, GameStatus.wishlist});
 
-  const FriendGroup(this.label, this.statuses);
-  final String label;
+  const FriendGroup(this.statuses);
   final Set<GameStatus> statuses;
+
+  String get label => switch (this) {
+    completed => L10n.current.friendGroupCompleted,
+    playing => L10n.current.friendGroupPlaying,
+    wantToPlay => L10n.current.friendGroupWantToPlay,
+  };
 }
 
 /// Which of the members the signed-in one follows have a game, and how. The

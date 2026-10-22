@@ -27,6 +27,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 ```
 lib/
   app/        app shell and root widget
+  l10n/       the strings, one .arb file per language
   models/     data models
   screens/    home, search, library, game detail, profile
   services/   Supabase repository, auth, IGDB, connectivity, local cache, offline edits
@@ -154,6 +155,27 @@ Settings > **Your data** saves the library and the play sessions as CSV files (a
 ### Share links
 
 Games, profiles and public lists have **Copy link**. A link is the web app's address with the target after `#` (`https://<web app>/#/game/1942`, `/#/u/<member id>`, `/#/list/<list id>`), so it needs no redirect rules on the host. The web app opens it on load; a profile or list asks to sign in first. The web build knows its own address; for the Android, iOS and desktop builds pass it with `--dart-define=CHECKPOINT_WEB_URL=https://<web app>` (without it they show no share buttons).
+
+### Languages
+
+The app is in English and Russian, and follows the device's language until the member picks one in Settings > Appearance > **Language** (saved on the device). Its strings are in `lib/l10n/app_<language>.arb`, with `app_en.arb` as the template; `flutter pub get` (and every build) generates `lib/l10n/generated/` from them. Widgets read them as `context.l10n.<message>`; stores, services and models, which have no `BuildContext`, read `L10n.current.<message>` (`lib/l10n/l10n.dart`). Plurals and selects are ICU messages, so each language says "1 game, 2 games" its own way, and dates and numbers follow the language through `intl` (`lib/utils/formatters.dart`). The layout uses start and end rather than left and right, so a right-to-left language mirrors.
+
+**Adding a language** is a translation:
+
+1. Copy `lib/l10n/app_en.arb` to `app_<code>.arb` (`de`, `fr`...), set `@@locale`, and translate every value; `languageName` is the language's own name ("Deutsch"), which the picker shows. Keep the `{placeholders}`, and give the plurals the forms the language has (`one`, `few`, `many`, `other`...).
+2. Add the code to `CFBundleLocalizations` in `ios/Runner/Info.plist` and `macos/Runner/Info.plist`.
+
+`test/l10n_test.dart` fails while a language misses a message or a placeholder; a message left out still shows in English. A new message goes into `app_en.arb` and every other `.arb`.
+
+**What comes from elsewhere** follows the language too. Genres, themes, game modes and perspectives are IGDB's fixed lists, translated in the `.arb` files (`tagName` in `lib/models/filter_options.dart`); game and studio names stay as they are. Steam achievements come in Steam's own translation: `sync-achievements` takes the app's language (`lang`) and keeps each language's names on the stored list (`_shared/steam_languages.ts`). A game's summary and storyline and a studio's description are machine-translated by DeepL in `igdb-handler` (`_shared/deepl.ts`), once per text and language, and kept in `text_translations` (`20261020170000_text_translations.sql`), so every member gets the stored copy; the screen says so and offers the original. It needs a DeepL API key (the free plan's 500,000 characters a month go a long way, as each text is translated only once):
+
+```bash
+supabase db push
+supabase secrets set DEEPL_API_KEY=<your key>
+supabase functions deploy igdb-handler sync-achievements
+```
+
+Without the key the app shows IGDB's English text. Supabase's sign-in emails (confirm, reset password) are set up in the Supabase dashboard, not here, and are in English.
 
 ### Releasing
 

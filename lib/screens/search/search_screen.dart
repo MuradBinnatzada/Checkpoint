@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/auth_gate.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
@@ -213,17 +214,17 @@ class _SearchScreenState extends State<SearchScreen> {
       final users = store.userResults;
       body = _ResultsPane(
         label: store.userLoading
-            ? 'Searching…'
+            ? context.l10n.searching
             : hasQuery
                 ? _countLabel(users.length, store.userHasMore)
-                : 'Suggested people',
+                : context.l10n.suggestedPeople,
         count: users.length,
         empty: store.userLoading || store.userSearchStale
             ? const Center(child: CircularProgressIndicator())
             : EmptyState(
                 icon: Icons.person_search_rounded,
-                title: 'No users found',
-                message: 'Try a different name or @handle.',
+                title: context.l10n.noUsersFound,
+                message: context.l10n.noUsersFoundMessage,
               ),
         itemBuilder: (_, i) => _UserTile(user: users[i]),
         hasMore: store.userHasMore,
@@ -241,7 +242,7 @@ class _SearchScreenState extends State<SearchScreen> {
       final loading = store.searchLoading;
       body = _ResultsPane(
         label: loading && games.isEmpty
-            ? 'Searching…'
+            ? context.l10n.searching
             : _countLabel(games.length, store.searchHasMore),
         count: games.length,
         refreshing: loading && games.isNotEmpty,
@@ -251,24 +252,24 @@ class _SearchScreenState extends State<SearchScreen> {
             // The Edge Function answers signed-in users only.
             ? EmptyState(
                 icon: Icons.lock_outline_rounded,
-                title: 'Log in to search games',
-                message: 'Games come from IGDB, which Checkpoint only reaches for signed-in users.',
-                actionLabel: 'Log in',
+                title: context.l10n.logInToSearchGames,
+                message: context.l10n.logInToSearchGamesMessage,
+                actionLabel: context.l10n.logIn,
                 onAction: () => logIn(context),
               )
             : !filtering
             ? EmptyState(
                 icon: Icons.search_off_rounded,
-                title: 'No games found',
-                message: 'Try a different title. Looking for a publisher or developer? Try Studios.',
+                title: context.l10n.noGamesFound,
+                message: context.l10n.noGamesFoundMessage,
               )
             : EmptyState(
                 icon: Icons.filter_list_off_rounded,
-                title: hasQuery ? 'No games found' : 'No games match these filters',
+                title: hasQuery ? context.l10n.noGamesFound : context.l10n.noGamesMatchFilters,
                 message: hasQuery
-                    ? 'Try a different title, or fewer filters.'
-                    : 'Try fewer filters, or a wider range of years.',
-                actionLabel: filters.count > 1 ? 'Clear filters' : 'Clear filter',
+                    ? context.l10n.noGamesFoundFilteredMessage
+                    : context.l10n.noGamesMatchFiltersMessage,
+                actionLabel: context.l10n.clearFilters(filters.count),
                 onAction: () => _applyFilters(filters.cleared()),
               ),
         itemBuilder: (_, i) => _SearchTile(game: games[i]),
@@ -288,12 +289,12 @@ class _SearchScreenState extends State<SearchScreen> {
     return SafeArea(
       bottom: false,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Text('Discover', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Text(context.l10n.discover, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, isGames ? 8 : 20, 0),
+          padding: EdgeInsetsDirectional.fromSTEB(20, 0, isGames ? 8 : 20, 0),
           child: Row(children: [
             Expanded(
               child: TextField(
@@ -305,17 +306,17 @@ class _SearchScreenState extends State<SearchScreen> {
                 onTapOutside: (_) => _searchFocus.unfocus(),
                 decoration: fieldDecoration(
                   context,
-                  'Search',
+                  context.l10n.navSearch,
                   hint: switch (_kind) {
-                    SearchKind.games => 'Game titles…',
-                    SearchKind.studios => 'Publishers, developers…',
-                    SearchKind.users => 'Names or @handles…',
+                    SearchKind.games => context.l10n.searchGamesHint,
+                    SearchKind.studios => context.l10n.searchStudiosHint,
+                    SearchKind.users => context.l10n.searchUsersHint,
                   },
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _query.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: 'Clear',
+                          tooltip: context.l10n.clear,
                           icon: const Icon(Icons.close_rounded),
                           onPressed: _clearQuery,
                         ),
@@ -336,10 +337,10 @@ class _SearchScreenState extends State<SearchScreen> {
             width: double.infinity,
             child: SegmentedButton<SearchKind>(
               showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: SearchKind.games, icon: Icon(Icons.sports_esports_rounded), label: Text('Games')),
-                ButtonSegment(value: SearchKind.studios, icon: Icon(Icons.business_rounded), label: Text('Studios')),
-                ButtonSegment(value: SearchKind.users, icon: Icon(Icons.people_alt_rounded), label: Text('Users')),
+              segments: [
+                ButtonSegment(value: SearchKind.games, icon: const Icon(Icons.sports_esports_rounded), label: Text(context.l10n.searchKindGames)),
+                ButtonSegment(value: SearchKind.studios, icon: const Icon(Icons.business_rounded), label: Text(context.l10n.searchKindStudios)),
+                ButtonSegment(value: SearchKind.users, icon: const Icon(Icons.people_alt_rounded), label: Text(context.l10n.searchKindUsers)),
               ],
               selected: {_kind},
               onSelectionChanged: (s) {
@@ -390,23 +391,23 @@ class _SearchScreenState extends State<SearchScreen> {
       // The Edge Function answers signed-in users only.
       return EmptyState(
         icon: Icons.lock_outline_rounded,
-        title: 'Log in to search studios',
-        message: 'Studios come from IGDB, which Checkpoint only reaches for signed-in users.',
-        actionLabel: 'Log in',
+        title: context.l10n.logInToSearchStudios,
+        message: context.l10n.logInToSearchStudiosMessage,
+        actionLabel: context.l10n.logIn,
         onAction: () => logIn(context),
       );
     }
     if (!hasQuery) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.business_rounded,
-        title: 'Find a studio',
-        message: 'Search publishers and developers by name, like Valve or Nintendo.',
+        title: context.l10n.findStudio,
+        message: context.l10n.findStudioMessage,
       );
     }
     final studios = store.companyResults;
     final loading = store.companyLoading;
     return _ResultsPane(
-      label: loading && studios.isEmpty ? 'Searching…' : _countLabel(studios.length, false),
+      label: loading && studios.isEmpty ? context.l10n.searching : _countLabel(studios.length, false),
       count: studios.length,
       refreshing: loading && studios.isNotEmpty,
       empty: loading
@@ -414,15 +415,15 @@ class _SearchScreenState extends State<SearchScreen> {
           : store.companyFailed
           ? EmptyState(
               icon: Icons.cloud_off_rounded,
-              title: 'Couldn’t search studios',
-              message: 'Check your connection and try again.',
-              actionLabel: 'Try again',
+              title: context.l10n.studioSearchFailed,
+              message: context.l10n.checkConnection,
+              actionLabel: context.l10n.tryAgain,
               onAction: () => unawaited(store.findCompanies(_query)),
             )
-          : const EmptyState(
+          : EmptyState(
               icon: Icons.search_off_rounded,
-              title: 'No studios found',
-              message: 'Try a different name, or the start of it.',
+              title: context.l10n.noStudiosFound,
+              message: context.l10n.noStudiosFoundMessage,
             ),
       itemBuilder: (_, i) => _StudioTile(company: studios[i]),
     );
@@ -434,12 +435,12 @@ class _SearchScreenState extends State<SearchScreen> {
     // this list would be swapped for Browse By before the tap registered.
     return TextFieldTapRegion(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const _SectionLabel('Recent searches'),
+        _SectionLabel(context.l10n.recentSearches),
         Expanded(
           child: recents.isEmpty
               ? Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                  child: Text('No recent searches yet.', style: TextStyle(color: context.palette.muted)),
+                  child: Text(context.l10n.noRecentSearches, style: TextStyle(color: context.palette.muted)),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 32),
@@ -461,7 +462,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('Browse by'),
+        _SectionLabel(context.l10n.browseBy),
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.only(bottom: 32),
@@ -517,7 +518,7 @@ class _RowDivider extends StatelessWidget {
 
 /// "12 results", or "20+ results" while more can still be loaded.
 String _countLabel(int count, bool hasMore) =>
-    hasMore ? '$count+ results' : '$count result${count == 1 ? '' : 's'}';
+    hasMore ? L10n.current.resultsMore(count) : L10n.current.results(count);
 
 /// A label plus a scrolling list of results (or [empty] when there are none).
 ///
@@ -591,8 +592,8 @@ class _UserTile extends StatelessWidget {
     final followers = user.followersFor(viewerFollows: following);
     return MemberTile(
       user: user,
-      subtitle: '${fmtCount(games)} ${games == 1 ? 'game' : 'games'} · '
-          '${fmtCount(followers)} ${followers == 1 ? 'follower' : 'followers'}',
+      subtitle: '${context.l10n.gamesCountFormatted(games, fmtCount(games))} · '
+          '${context.l10n.followersCountFormatted(followers, fmtCount(followers))}',
     );
   }
 }
@@ -605,8 +606,8 @@ class _StudioTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final details = [
       ?company.countryName,
-      if (company.publishedCount > 0) '${fmtCount(company.publishedCount)} published',
-      if (company.developedCount > 0) '${fmtCount(company.developedCount)} developed',
+      if (company.publishedCount > 0) context.l10n.publishedCount(company.publishedCount, fmtCount(company.publishedCount)),
+      if (company.developedCount > 0) context.l10n.developedCount(company.developedCount, fmtCount(company.developedCount)),
     ];
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -675,14 +676,14 @@ class _SearchTile extends StatelessWidget {
             StatusPill(game.status!)
           else
             PopupMenuButton<GameStatus>(
-              tooltip: 'Add to library',
+              tooltip: context.l10n.addToLibrary,
               icon: Icon(Icons.add_circle_outline_rounded, color: context.palette.accent, size: 28),
               onSelected: (s) {
                 rememberSearch();
                 context.read<LibraryStore>().addToLibrary(game.id, s);
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text('${game.title} added to ${s.label}')));
+                  ..showSnackBar(SnackBar(content: Text(context.l10n.addedToStatus(game.title, s.label))));
               },
               itemBuilder: (_) => [
                 for (final s in const [GameStatus.playing, GameStatus.toPlay, GameStatus.wishlist, GameStatus.completed])

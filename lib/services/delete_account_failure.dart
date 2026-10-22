@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/connection_failure.dart';
 
 /// What to tell the user when deleting the account failed. Keyed off the `code`
@@ -13,22 +14,22 @@ String deleteAccountMessage(Object error) {
     final body = error.details;
     final code = body is Map ? body['code'] : null;
     if (code == 'UNAUTHENTICATED' || error.status == 401) {
-      return 'Your session expired. Sign in again, then delete your account.';
+      return L10n.current.deleteAccountSessionExpired;
     }
     if (code == 'MFA_REQUIRED') {
-      return 'Sign in again with your two-factor code, then delete your account.';
+      return L10n.current.deleteAccountMfaRequired;
     }
     // Status 0: the request never got an answer (FunctionsFetchException).
     if (error.status == 0) return _unreachable;
     if (error.status == 408 || error.status == 429 || error.status >= 500) {
-      return 'The server is busy right now. Your account was not deleted. Try again in a moment.';
+      return L10n.current.deleteAccountServerBusy;
     }
     return _generic;
   }
-  if (error is StateError) return 'Sign in to delete your account.';
+  if (error is StateError) return L10n.current.deleteAccountSignIn;
   if (isConnectionFailure(error)) return _unreachable;
   return _generic;
 }
 
-const _unreachable = 'Could not reach the server. Check your connection and try again.';
-const _generic = 'Could not delete your account. Please try again.';
+String get _unreachable => L10n.current.serverUnreachable;
+String get _generic => L10n.current.deleteAccountFailed;

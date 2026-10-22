@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
@@ -12,12 +13,15 @@ import 'package:checkpoint/utils/lru_cache.dart';
 /// One company's [Company], with where the request stands.
 @immutable
 class CompanyView {
-  const CompanyView({this.status = LoadStatus.idle, this.company});
+  const CompanyView({this.status = LoadStatus.idle, this.company, this.language = 'en'});
 
   final LoadStatus status;
 
   /// Set once [status] is [LoadStatus.ready].
   final Company? company;
+
+  /// The app's language when [company] was asked for: its translation's.
+  final String language;
 }
 
 /// One list of a company's games: the company, which of its games, in what order.
@@ -59,13 +63,16 @@ class CompanyStore extends ChangeNotifier {
       _views.peek(companyId) ?? const CompanyView();
 
   /// Makes sure [companyId]'s page is loaded: does nothing while a request is
-  /// running or when it is already here; [force] asks again (pull to refresh).
+  /// running or when it is already here in the app's language; [force] asks
+  /// again (pull to refresh).
   /// A company already held stays on screen if asking again fails.
   Future<void> load(int companyId, {bool force = false}) {
     final running = _loading[companyId];
     if (running != null) return running;
     final cached = _views[companyId];
-    if (!force && cached?.status == LoadStatus.ready) return Future.value();
+    if (!force && cached?.status == LoadStatus.ready && cached?.language == L10n.languageCode) {
+      return Future.value();
+    }
 
     late final Future<void> request;
     request = _fetch(companyId, cached).whenComplete(() {
@@ -80,11 +87,13 @@ class CompanyStore extends ChangeNotifier {
       _views[companyId] = const CompanyView(status: LoadStatus.loading);
       _notify();
     }
+    final language = L10n.languageCode;
     final company = await _apiService.fetchCompany(companyId);
     if (company != null) {
       _views[companyId] = CompanyView(
         status: LoadStatus.ready,
         company: company,
+        language: language,
       );
     } else if (!hasContent) {
       _views[companyId] = const CompanyView(status: LoadStatus.failed);

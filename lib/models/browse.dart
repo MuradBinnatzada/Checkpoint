@@ -1,17 +1,23 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 
 /// The lists under "Browse by" on the Discover tab. [wireName] is the `mode` the
 /// `igdb-handler` Edge Function takes.
 enum BrowseMode {
-  popular('popular', 'Most popular'),
-  topRated('top_rated', 'Highest rated'),
-  newReleases('new_releases', 'New releases');
+  popular('popular'),
+  topRated('top_rated'),
+  newReleases('new_releases');
 
-  const BrowseMode(this.wireName, this.label);
+  const BrowseMode(this.wireName);
   final String wireName;
-  final String label;
+
+  String get label => switch (this) {
+    popular => L10n.current.sortMostPopular,
+    topRated => L10n.current.sortHighestRated,
+    newReleases => L10n.current.browseNewReleases,
+  };
 }
 
 /// A game in a browse list, with the figures the list is about. [Game] has no

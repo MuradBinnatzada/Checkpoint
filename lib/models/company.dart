@@ -1,19 +1,26 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/game.dart';
+import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/utils/countries.dart' as countries;
 
 /// Which of a company's games a list holds. [wireName] is the `role` the
 /// `igdb-handler` Edge Function takes.
 enum CompanyRole {
-  any('any', 'All'),
-  publisher('publisher', 'Published'),
-  developer('developer', 'Developed');
+  any('any'),
+  publisher('publisher'),
+  developer('developer');
 
-  const CompanyRole(this.wireName, this.label);
+  const CompanyRole(this.wireName);
   final String wireName;
-  final String label;
+
+  String get label => switch (this) {
+    any => L10n.current.companyRoleAll,
+    publisher => L10n.current.companyRolePublished,
+    developer => L10n.current.companyRoleDeveloped,
+  };
 }
 
 /// A company as the studio search lists it. IGDB keeps publishers and
@@ -77,7 +84,7 @@ class CompanyRef {
 
 /// What a website of a company is, by where it points.
 enum CompanyWebsiteKind {
-  official('Official website'),
+  official(null),
   wikipedia('Wikipedia'),
   steam('Steam'),
   x('X'),
@@ -90,10 +97,19 @@ enum CompanyWebsiteKind {
   linkedin('LinkedIn'),
   bluesky('Bluesky'),
   itch('itch.io'),
-  other('Website');
+  other(null);
 
-  const CompanyWebsiteKind(this.label);
-  final String label;
+  const CompanyWebsiteKind(this._name);
+
+  /// The site's own name; null for the ones named in the app's language.
+  final String? _name;
+
+  String get label =>
+      _name ??
+      switch (this) {
+        official => L10n.current.websiteOfficial,
+        _ => L10n.current.websiteOther,
+      };
 }
 
 /// One website of a company.
@@ -151,12 +167,17 @@ class Company extends CompanySummary {
     super.publishedCount,
     super.developedCount,
     this.description,
+    this.translatedDescription,
     this.foundedYear,
     this.parent,
     this.websites = const [],
   });
 
   final String? description;
+
+  /// [description] in the app's language, when it is not English and the
+  /// server translated it (DeepL); null otherwise.
+  final IgdbTranslation? translatedDescription;
   final int? foundedYear;
 
   /// The company with a controlling interest in this one.
@@ -183,6 +204,7 @@ class Company extends CompanySummary {
       publishedCount: summary.publishedCount,
       developedCount: summary.developedCount,
       description: _text(json['description']),
+      translatedDescription: IgdbTranslation.fromJson(response['translations']),
       foundedYear: releaseYearFromUnixSeconds(json['start_date']),
       parent: parentId != null && parentName != null
           ? CompanyRef(parentId, parentName)

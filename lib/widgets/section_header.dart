@@ -9,7 +9,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 12, 12),
+      padding: const EdgeInsetsDirectional.fromSTEB(20, 24, 12, 12),
       child: Row(children: [
         // A heading, so screen readers can jump from section to section.
         Expanded(child: Semantics(header: true, child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)))),

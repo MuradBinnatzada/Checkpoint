@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/theme/palette.dart';
 
 /// Opens [BackupCodesScreen] with new [codes] (Settings > Security > New
@@ -22,7 +23,7 @@ class BackupCodesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup codes')),
+      appBar: AppBar(title: Text(context.l10n.backupCodes)),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -52,10 +53,11 @@ class BackupCodesList extends StatelessWidget {
 
   Future<void> _copy(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
+    final copied = context.l10n.backupCodesCopied;
     await Clipboard.setData(ClipboardData(text: codes.join('\n')));
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Backup codes copied')));
+      ..showSnackBar(SnackBar(content: Text(copied)));
   }
 
   @override
@@ -72,15 +74,12 @@ class BackupCodesList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'If you lose your authenticator app, one of these codes signs you in '
-          'without it. Save them somewhere safe, such as a password manager.',
+          context.l10n.backupCodesIntro,
           style: muted,
         ),
         const SizedBox(height: 8),
         Text(
-          'Each code works once, and using one turns two-factor authentication '
-          'off, so you can set it up again on your new device. The codes are '
-          'not shown again.',
+          context.l10n.backupCodesNote,
           style: muted,
         ),
         const SizedBox(height: 16),
@@ -125,10 +124,10 @@ class BackupCodesList extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: () => _copy(context),
           icon: const Icon(Icons.copy_rounded, size: 18),
-          label: const Text('Copy'),
+          label: Text(context.l10n.copy),
         ),
         const SizedBox(height: 8),
-        FilledButton(onPressed: onDone, child: const Text('I saved them')),
+        FilledButton(onPressed: onDone, child: Text(context.l10n.iSavedThem)),
       ],
     );
   }

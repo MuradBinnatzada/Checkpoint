@@ -1,0 +1,16 @@
+# The app's strings: lib/l10n/app_<language>.arb, one file per language, with
+# app_en.arb as the template every other file translates. `flutter pub get` (and
+# every build) generates lib/l10n/generated/ from them, so a new language is a new
+# .arb file plus its code in ios/Runner/Info.plist (CFBundleLocalizations).
+#
+# A message missing from a language falls back to English, and is listed in
+# build/l10n_untranslated.json.
+arb-dir: lib/l10n
+output-dir: lib/l10n/generated
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+preferred-supported-locales: [en]
+nullable-getter: false
+untranslated-messages-file: build/l10n_untranslated.json
+format: true

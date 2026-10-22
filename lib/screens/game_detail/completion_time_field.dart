@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/limits.dart';
@@ -93,20 +94,19 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
     final hours = hoursText.isEmpty ? 0.0 : parseNum(hoursText);
     final minutes = minutesText.isEmpty ? 0 : int.tryParse(minutesText);
     if (hours == null || !hours.isFinite) {
-      return (minutes: null, error: 'Enter the hours as a number, like 12.5.');
+      return (minutes: null, error: L10n.current.completionHoursInvalid(fmtHours(12.5)));
     }
     if (minutes == null || minutes > 59) {
-      return (minutes: null, error: 'Minutes go from 0 to 59.');
+      return (minutes: null, error: L10n.current.completionMinutesInvalid);
     }
     final total = hours > maxTotalHours ? null : (hours * 60).round() + minutes;
     if (total == null || total > maxTotalHours * 60) {
       return (
         minutes: null,
-        error:
-            'That is more than ${fmtThousands(maxTotalHours.round())} hours.',
+        error: L10n.current.completionTooLong(fmtThousands(maxTotalHours.round())),
       );
     }
-    if (total < 1) return (minutes: null, error: 'Enter how long it took.');
+    if (total < 1) return (minutes: null, error: L10n.current.completionEnterTime);
     return (minutes: total, error: null);
   }
 
@@ -131,7 +131,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
             onPressed: () => setState(_startEditing),
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
             icon: const Icon(Icons.timer_outlined, size: 18),
-            label: const Text('Add how long it took'),
+            label: Text(context.l10n.completionAdd),
           ),
       ],
     );
@@ -152,7 +152,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Your time to finish',
+                    context.l10n.completionYourTime,
                     style: TextStyle(color: context.palette.muted, fontSize: 12),
                   ),
                   Text(
@@ -183,13 +183,13 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'How long did it take?',
+        Text(
+          context.l10n.completionHowLong,
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         Text(
-          'Optional. It adds to the times other players see, without your name.',
+          context.l10n.completionOptional,
           style: TextStyle(color: context.palette.muted, fontSize: 12.5, height: 1.35),
         ),
         const SizedBox(height: 12),
@@ -215,7 +215,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 inputFormatters: [decimalFormatter],
                 textInputAction: TextInputAction.next,
                 onChanged: (_) => setState(() {}),
-                decoration: fieldDecoration(context, 'Hours', suffix: 'h'),
+                decoration: fieldDecoration(context, context.l10n.hours, suffix: context.l10n.hoursUnit),
               ),
             ),
             const SizedBox(width: 10),
@@ -230,7 +230,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => save(),
-                decoration: fieldDecoration(context, 'Minutes', suffix: 'min'),
+                decoration: fieldDecoration(context, context.l10n.minutes, suffix: context.l10n.minutesUnit),
               ),
             ),
           ],
@@ -244,7 +244,11 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
         ] else if (minutes != null && category == null) ...[
           const SizedBox(height: 6),
           Text(
-            'Pick Main Story, Main + Extras or Completionist.',
+            context.l10n.completionPickCategory(
+              CompletionCategory.mainStory.label,
+              CompletionCategory.mainExtras.label,
+              CompletionCategory.completionist.label,
+            ),
             style: TextStyle(color: context.palette.muted, fontSize: 12.5),
           ),
         ],
@@ -255,17 +259,17 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
               TextButton(
                 onPressed: _remove,
                 style: TextButton.styleFrom(foregroundColor: context.palette.danger),
-                child: const Text('Remove'),
+                child: Text(context.l10n.remove),
               ),
             const Spacer(),
             TextButton(
               onPressed: _close,
-              child: Text(saved == null ? 'Not now' : 'Cancel'),
+              child: Text(saved == null ? context.l10n.notNow : context.l10n.cancel),
             ),
             const SizedBox(width: 8),
             FilledButton(
               onPressed: time == null || time == saved ? null : save,
-              child: const Text('Save'),
+              child: Text(context.l10n.save),
             ),
           ],
         ),
@@ -278,6 +282,7 @@ class _CompletionTimeFieldState extends State<CompletionTimeField> {
 String fmtMinutes(int minutes) {
   final h = minutes ~/ 60;
   final m = minutes % 60;
-  if (h == 0) return '$m min';
-  return m == 0 ? '$h h' : '$h h $m min';
+  final l10n = L10n.current;
+  if (h == 0) return l10n.minutesShort(m);
+  return m == 0 ? l10n.hoursShort('$h') : l10n.hoursMinutesShort(h, m);
 }

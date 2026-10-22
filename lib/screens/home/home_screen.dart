@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
@@ -69,7 +70,7 @@ class HomeScreen extends StatelessWidget {
                 // A photo says nothing to a screen reader; 48 px to tap.
                 Semantics(
                   button: true,
-                  label: 'Your profile',
+                  label: context.l10n.yourProfile,
                   excludeSemantics: true,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -87,8 +88,8 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           SectionHeader(
-            'Currently Playing',
-            actionLabel: 'See all',
+            context.l10n.currentlyPlaying,
+            actionLabel: context.l10n.seeAllShort,
             onAction: () => context.read<LibraryViewStore>().openTab(GameStatus.playing),
           ),
           _HeroBanner(games: library.playingNow()),
@@ -101,7 +102,7 @@ class HomeScreen extends StatelessWidget {
                   child: StatTile(
                     icon: Icons.schedule_rounded,
                     value: fmtHours(library.totalHours),
-                    label: 'Hours logged',
+                    label: context.l10n.hoursLoggedLabel,
                     onTap: () => context.read<LibraryViewStore>().openTab(
                       GameStatus.playing,
                       sortBy: SortField.hoursPlayed,
@@ -113,7 +114,7 @@ class HomeScreen extends StatelessWidget {
                   child: StatTile(
                     icon: Icons.verified_rounded,
                     value: '${library.count(GameStatus.completed)}',
-                    label: 'Completed',
+                    label: GameStatus.completed.label,
                     onTap: () =>
                         context.read<LibraryViewStore>().openTab(GameStatus.completed),
                   ),
@@ -123,7 +124,7 @@ class HomeScreen extends StatelessWidget {
                   child: StatTile(
                     icon: Icons.inventory_2_rounded,
                     value: '${library.count(GameStatus.toPlay)}',
-                    label: 'To Play',
+                    label: GameStatus.toPlay.label,
                     onTap: () =>
                         context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
                   ),
@@ -139,11 +140,11 @@ class HomeScreen extends StatelessWidget {
                 onPressed: () => showPickNextSheet(context),
                 style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
                 icon: const Icon(Icons.casino_rounded, size: 18),
-                label: const Text('Can\'t decide? Pick my next game'),
+                label: Text(context.l10n.pickMyNextGame),
               ),
             ),
           const _ReleasesRow(),
-          const SectionHeader('Recent Activity'),
+          SectionHeader(context.l10n.recentActivity),
           const _RecentActivityRow(),
           const _FriendsFeedRow(),
           const _PopularRow(),
@@ -187,7 +188,7 @@ class _PopularRowState extends State<_PopularRow> {
     if (loggedIn && popular.isNotEmpty) {
       final scores = {for (final e in popular) e.game.id: e.score};
       return _CarouselSection(
-        title: 'Popular Right Now',
+        title: context.l10n.popularRightNow,
         games: [for (final e in popular.take(10)) e.game],
         icon: Icons.star_rounded,
         caption: (g) {
@@ -199,7 +200,7 @@ class _PopularRowState extends State<_PopularRow> {
     final recent = context.watch<LibraryStore>().recentlyAdded;
     if (recent.isEmpty) return const SizedBox.shrink();
     return _CarouselSection(
-      title: 'Recently Added',
+      title: context.l10n.recentlyAdded,
       games: recent,
       icon: Icons.event_rounded,
       caption: (g) => g.hasReleaseYear ? '${g.releaseYear}' : null,
@@ -242,7 +243,7 @@ class _ReleasesRow extends StatelessWidget {
     if (alerts.isEmpty) return const SizedBox.shrink();
     final byId = {for (final a in alerts) a.game.id: a};
     return _CarouselSection(
-      title: 'Wishlist Releases',
+      title: context.l10n.wishlistReleases,
       games: [for (final a in alerts) a.game],
       icon: Icons.notifications_active_rounded,
       caption: (g) {
@@ -314,14 +315,14 @@ class _HeroBannerState extends State<_HeroBanner> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Nothing in progress. Pick something from your To Play list.',
+                  context.l10n.nothingInProgress,
                   style: TextStyle(color: context.palette.muted),
                 ),
               ),
               TextButton(
                 onPressed: () =>
                     context.read<LibraryViewStore>().openTab(GameStatus.toPlay),
-                child: const Text('To Play'),
+                child: Text(GameStatus.toPlay.label),
               ),
             ],
           ),
@@ -411,15 +412,15 @@ class _HeroCard extends StatelessWidget {
                               TextSpan(
                                 children: [
                                   TextSpan(
-                                    text: '${fmtHours(game.hoursPlayed)} hrs',
+                                    text: context.l10n.hrs(fmtHours(game.hoursPlayed)),
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 17,
                                     ),
                                   ),
-                                  const TextSpan(
-                                    text: ' logged',
-                                    style: TextStyle(
+                                  TextSpan(
+                                    text: ' ${context.l10n.logged}',
+                                    style: const TextStyle(
                                       color: Colors.white70,
                                       fontSize: 13,
                                     ),
@@ -431,7 +432,7 @@ class _HeroCard extends StatelessWidget {
                             ),
                           ),
                           IconButton.filled(
-                            tooltip: 'Log a session',
+                            tooltip: context.l10n.logASession,
                             onPressed: () =>
                                 showQuickLogSheet(context, gameId: game.id),
                             icon: const Icon(Icons.add_rounded),
@@ -449,7 +450,7 @@ class _HeroCard extends StatelessWidget {
               color: Colors.transparent,
               child: Semantics(
                 button: true,
-                label: 'Open ${game.title}',
+                label: context.l10n.openGame(game.title),
                 child: InkWell(onTap: () => openGame(context, game.id)),
               ),
             ),
@@ -477,7 +478,7 @@ class _RecentActivityRow extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 20),
         child: Panel(
           child: Text(
-            'Log your first session with the Log Game button.',
+            context.l10n.logFirstSession,
             style: TextStyle(color: context.palette.muted),
           ),
         ),
@@ -496,7 +497,7 @@ class _RecentActivityRow extends StatelessWidget {
           return GamePosterCard(
             game: library.gameById(e.gameId),
             width: w,
-            subtitle: '+${fmtHours(e.hours)}h · ${timeAgo(e.timestamp)}',
+            subtitle: '+${context.l10n.hoursCompact(fmtHours(e.hours))} · ${timeAgo(e.timestamp)}',
             subtitleIcon: e.platform.icon,
           );
         },
@@ -536,7 +537,7 @@ class _FriendsFeedRowState extends State<_FriendsFeedRow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader('From people you follow'),
+        SectionHeader(context.l10n.fromPeopleYouFollow),
         SizedBox(
           height: posterCardHeight(context, w, subtitle: true),
           child: ListView.separated(
@@ -557,9 +558,9 @@ class _FriendsFeedRowState extends State<_FriendsFeedRow> {
 /// time: the only date other members can see is when the game was added.
 String friendActivityCaption(FriendActivity item) => switch (item.kind) {
   FriendActivityKind.session =>
-    '+${fmtHours(item.hours)}h · ${timeAgo(item.at)}',
-  FriendActivityKind.completed => 'Completed',
-  FriendActivityKind.rated => 'Rated ${fmtHours(item.rating)}',
+    '+${L10n.current.hoursCompact(fmtHours(item.hours))} · ${timeAgo(item.at)}',
+  FriendActivityKind.completed => GameStatus.completed.label,
+  FriendActivityKind.rated => L10n.current.ratedValue(fmtHours(item.rating)),
 };
 
 /// One item of the friends feed: the game's cover (opens the game) with the
@@ -594,7 +595,7 @@ class _FriendActivityCard extends StatelessWidget {
             children: [
               Semantics(
                 button: true,
-                label: 'Open ${game.title}',
+                label: context.l10n.openGame(game.title),
                 excludeSemantics: true,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
@@ -602,14 +603,14 @@ class _FriendActivityCard extends StatelessWidget {
                   child: CoverArt(game: game),
                 ),
               ),
-              Positioned(
-                left: 6,
+              PositionedDirectional(
+                start: 6,
                 bottom: 6,
                 child: Tooltip(
                   message: member.name,
                   child: Semantics(
                     button: true,
-                    label: "Open ${member.name}'s profile",
+                    label: context.l10n.openMemberProfile(member.name),
                     excludeSemantics: true,
                     child: InkWell(
                       customBorder: const CircleBorder(),

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart' show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -63,7 +64,7 @@ class AchievementTile extends StatelessWidget {
                 if (a.globalPercent != null) ...[
                   const SizedBox(height: 3),
                   Text(
-                    '${fmtPercent(a.globalPercent!)} of players have this',
+                    context.l10n.playersHaveThis(fmtPercent(a.globalPercent!)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

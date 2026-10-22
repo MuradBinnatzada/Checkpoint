@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game_details.dart';
 
 /// A thing about a game the Library can be narrowed by, besides its platform. A
@@ -10,21 +11,44 @@ import 'package:checkpoint/models/game_details.dart';
 /// come from IGDB through [GameAttributes], which the server only has for a game
 /// once it was filled in from IGDB (see `igdb_synced_at` on `games`).
 enum GameAttribute {
-  genre('Genre', 'Genres', Icons.category_rounded),
-  theme('Theme', 'Themes', Icons.palette_rounded),
-  gameMode('Game mode', 'Game modes', Icons.groups_rounded),
-  perspective('Perspective', 'Perspectives', Icons.visibility_rounded),
-  engine('Engine', 'Engines', Icons.memory_rounded),
-  developer('Developer', 'Developers', Icons.code_rounded),
-  publisher('Publisher', 'Publishers', Icons.storefront_rounded);
+  genre(Icons.category_rounded),
+  theme(Icons.palette_rounded),
+  gameMode(Icons.groups_rounded),
+  perspective(Icons.visibility_rounded),
+  engine(Icons.memory_rounded),
+  developer(Icons.code_rounded),
+  publisher(Icons.storefront_rounded);
 
-  const GameAttribute(this.label, this.pluralLabel, this.icon);
+  const GameAttribute(this.icon);
 
   /// "Theme": names one value ("Theme: Horror").
-  final String label;
+  String get label {
+    final l10n = L10n.current;
+    return switch (this) {
+      genre => l10n.attributeGenre,
+      theme => l10n.attributeTheme,
+      gameMode => l10n.attributeGameMode,
+      perspective => l10n.attributePerspective,
+      engine => l10n.attributeEngine,
+      developer => l10n.attributeDeveloper,
+      publisher => l10n.attributePublisher,
+    };
+  }
 
   /// "Themes": names the list of values.
-  final String pluralLabel;
+  String get pluralLabel {
+    final l10n = L10n.current;
+    return switch (this) {
+      genre => l10n.attributeGenres,
+      theme => l10n.attributeThemes,
+      gameMode => l10n.attributeGameModes,
+      perspective => l10n.attributePerspectives,
+      engine => l10n.attributeEngines,
+      developer => l10n.attributeDevelopers,
+      publisher => l10n.attributePublishers,
+    };
+  }
+
   final IconData icon;
 
   /// Whether [GameAttributes] holds it. Only [genre] is on the [Game] itself.

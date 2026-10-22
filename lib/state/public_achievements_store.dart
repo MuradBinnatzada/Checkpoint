@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/achievement.dart';
 import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
@@ -345,20 +346,20 @@ String _steamFailureMessage(Object error, {required bool own}) {
     SyncFailureCode.steamProfilePrivate =>
       own
           ? failure.message
-          : 'Their Steam game details are private, so Steam does not share these achievements.',
+          : L10n.current.theirSteamPrivate,
     SyncFailureCode.noSteamId =>
       own
-          ? 'Connect your Steam account to load achievements.'
-          : 'They have not connected a Steam account.',
+          ? L10n.current.achievementsConnectSteam
+          : L10n.current.theyHaveNoSteam,
     SyncFailureCode.gameNotLinked =>
-      'This game is not linked to a Steam game yet.',
+      L10n.current.gameNotLinkedToSteam,
     SyncFailureCode.achievementsHidden =>
-      'They keep their Steam achievements private.',
+      L10n.current.theirAchievementsPrivate,
     SyncFailureCode.notInLibrary =>
       own
-          ? 'That game is not in your library.'
-          : 'This game is not in their library anymore.',
+          ? L10n.current.gameNotInYourLibrary
+          : L10n.current.gameNotInTheirLibrary,
     _ when failure.isDelayed => failure.message,
-    _ => 'Could not load the achievements from Steam.',
+    _ => L10n.current.achievementsSteamLoadFailed,
   };
 }

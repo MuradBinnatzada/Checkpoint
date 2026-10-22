@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 
@@ -7,14 +8,20 @@ import 'package:checkpoint/models/game_attributes.dart';
 /// (IGDB orders a search by relevance). [wireName] is the `sort` the
 /// `igdb-handler` Edge Function takes.
 enum DiscoverSort {
-  popular('popular', 'Most popular'),
-  topRated('top_rated', 'Highest rated'),
-  newest('newest', 'Newest'),
-  oldest('oldest', 'Oldest');
+  popular('popular'),
+  topRated('top_rated'),
+  newest('newest'),
+  oldest('oldest');
 
-  const DiscoverSort(this.wireName, this.label);
+  const DiscoverSort(this.wireName);
   final String wireName;
-  final String label;
+
+  String get label => switch (this) {
+    popular => L10n.current.sortMostPopular,
+    topRated => L10n.current.sortHighestRated,
+    newest => L10n.current.sortNewest,
+    oldest => L10n.current.sortOldest,
+  };
 }
 
 /// Release years from [from] to [to], both included; a null end is open. A game
@@ -47,11 +54,11 @@ class YearRange {
     final t = to;
     if (f != null && t != null) {
       if (f == t) return '$f';
-      if (f % 10 == 0 && t == f + 9) return '${f}s';
+      if (f % 10 == 0 && t == f + 9) return L10n.current.yearsDecade(f);
       return '$f–$t';
     }
-    if (f != null) return '$f or later';
-    if (t != null) return 'Up to $t';
+    if (f != null) return L10n.current.yearsFrom(f);
+    if (t != null) return L10n.current.yearsUpTo(t);
     return '';
   }
 
@@ -218,8 +225,9 @@ class CatalogTag {
   final String name;
   final String? _label;
 
-  /// The name on a filter chip: shorter for the long ones ("RPG").
-  String get label => _label ?? name;
+  /// The name on a filter chip, in the app's language: shorter for the long
+  /// ones ("RPG").
+  String get label => _label == null ? tagName(name) : _shortTagName(L10n.current, name) ?? _label;
 }
 
 /// The genres, themes and game modes the Discover tab can filter by: IGDB's own
@@ -315,7 +323,91 @@ abstract final class CatalogTags {
     return null;
   }
 
-  /// [value] as a filter chip names it: its tag's short label, or [value] itself.
+  /// [value] as a filter chip names it: its tag's short label, or [value] in
+  /// the app's language.
   static String labelOf(GameAttribute attribute, String value) =>
-      find(attribute, value)?.label ?? value;
+      find(attribute, value)?.label ?? tagName(value);
 }
+
+/// [name] (IGDB's name of a genre, theme, game mode or player perspective) in
+/// the app's language: what a game's screen and the filters show. Any other
+/// value (an engine, a company, a name IGDB added later) is shown as it is.
+String tagName(String name) => _tagName(L10n.current, name) ?? name;
+
+String? _tagName(AppLocalizations l10n, String name) => switch (name) {
+  'Adventure' => l10n.tagAdventure,
+  'Role-playing (RPG)' => l10n.tagRolePlayingRpg,
+  'Shooter' => l10n.tagShooter,
+  'Platform' => l10n.tagPlatform,
+  'Puzzle' => l10n.tagPuzzle,
+  'Strategy' => l10n.tagStrategy,
+  'Simulator' => l10n.tagSimulator,
+  'Indie' => l10n.tagIndie,
+  'Fighting' => l10n.tagFighting,
+  'Racing' => l10n.tagRacing,
+  'Sport' => l10n.tagSport,
+  'Arcade' => l10n.tagArcade,
+  "Hack and slash/Beat 'em up" => l10n.tagHackAndSlashBeatEmUp,
+  'Tactical' => l10n.tagTactical,
+  'Real Time Strategy (RTS)' => l10n.tagRealTimeStrategyRts,
+  'Turn-based strategy (TBS)' => l10n.tagTurnBasedStrategyTbs,
+  'Visual Novel' => l10n.tagVisualNovel,
+  'Point-and-click' => l10n.tagPointAndClick,
+  'Card & Board Game' => l10n.tagCardBoardGame,
+  'MOBA' => l10n.tagMoba,
+  'Music' => l10n.tagMusic,
+  'Quiz/Trivia' => l10n.tagQuizTrivia,
+  'Pinball' => l10n.tagPinball,
+  'Action' => l10n.tagAction,
+  'Fantasy' => l10n.tagFantasy,
+  'Science fiction' => l10n.tagScienceFiction,
+  'Horror' => l10n.tagHorror,
+  'Survival' => l10n.tagSurvival,
+  'Open world' => l10n.tagOpenWorld,
+  'Sandbox' => l10n.tagSandbox,
+  'Stealth' => l10n.tagStealth,
+  'Mystery' => l10n.tagMystery,
+  'Thriller' => l10n.tagThriller,
+  'Comedy' => l10n.tagComedy,
+  'Drama' => l10n.tagDrama,
+  'Historical' => l10n.tagHistorical,
+  'Warfare' => l10n.tagWarfare,
+  'Romance' => l10n.tagRomance,
+  'Party' => l10n.tagParty,
+  'Kids' => l10n.tagKids,
+  'Educational' => l10n.tagEducational,
+  'Business' => l10n.tagBusiness,
+  'Non-fiction' => l10n.tagNonFiction,
+  '4X (explore, expand, exploit, and exterminate)' => l10n.tag4xExploreExpandExploitAndExterminate,
+  'Single player' => l10n.tagSinglePlayer,
+  'Multiplayer' => l10n.tagMultiplayer,
+  'Co-operative' => l10n.tagCoOperative,
+  'Split screen' => l10n.tagSplitScreen,
+  'Massively Multiplayer Online (MMO)' => l10n.tagMassivelyMultiplayerOnlineMmo,
+  'Battle Royale' => l10n.tagBattleRoyale,
+  'Erotic' => l10n.tagErotic,
+  'First person' => l10n.tagFirstPerson,
+  'Third person' => l10n.tagThirdPerson,
+  'Bird view / Isometric' => l10n.tagBirdViewIsometric,
+  'Side view' => l10n.tagSideView,
+  'Text' => l10n.tagText,
+  'Auditory' => l10n.tagAuditory,
+  'Virtual Reality' => l10n.tagVirtualReality,
+  _ => null,
+};
+
+/// The shorter name a filter chip gives the long ones ("RPG"), in the app's
+/// language.
+String? _shortTagName(AppLocalizations l10n, String name) => switch (name) {
+  'Role-playing (RPG)' => l10n.tagRolePlayingRpgShort,
+  "Hack and slash/Beat 'em up" => l10n.tagHackAndSlashBeatEmUpShort,
+  'Real Time Strategy (RTS)' => l10n.tagRealTimeStrategyRtsShort,
+  'Turn-based strategy (TBS)' => l10n.tagTurnBasedStrategyTbsShort,
+  'Science fiction' => l10n.tagScienceFictionShort,
+  '4X (explore, expand, exploit, and exterminate)' => l10n.tag4xExploreExpandExploitAndExterminateShort,
+  'Single player' => l10n.tagSinglePlayerShort,
+  'Co-operative' => l10n.tagCoOperativeShort,
+  'Massively Multiplayer Online (MMO)' => l10n.tagMassivelyMultiplayerOnlineMmoShort,
+  'Battle Royale' => l10n.tagBattleRoyaleShort,
+  _ => null,
+};

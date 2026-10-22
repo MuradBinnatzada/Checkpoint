@@ -6,8 +6,10 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart' show LaunchMode, launchUrl;
 
 import 'package:checkpoint/app/auth_gate.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
+import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -23,6 +25,7 @@ import 'package:checkpoint/widgets/expandable_text.dart';
 import 'package:checkpoint/widgets/game_poster_card.dart';
 import 'package:checkpoint/widgets/load_more_footer.dart';
 import 'package:checkpoint/widgets/panel.dart';
+import 'package:checkpoint/widgets/translation_note.dart';
 
 /// A publisher's or developer's page (IGDB keeps both as one company): its
 /// logo, where and since when it is, what it is part of, its description and
@@ -102,7 +105,7 @@ class _CompanyScreenState extends State<CompanyScreen> {
     final store = context.watch<CompanyStore>();
     final view = store.viewOf(widget.companyId);
     final company = view.company;
-    final name = company?.name ?? widget.name ?? 'Studio';
+    final name = company?.name ?? widget.name ?? context.l10n.studio;
 
     if (!context.watch<AuthStore>().isLoggedIn) {
       return Scaffold(
@@ -110,9 +113,9 @@ class _CompanyScreenState extends State<CompanyScreen> {
         // The Edge Function answers signed-in users only.
         body: EmptyState(
           icon: Icons.lock_outline_rounded,
-          title: 'Log in to see studios',
-          message: 'Studios and their games come from IGDB, which Checkpoint only reaches for signed-in users.',
-          actionLabel: 'Log in',
+          title: context.l10n.logInToSeeStudios,
+          message: context.l10n.logInToSeeStudiosMessage,
+          actionLabel: context.l10n.logIn,
           onAction: () => logIn(context),
         ),
       );
@@ -175,14 +178,14 @@ class _CompanyScreenState extends State<CompanyScreen> {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'Games',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                context.l10n.searchKindGames,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
             ),
             PopupMenuButton<DiscoverSort>(
-              tooltip: 'Sort games',
+              tooltip: context.l10n.sortGames,
               initialValue: _sort,
               onSelected: (sort) => _show(sort: sort),
               itemBuilder: (_) => [
@@ -262,9 +265,9 @@ class _CompanyScreenState extends State<CompanyScreen> {
       if (store.gamesFailed(key)) {
         state = EmptyState(
           icon: Icons.cloud_off_rounded,
-          title: 'Couldn’t load games',
-          message: 'Check your connection and try again.',
-          actionLabel: 'Try again',
+          title: context.l10n.gamesLoadFailed,
+          message: context.l10n.checkConnection,
+          actionLabel: context.l10n.tryAgain,
           onAction: () => unawaited(store.refreshGames(key)),
         );
       } else if (store.isGamesLoaded(key) && !store.isLoadingGames(key)) {
@@ -274,15 +277,15 @@ class _CompanyScreenState extends State<CompanyScreen> {
         state = ratedOnly
             ? EmptyState(
                 icon: Icons.star_outline_rounded,
-                title: 'No rated games here',
-                message: 'This list only has games with ratings on IGDB. The newest ones list them all.',
-                actionLabel: 'Show newest',
+                title: context.l10n.noRatedGames,
+                message: context.l10n.noRatedGamesMessage,
+                actionLabel: context.l10n.showNewest,
                 onAction: () => _show(sort: DiscoverSort.newest),
               )
-            : const EmptyState(
+            : EmptyState(
                 icon: Icons.search_off_rounded,
-                title: 'No games to show',
-                message: 'IGDB lists no games with a cover here.',
+                title: context.l10n.noGamesToShow,
+                message: context.l10n.noGamesWithCover,
               );
       } else {
         state = const Padding(
@@ -360,7 +363,7 @@ class _CompanyInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     final company = view.company;
     final facts = [
-      if (company?.foundedYear case final year?) 'Founded $year',
+      if (company?.foundedYear case final year?) context.l10n.foundedYear(year),
       ?company?.countryName,
     ];
     final parent = company?.parent;
@@ -410,7 +413,7 @@ class _CompanyInfo extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                'Part of ${parent.name}',
+                                context.l10n.partOf(parent.name),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -446,11 +449,11 @@ class _CompanyInfo extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Couldn’t load this studio’s details.',
+                    context.l10n.studioDetailsLoadFailed,
                     style: TextStyle(color: context.palette.muted, fontSize: 13),
                   ),
                 ),
-                TextButton(onPressed: onRetry, child: const Text('Try again')),
+                TextButton(onPressed: onRetry, child: Text(context.l10n.tryAgain)),
               ],
             ),
           ),
@@ -460,7 +463,7 @@ class _CompanyInfo extends StatelessWidget {
             children: [
               CountStat(
                 value: fmtCount(company.publishedCount),
-                label: 'Published',
+                label: context.l10n.companyRolePublished,
                 onTap: company.publishedCount > 0
                     ? () => onRole(CompanyRole.publisher)
                     : null,
@@ -468,7 +471,7 @@ class _CompanyInfo extends StatelessWidget {
               const SizedBox(width: 20),
               CountStat(
                 value: fmtCount(company.developedCount),
-                label: 'Developed',
+                label: context.l10n.companyRoleDeveloped,
                 onTap: company.developedCount > 0
                     ? () => onRole(CompanyRole.developer)
                     : null,
@@ -479,8 +482,11 @@ class _CompanyInfo extends StatelessWidget {
         if (description != null) ...[
           const SizedBox(height: 16),
           Panel(
-            title: 'About',
-            child: ExpandableText(description, collapsedLines: 5),
+            title: context.l10n.about,
+            child: _Description(
+              original: description,
+              translation: company?.translatedDescription,
+            ),
           ),
         ],
         if (websites.isNotEmpty) ...[
@@ -519,6 +525,44 @@ class _CompanyInfo extends StatelessWidget {
     ];
     kept.sort((a, b) => a.kind.index.compareTo(b.kind.index));
     return kept;
+  }
+}
+
+/// The company's description: in the app's language when the server translated
+/// it, with a note and a button for the original.
+class _Description extends StatefulWidget {
+  const _Description({required this.original, this.translation});
+
+  final String original;
+  final IgdbTranslation? translation;
+
+  @override
+  State<_Description> createState() => _DescriptionState();
+}
+
+class _DescriptionState extends State<_Description> {
+  bool _original = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final translation = widget.translation;
+    final translated = translation?.description != null && translation!.language == L10n.languageCode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExpandableText(
+          translated && !_original ? translation.description! : widget.original,
+          collapsedLines: 5,
+        ),
+        if (translated) ...[
+          const SizedBox(height: 4),
+          TranslationNote(
+            showingOriginal: _original,
+            onToggle: () => setState(() => _original = !_original),
+          ),
+        ],
+      ],
+    );
   }
 }
 

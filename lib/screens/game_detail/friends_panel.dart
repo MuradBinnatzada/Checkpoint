@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_friends.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
@@ -60,7 +61,7 @@ class _FriendsPanelState extends State<FriendsPanel> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Panel(
-        title: 'Friends',
+        title: context.l10n.friends,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -79,7 +80,7 @@ class _FriendsPanelState extends State<FriendsPanel> {
             if (friends.reviews.isNotEmpty) ...[
               Divider(height: 28, color: context.palette.hairline),
               Text(
-                'Reviews',
+                context.l10n.reviews,
                 style: TextStyle(color: context.palette.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
               ),
               for (final friend in friends.reviews) _FriendReview(friend: friend),
@@ -93,12 +94,11 @@ class _FriendsPanelState extends State<FriendsPanel> {
 
 /// "3 friends completed it", "1 friend is playing", "2 friends want to play".
 String friendGroupHeadline(FriendGroup group, int count) {
-  final one = count == 1;
-  final who = '$count ${one ? 'friend' : 'friends'}';
+  final l10n = L10n.current;
   return switch (group) {
-    FriendGroup.completed => '$who completed it',
-    FriendGroup.playing => '$who ${one ? 'is' : 'are'} playing',
-    FriendGroup.wantToPlay => '$who ${one ? 'wants' : 'want'} to play',
+    FriendGroup.completed => l10n.friendsCompletedIt(count),
+    FriendGroup.playing => l10n.friendsArePlaying(count),
+    FriendGroup.wantToPlay => l10n.friendsWantToPlay(count),
   };
 }
 
@@ -189,7 +189,7 @@ class _FriendAvatar extends StatelessWidget {
             message: member.name,
             child: Semantics(
               button: true,
-              label: 'Open ${member.name}\'s profile',
+              label: context.l10n.openMemberProfile(member.name),
               excludeSemantics: true,
               child: InkWell(
                 customBorder: const CircleBorder(),
@@ -230,7 +230,7 @@ class _FriendReview extends StatelessWidget {
         // The photo with room around it: 48 px to tap.
         Semantics(
           button: true,
-          label: "Open ${member.name}'s profile",
+          label: context.l10n.openMemberProfile(member.name),
           excludeSemantics: true,
           child: InkWell(
             customBorder: const CircleBorder(),

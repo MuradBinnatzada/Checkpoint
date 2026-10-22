@@ -1,7 +1,7 @@
 /**
  * sync-achievements — on-demand Steam achievements for ONE game.
  *
- * POST { game_id, user_id? }   (the caller is identified by their Supabase JWT)
+ * POST { game_id, user_id?, lang? }   (the caller is identified by their Supabase JWT)
  *   Without `user_id` (or with the caller's own id) it loads the caller's
  *   achievements. With another member's `user_id` it loads THEIRS, for their
  *   profile: the game must be in their library, they must have a Steam ID on
@@ -35,8 +35,15 @@
  *      `achievements_unlocked` / `achievements_total` / `achievements_synced_at`
  *      in step (20261018160000_steam_achievement_counts.sql).
  *
+ *   `lang` (optional) is the app's language when it is not English, like "ru":
+ *   the schema is also asked for in it, and each achievement gets Steam's own
+ *   translation under `translations` (_shared/steam_languages.ts). The stored
+ *   list keeps its English `name` and `description`, which every member shares;
+ *   a translation already there for another language is kept.
+ *
  * Response: { success: true, achievements: [
- *   { name, description, icon_url, unlocked, unlocked_at, global_percent } ] }
+ *   { api_name, name, description, icon_url, unlocked, unlocked_at, global_percent,
+ *     translations?: { <lang>: { name, description } } } ] }
  *   - `[]` means the game has no Steam achievements (stored as `[]`, not NULL,
  *     so the app doesn't offer to load them again).
  *   - `global_percent` is null when Steam's global stats were unavailable.
@@ -58,6 +65,12 @@ import { type BackoffOptions, fetchWithBackoff, parseRetryAfter } from '../_shar
 import { withCors } from '../_shared/cors.ts'
 import { secondFactorMissing } from '../_shared/mfa.ts'
 import { RATE_LIMITS, rateLimitWait } from '../_shared/rate_limit.ts'
+import {
+  type AchievementText,
+  hasTranslations,
+  steamLanguage,
+  withTranslations,
+} from '../_shared/steam_languages.ts'
 
 const STEAM_API = 'https://api.steampowered.com'
 
@@ -144,13 +157,18 @@ interface PlayerAchievement {
 }
 
 interface MergedAchievement {
+  api_name: string // Steam's API name, the join key with a translated schema
   name: string
   description: string
   icon_url: string
   unlocked: boolean
   unlocked_at: string | null
   global_percent: number | null // share of all players who have it, 0-100
+  translations?: Record<string, AchievementText>
 }
+
+/** The app's language as the request named it and Steam's name of it. */
+type Language = { lang: string; steam: string }
 
 type PlayerResult =
   | { kind: 'ok'; achievements: PlayerAchievement[] }
@@ -187,6 +205,7 @@ function mergeAchievements(
       (p?.description ?? '').trim() ||
       (s.hidden === 1 ? 'Hidden achievement' : '')
     return {
+      api_name: s.name,
       name: (s.displayName ?? '').trim() || s.name,
       description,
       icon_url: s.icon ?? '',
@@ -244,11 +263,11 @@ async function steamFetch(path: string, params: Record<string, string>): Promise
   }
 }
 
-async function fetchSchema(apiKey: string, appId: number): Promise<SchemaAchievement[]> {
+async function fetchSchema(apiKey: string, appId: number, language = 'english'): Promise<SchemaAchievement[]> {
   const res = await steamFetch('ISteamUserStats/GetSchemaForGame/v2/', {
     key: apiKey,
     appid: String(appId),
-    l: 'english',
+    l: language,
   })
   if (!res.ok) throw steamStatusError(res.status, res.headers.get('Retry-After'), 'Steam schema request failed')
   const data = await res.json().catch(() => null)
@@ -392,6 +411,31 @@ async function recentStoredAchievements(
   return fresh && Array.isArray(data.achievements) ? (data.achievements as MergedAchievement[]) : null
 }
 
+/**
+ * Steam's schema of [appId] in [language], for its translations; empty when
+ * Steam can't give it. Never throws: the list is complete in English without it.
+ */
+async function fetchTranslatedSchema(appId: number, language: Language): Promise<SchemaAchievement[]> {
+  const apiKey = Deno.env.get('STEAM_API_KEY')
+  if (!apiKey) return []
+  try {
+    return await fetchSchema(apiKey, appId, language.steam)
+  } catch (err) {
+    console.error(`sync-achievements: the ${language.steam} schema is unavailable:`, err)
+    return []
+  }
+}
+
+/** [list] with Steam's translations into [language], when it was asked for one. */
+async function translated(
+  list: MergedAchievement[],
+  appId: number,
+  language: Language | null,
+): Promise<MergedAchievement[]> {
+  if (!language || list.length === 0 || hasTranslations(list, language.lang)) return list
+  return withTranslations(list, await fetchTranslatedSchema(appId, language), language.lang)
+}
+
 async function syncAchievements(
   admin: SupabaseClient,
   userId: string,
@@ -399,6 +443,7 @@ async function syncAchievements(
   gameId: string,
   appId: number,
   own = true,
+  language: Language | null = null,
 ): Promise<MergedAchievement[]> {
   const apiKey = Deno.env.get('STEAM_API_KEY')
   if (!apiKey) {
@@ -407,10 +452,12 @@ async function syncAchievements(
   }
 
   // The Steam calls are independent, so run them together.
-  const [schema, player, globalPercents] = await Promise.all([
+  const [schema, player, globalPercents, translatedSchema, stored] = await Promise.all([
     fetchSchema(apiKey, appId),
     fetchPlayer(apiKey, steamId, appId),
     fetchGlobalPercents(appId),
+    language ? fetchTranslatedSchema(appId, language) : Promise.resolve([]),
+    storedTranslations(admin, userId, gameId),
   ])
 
   let merged: MergedAchievement[]
@@ -433,6 +480,9 @@ async function syncAchievements(
     // No status = Steam was unreachable, which is the same "try again" as a 5xx.
     throw steamStatusError(player.status ?? 503, player.retryAfter ?? null, 'Steam could not return the achievements')
   }
+  // Keep the translations other members' languages added, then add this one.
+  merged = merged.map((a) => (stored.has(a.api_name) ? { ...a, translations: stored.get(a.api_name) } : a))
+  if (language) merged = withTranslations(merged, translatedSchema, language.lang)
 
   // Updating (not upserting) means a game that isn't in this user's library
   // simply matches no row, which we report instead of creating anything.
@@ -448,6 +498,31 @@ async function syncAchievements(
   }
 
   return merged
+}
+
+/**
+ * The translations on [userId]'s stored list of [gameId], by API name, so a new
+ * sync keeps them. Empty when there are none or they can't be read.
+ */
+async function storedTranslations(
+  admin: SupabaseClient,
+  userId: string,
+  gameId: string,
+): Promise<Map<string, Record<string, AchievementText>>> {
+  const { data, error } = await admin
+    .from('user_games')
+    .select('achievements')
+    .eq('user_id', userId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  const byApiName = new Map<string, Record<string, AchievementText>>()
+  if (error || !Array.isArray(data?.achievements)) return byApiName
+  for (const a of data.achievements as Partial<MergedAchievement>[]) {
+    if (a?.api_name && a.translations && typeof a.translations === 'object') {
+      byApiName.set(a.api_name, a.translations)
+    }
+  }
+  return byApiName
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -492,7 +567,7 @@ serve(withCors(async (req) => {
     const wait = await rateLimitWait(admin, callerId, RATE_LIMITS.achievements)
     if (wait > 0) throw new HttpError(429, 'RATE_LIMITED', 'Too many requests, try again shortly', wait)
 
-    // Only `game_id` and `user_id` are read from the body. Any `steam_id` in it is
+    // Only `game_id`, `user_id` and `lang` are read from the body. Any `steam_id` in it is
     // ignored on purpose: the Steam ID comes from the member's own profile, so it
     // can't be swapped for someone else's.
     const body = await req.json().catch(() => ({}))
@@ -506,14 +581,21 @@ serve(withCors(async (req) => {
     }
     const userId = typeof requested === 'string' ? requested.toLowerCase() : callerId
     const own = userId === callerId.toLowerCase()
+    // A language that isn't one Steam has is English: the list as stored.
+    const language = steamLanguage(body?.lang)
 
+    let recent: MergedAchievement[] | null = null
     if (!own) {
       await assertAchievementsShared(admin, userId)
-      const recent = await recentStoredAchievements(admin, userId, gameId)
-      if (recent) return json({ success: true, achievements: recent })
+      recent = await recentStoredAchievements(admin, userId, gameId)
+      if (recent && !language) return json({ success: true, achievements: recent })
     }
 
     const appId = await steamAppIdForGame(admin, gameId)
+    if (recent) {
+      // Answered from the stored list; only its translations come from Steam.
+      return json({ success: true, achievements: appId === null ? recent : await translated(recent, appId, language) })
+    }
     if (appId === null) {
       throw new HttpError(
         400,
@@ -524,7 +606,7 @@ serve(withCors(async (req) => {
 
     const steamId = await fetchSteamId(admin, userId, own)
 
-    const achievements = await syncAchievements(admin, userId, steamId, gameId, appId, own)
+    const achievements = await syncAchievements(admin, userId, steamId, gameId, appId, own, language)
     return json({ success: true, achievements })
   } catch (error) {
     console.error('sync-achievements failed:', error)

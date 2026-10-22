@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -62,17 +63,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final Widget body;
     switch (view.status) {
       case PublicProfileStatus.notFound:
-        body = const EmptyState(
+        body = EmptyState(
           icon: Icons.person_off_rounded,
-          title: 'Profile not found',
-          message: 'This member may have deleted their account.',
+          title: context.l10n.profileNotFound,
+          message: context.l10n.profileNotFoundMessage,
         );
       case PublicProfileStatus.failed:
         body = EmptyState(
           icon: Icons.cloud_off_rounded,
-          title: 'Could not load this profile',
-          message: 'Check your connection and try again.',
-          actionLabel: 'Try again',
+          title: context.l10n.profileLoadFailed,
+          message: context.l10n.checkConnection,
+          actionLabel: context.l10n.tryAgain,
           onAction: () => unawaited(_load(force: true)),
         );
       case PublicProfileStatus.loading:
@@ -183,7 +184,7 @@ class _Loaded extends StatelessWidget {
         milestones: milestones,
       ),
       notice: view.refreshFailed
-          ? 'Could not refresh. Showing the last copy.'
+          ? context.l10n.refreshFailedShowingLast
           : null,
       bio: profile.bio,
       followers: followers,
@@ -197,11 +198,11 @@ class _Loaded extends StatelessWidget {
               child: following
                   ? OutlinedButton(
                       onPressed: () => _toggleFollow(context),
-                      child: const Text('Following'),
+                      child: Text(context.l10n.followingButton),
                     )
                   : FilledButton(
                       onPressed: () => _toggleFollow(context),
-                      child: const Text('Follow'),
+                      child: Text(context.l10n.follow),
                     ),
             ),
       favorites: view.favorites,
@@ -219,25 +220,25 @@ class _Loaded extends StatelessWidget {
       links: [
         ProfileLink(
           icon: Icons.collections_bookmark_rounded,
-          label: 'Library',
+          label: context.l10n.milestoneCategoryLibrary,
           count: library.games,
           onTap: () => openLibrary(),
         ),
         ProfileLink(
           icon: Icons.bookmark_rounded,
-          label: 'Wishlist',
+          label: GameStatus.wishlist.label,
           count: library.count(GameStatus.wishlist),
           onTap: () => openLibrary(status: GameStatus.wishlist),
         ),
         ProfileLink(
           icon: Icons.star_rounded,
-          label: 'Top rated',
+          label: context.l10n.topRated,
           count: library.ratedCount,
           onTap: () => openLibrary(sortBy: SortField.rating),
         ),
         ProfileLink(
           icon: Icons.format_list_bulleted_rounded,
-          label: 'Lists',
+          label: context.l10n.lists,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => ListsScreen(userId: userId, ownerName: profile.name),
@@ -246,19 +247,19 @@ class _Loaded extends StatelessWidget {
         ),
         ProfileLink(
           icon: Icons.emoji_events_rounded,
-          label: 'Milestones',
+          label: context.l10n.milestones,
           count: milestones.count,
           onTap: openAllMilestones,
         ),
         ProfileLink(
           icon: Icons.people_alt_rounded,
-          label: 'Followers',
+          label: context.l10n.followers,
           count: followers,
           onTap: () => openFollowers(FollowListKind.followers),
         ),
         ProfileLink(
           icon: Icons.person_add_alt_1_rounded,
-          label: 'Following',
+          label: context.l10n.following,
           count: followingCount,
           onTap: () => openFollowers(FollowListKind.following),
         ),
@@ -271,7 +272,7 @@ class _Loaded extends StatelessWidget {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Log in to follow people')),
+          SnackBar(content: Text(context.l10n.logInToFollow)),
         );
       return;
     }

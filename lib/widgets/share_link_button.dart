@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/share_link.dart';
 
 /// Copies the link to [target] and says so. [before] runs first, when given
@@ -22,7 +23,7 @@ Future<void> copyShareLink(
   await Clipboard.setData(ClipboardData(text: url));
   messenger
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('Link copied')));
+    ..showSnackBar(SnackBar(content: Text(L10n.current.linkCopied)));
 }
 
 /// Whether this build can make links (it knows the web app's address).
@@ -38,7 +39,7 @@ class ShareLinkButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!canShareLinks) return const SizedBox.shrink();
     return IconButton(
-      tooltip: 'Copy link',
+      tooltip: context.l10n.copyLink,
       onPressed: () => copyShareLink(context, target, before: before),
       icon: const Icon(Icons.share_rounded),
     );

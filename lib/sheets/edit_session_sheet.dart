@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/models/log_entry.dart';
@@ -30,15 +31,16 @@ Future<void> showEditSessionSheet(BuildContext context, String sessionId) async 
 Future<void> deleteSessionWithUndo(BuildContext context, LogEntry session) async {
   final store = context.read<LibraryStore>();
   final messenger = ScaffoldMessenger.of(context);
+  final l10n = context.l10n;
   final removed = await store.deleteSession(session.id);
   if (removed == null) return;
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text('Deleted the ${fmtHours(removed.hours)} h session'),
+      content: Text(l10n.deletedSession(fmtHours(removed.hours))),
       duration: _undoDuration,
       persist: false,
-      action: SnackBarAction(label: 'Undo', onPressed: () => store.restoreSession(removed)),
+      action: SnackBarAction(label: l10n.undo, onPressed: () => store.restoreSession(removed)),
     ));
 }
 
@@ -77,7 +79,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
     final valid = hours != null && hours > 0 && hours <= maxTotalHours;
 
     return SheetFrame(
-      title: 'Edit session',
+      title: context.l10n.editSession,
       subtitle: game?.title ?? '',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         TextField(
@@ -85,12 +87,12 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration(context, 'Hours played', suffix: 'hrs').copyWith(
-            errorText: hours != null && !valid ? 'Enter more than 0 hours.' : null,
+          decoration: fieldDecoration(context, context.l10n.hoursPlayed, suffix: context.l10n.hrsUnit).copyWith(
+            errorText: hours != null && !valid ? context.l10n.enterMoreThanZeroHours : null,
           ),
         ),
         const SizedBox(height: 18),
-        const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
+        Text(context.l10n.playedOn, style: const TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         PlatformChips(
           platforms: platforms,
@@ -108,7 +110,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, context.l10n.noteOptional).copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -127,7 +129,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
                     );
                     Navigator.pop(context);
                   },
-            child: const Text('Save changes'),
+            child: Text(context.l10n.saveChanges),
           ),
         ),
         const SizedBox(height: 8),
@@ -140,7 +142,7 @@ class _EditSessionSheetState extends State<EditSessionSheet> {
               Navigator.pop(context);
             },
             icon: const Icon(Icons.delete_outline_rounded, size: 18),
-            label: const Text('Delete session'),
+            label: Text(context.l10n.deleteSession),
           ),
         ),
       ]),

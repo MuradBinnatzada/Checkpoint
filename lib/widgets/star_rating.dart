@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 
@@ -38,15 +39,15 @@ class StarRating extends StatelessWidget {
       }),
     );
     if (onChanged == null) {
-      return Semantics(label: '${fmtHours(rating)} out of 5 stars', child: stars);
+      return Semantics(label: context.l10n.outOf5Stars(fmtHours(rating)), child: stars);
     }
     // An adjustable control for screen readers: swiping up or down (or the
     // volume keys) moves it half a star, since they can't drag across it.
-    String spoken(double v) => '${fmtHours(v)} out of 5 stars';
+    String spoken(double v) => context.l10n.outOf5Stars(fmtHours(v));
     return Semantics(
       slider: true,
-      label: 'Rating',
-      value: rating > 0 ? spoken(rating) : 'Not rated',
+      label: context.l10n.sortRating,
+      value: rating > 0 ? spoken(rating) : context.l10n.notRated,
       increasedValue: spoken(math.min(5, rating + 0.5)),
       decreasedValue: spoken(math.max(0.5, rating - 0.5)),
       onIncrease: rating < 5 ? () => onChanged!(math.min(5, rating + 0.5)) : null,

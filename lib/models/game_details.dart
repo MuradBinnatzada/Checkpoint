@@ -60,6 +60,7 @@ class GameDetails {
     this.storyline,
     this.similarGames = const [],
     this.timeToBeat,
+    this.translation,
   });
 
   final int igdbId;
@@ -85,6 +86,10 @@ class GameDetails {
   final List<Game> similarGames;
   final TimeToBeat? timeToBeat;
 
+  /// The summary and storyline in the app's language, when it is not English
+  /// and the server translated them; null otherwise.
+  final IgdbTranslation? translation;
+
   /// Whether there is any attribute to list in the game info panel.
   bool get hasInfo =>
       developers.isNotEmpty ||
@@ -93,6 +98,35 @@ class GameDetails {
       gameModes.isNotEmpty ||
       perspectives.isNotEmpty ||
       engines.isNotEmpty;
+}
+
+/// IGDB's texts machine-translated into the app's language by `igdb-handler`
+/// (DeepL): a game's summary and storyline, or a company's description. Each
+/// is null when there was none to translate, or it could not be.
+@immutable
+class IgdbTranslation {
+  const IgdbTranslation({required this.language, this.summary, this.storyline, this.description});
+
+  /// The language code they are in ("ru").
+  final String language;
+  final String? summary;
+  final String? storyline;
+  final String? description;
+
+  /// From the `translations` the function sends, or null when there are none.
+  static IgdbTranslation? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final language = json['lang'];
+    if (language is! String || language.isEmpty) return null;
+    String? text(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
+    final result = IgdbTranslation(
+      language: language,
+      summary: text(json['summary']),
+      storyline: text(json['storyline']),
+      description: text(json['description']),
+    );
+    return result.summary == null && result.storyline == null && result.description == null ? null : result;
+  }
 }
 
 /// What one `backfill` request of `igdb-handler` came back with: the games whose

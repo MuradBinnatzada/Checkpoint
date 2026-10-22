@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/results_page.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
@@ -10,13 +11,15 @@ import 'package:checkpoint/utils/lru_cache.dart';
 
 enum FollowListKind {
   /// The members who follow someone.
-  followers('Followers'),
+  followers,
 
   /// The members someone follows.
-  following('Following');
+  following;
 
-  const FollowListKind(this.label);
-  final String label;
+  String get label => switch (this) {
+    followers => L10n.current.followers,
+    following => L10n.current.following,
+  };
 }
 
 /// One page-by-page list of members.

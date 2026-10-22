@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
@@ -17,13 +18,13 @@ class RecentActivityPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Panel(
-      title: 'Recent activity',
+      title: context.l10n.privacyRecentActivity,
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
       child: entries.isEmpty
           ? Padding(
               padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
               child: Text(
-                'No sessions logged yet.',
+                context.l10n.noSessionsLoggedYet,
                 style: TextStyle(color: context.palette.muted, fontSize: 13),
               ),
             )
@@ -69,7 +70,7 @@ class RecentActivityPanel extends StatelessWidget {
                                     const SizedBox(width: 5),
                                     Flexible(
                                       child: Text(
-                                        '${fmtHours(e.hours)} h · ${e.platform.label}',
+                                        '${context.l10n.hoursShort(fmtHours(e.hours))} · ${e.platform.label}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(

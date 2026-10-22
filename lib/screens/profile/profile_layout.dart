@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
@@ -100,8 +101,8 @@ class ProfileHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   isSelf
-                      ? 'This is you'
-                      : 'Member since ${fmtMonthYear(joined!)}',
+                      ? context.l10n.thisIsYou
+                      : context.l10n.memberSince(fmtMonthYear(joined!)),
                   style: TextStyle(color: context.palette.muted, fontSize: 12.5),
                 ),
               ],
@@ -111,7 +112,7 @@ class ProfileHeader extends StatelessWidget {
                   children: [
                     for (final m in showcase)
                       Padding(
-                        padding: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsetsDirectional.only(end: 6),
                         child: InkWell(
                           customBorder: const CircleBorder(),
                           onTap: () => unawaited(
@@ -167,8 +168,8 @@ class ProfileLayout extends StatelessWidget {
     this.actions,
     this.services = const {},
     this.accountNames = const {},
-    this.emptyFavorites = 'No favorites picked yet.',
-    this.emptyHours = 'No hours logged yet.',
+    this.emptyFavorites,
+    this.emptyHours,
   });
 
   /// Whose achievements the page offers.
@@ -206,8 +207,8 @@ class ProfileLayout extends StatelessWidget {
   /// The Milestones card ([MilestonesSection]), just above the achievements.
   final Widget? milestones;
 
-  final String emptyFavorites;
-  final String emptyHours;
+  final String? emptyFavorites;
+  final String? emptyHours;
 
   @override
   Widget build(BuildContext context) {
@@ -255,23 +256,23 @@ class ProfileLayout extends StatelessWidget {
           children: [
             CountStat(
               value: fmtCount(followers),
-              label: 'Followers',
+              label: context.l10n.followers,
               onTap: onFollowers,
             ),
             CountStat(
               value: fmtCount(following),
-              label: 'Following',
+              label: context.l10n.following,
               onTap: onFollowing,
             ),
           ],
         ),
         if (actions != null) ...[const SizedBox(height: 14), actions!],
         const SizedBox(height: 28),
-        const _SectionTitle('Favorite Games'),
+        _SectionTitle(context.l10n.favoriteGames),
         if (favorites.isEmpty)
           Panel(
             child: Text(
-              emptyFavorites,
+              emptyFavorites ?? context.l10n.noFavoritesOther,
               style: TextStyle(
                 color: context.palette.muted,
                 fontSize: 13,
@@ -285,29 +286,29 @@ class ProfileLayout extends StatelessWidget {
         RecentActivityPanel(entries: activity),
         const SizedBox(height: 24),
         Text(
-          'Total Playtime: ${fmtHours(library.totalHours)} hours',
+          context.l10n.totalPlaytime(context.l10n.hoursLong(library.totalHours, fmtHours(library.totalHours))),
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            statTile(Icons.play_arrow_rounded, GameStatus.playing, 'Playing'),
+            statTile(Icons.play_arrow_rounded, GameStatus.playing, GameStatus.playing.label),
             const SizedBox(width: 10),
-            statTile(Icons.verified_rounded, GameStatus.completed, 'Completed'),
+            statTile(Icons.verified_rounded, GameStatus.completed, GameStatus.completed.label),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            statTile(Icons.inventory_2_rounded, GameStatus.toPlay, 'To Play'),
+            statTile(Icons.inventory_2_rounded, GameStatus.toPlay, GameStatus.toPlay.label),
             const SizedBox(width: 10),
-            statTile(Icons.block_rounded, GameStatus.dropped, 'Dropped'),
+            statTile(Icons.block_rounded, GameStatus.dropped, GameStatus.dropped.label),
           ],
         ),
         const SizedBox(height: 14),
         HoursByPlatformPanel(
           hours: library.hoursByPlatform,
-          emptyText: emptyHours,
+          emptyText: emptyHours ?? context.l10n.noHoursOther,
         ),
         const SizedBox(height: 14),
         RatingsPanel(stats: library),

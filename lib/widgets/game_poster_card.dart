@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/navigation.dart';
@@ -34,7 +35,7 @@ class GamePosterCard extends StatelessWidget {
             const SizedBox(height: 4),
             game.rating > 0
                 ? StarRating(rating: game.rating, size: 14)
-                : Text('Not rated', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: context.palette.muted)),
+                : Text(context.l10n.notRated, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: context.palette.muted)),
           ],
           if (subtitle != null) ...[
             const SizedBox(height: 4),

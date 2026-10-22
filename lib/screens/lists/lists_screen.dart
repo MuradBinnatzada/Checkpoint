@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/screens/lists/list_screen.dart';
 import 'package:checkpoint/sheets/list_sheets.dart';
@@ -49,19 +50,21 @@ class _ListsScreenState extends State<ListsScreen> {
     } else if (lists.isEmpty && status == LoadStatus.failed) {
       body = EmptyState(
         icon: Icons.cloud_off_rounded,
-        title: 'Could not load the lists',
-        message: 'Lists need a connection. Check it and try again.',
-        actionLabel: 'Retry',
+        title: context.l10n.listsLoadFailed,
+        message: context.l10n.listsNeedConnection,
+        actionLabel: context.l10n.retry,
         onAction: () => _load(force: true),
       );
     } else if (lists.isEmpty) {
       body = EmptyState(
         icon: Icons.format_list_bulleted_rounded,
-        title: own ? 'No lists yet' : 'No public lists',
+        title: own ? context.l10n.noListsYet : context.l10n.noPublicLists,
         message: own
-            ? 'Make lists of games in any order: favorites of a genre, a backlog for the holidays, a ranking.'
-            : '${widget.ownerName ?? 'This member'} has no public lists.',
-        actionLabel: own ? 'New list' : null,
+            ? context.l10n.noListsYetMessage
+            : widget.ownerName == null
+            ? context.l10n.memberHasNoPublicLists
+            : context.l10n.nameHasNoPublicLists(widget.ownerName!),
+        actionLabel: own ? context.l10n.newList : null,
         onAction: own ? () => _newList(context) : null,
       );
     } else {
@@ -76,12 +79,20 @@ class _ListsScreenState extends State<ListsScreen> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: Text(own ? 'Your lists' : '${widget.ownerName ?? 'Their'} lists')),
+      appBar: AppBar(
+        title: Text(
+          own
+              ? context.l10n.yourLists
+              : widget.ownerName == null
+              ? context.l10n.theirLists
+              : context.l10n.nameLists(widget.ownerName!),
+        ),
+      ),
       floatingActionButton: own && lists.isNotEmpty
           ? FloatingActionButton.extended(
               onPressed: () => _newList(context),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('New list'),
+              label: Text(context.l10n.newList),
             )
           : null,
       body: body,
@@ -128,11 +139,11 @@ class ListCard extends StatelessWidget {
                 list.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded,
                 size: 16,
                 color: context.palette.muted,
-                semanticLabel: list.isPublic ? 'Public' : 'Private',
+                semanticLabel: list.isPublic ? context.l10n.listPublic : context.l10n.listPrivate,
               ),
             ]),
             const SizedBox(height: 2),
-            Text('$count game${count == 1 ? '' : 's'}', style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
+            Text(context.l10n.gamesCount(count), style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
             if (count > 0) ...[
               const SizedBox(height: 10),
               SizedBox(
@@ -140,7 +151,7 @@ class ListCard extends StatelessWidget {
                 child: Row(children: [
                   for (final game in list.games.take(6))
                     Padding(
-                      padding: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsetsDirectional.only(end: 6),
                       child: SizedBox(width: 48, child: CoverArt(game: game, radius: 6, showTitle: false)),
                     ),
                 ]),

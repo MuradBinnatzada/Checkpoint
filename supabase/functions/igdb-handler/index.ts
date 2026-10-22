@@ -37,11 +37,17 @@
 //                        (the queries live in _shared/browse_queries.ts)
 //          Header:       Authorization: Bearer <user access token>
 //                        or, for one game's whole page (the details screen):
-//                        { "mode": "details", "igdb_id": 472 }
+//                        { "mode": "details", "igdb_id": 472, "lang": "ru" }
 //                          answers { "game": <the IGDB game, with platforms, genres,
 //                          themes, game modes, perspectives, engines, companies,
 //                          storyline and similar games>, "time_to_beat": { hastily,
-//                          normally, completely (seconds, or null), count } | null }.
+//                          normally, completely (seconds, or null), count } | null,
+//                          "translations"?: { lang, summary?, storyline? } }.
+//                          `lang` is optional: the app's language when it is not
+//                          English. The summary and storyline are then translated
+//                          into it too (DeepL, stored per text; _shared/deepl.ts);
+//                          `translations` is left out when nothing was (English,
+//                          a language DeepL lacks, no DEEPL_API_KEY, DeepL down).
 //                          The stable part (exact platforms, genres, themes, modes,
 //                          perspectives, engines, developers, publishers) is also
 //                          written to the game's shared `games` row, at most once a
@@ -90,11 +96,13 @@
 //                          there], "unknown": [ids IGDB has no game for] }.
 //                        or, for a company's page (a publisher or developer
 //                        tapped on a game's screen, or found by the studio search):
-//                        { "mode": "company", "company_id": 56 }
+//                        { "mode": "company", "company_id": 56, "lang": "ru" }
 //                          answers { "company": { id, name, description, country
 //                          (ISO 3166-1 number), start_date (Unix seconds),
 //                          logo_image_id, parent: { id, name } | null, websites:
-//                          [{ url, type }], published_count, developed_count } }.
+//                          [{ url, type }], published_count, developed_count },
+//                          "translations"?: { lang, description } }, `lang` as for
+//                          `details`.
 //                        or, for the games of a company:
 //                        { "mode": "company_games", "company_id": 56,
 //                          "role": "any" | "publisher" | "developer",
@@ -139,6 +147,8 @@
 // Secrets (set with `supabase secrets set`):
 //   TWITCH_CLIENT_ID
 //   TWITCH_CLIENT_SECRET
+//   DEEPL_API_KEY    optional: translates game summaries, storylines and company
+//                    descriptions for the app's other languages (_shared/deepl.ts)
 //   ALLOWED_ORIGINS  optional, the web app's origins (_shared/cors.ts)
 // SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are injected
 // automatically by Supabase.
@@ -191,6 +201,12 @@ import {
   parseGameFilters,
 } from "../_shared/game_filters.ts";
 import { gameMedia, mediaQuery } from "../_shared/game_media.ts";
+import {
+  translatable,
+  translateTexts,
+  translationLanguage,
+  type TranslationStore,
+} from "../_shared/deepl.ts";
 import {
   joinSearchPage,
   searchPagePlan,
@@ -620,7 +636,10 @@ async function browseGames(
 
 // One game with everything the details screen shows, and its time to beat. The
 // time to beat is a nicety: when only that request fails, the rest is still sent.
-async function gameDetails(igdbId: number): Promise<unknown> {
+async function gameDetails(
+  igdbId: number,
+  lang: string | null,
+): Promise<unknown> {
   const [games, timeToBeatRows] = await Promise.all([
     queryIgdb(IGDB_GAMES_URL, detailsQuery(igdbId)),
     queryIgdb(IGDB_TIME_TO_BEAT_URL, timeToBeatQuery(igdbId)).catch((err) => {
@@ -631,8 +650,73 @@ async function gameDetails(igdbId: number): Promise<unknown> {
   const game = firstRow(games);
   if (!game) throw new HttpError(404, "NOT_FOUND", "No such game");
 
-  await saveCatalogRow(igdbId, game);
-  return { game, time_to_beat: timeToBeat(firstRow(timeToBeatRows)) };
+  const [, translations] = await Promise.all([
+    saveCatalogRow(igdbId, game),
+    translateFields({ summary: game.summary, storyline: game.storyline }, lang),
+  ]);
+  return {
+    game,
+    time_to_beat: timeToBeat(firstRow(timeToBeatRows)),
+    ...(translations ? { translations } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Translations: IGDB's texts in the app's language
+// ---------------------------------------------------------------------------
+
+// `text_translations`, read and written with the service role.
+function translationStore(
+  admin: NonNullable<ReturnType<typeof serviceClient>>,
+): TranslationStore {
+  return {
+    async lookup(hashes, lang) {
+      const { data, error } = await admin
+        .from("text_translations")
+        .select("source_hash, translation")
+        .eq("lang", lang)
+        .in("source_hash", hashes);
+      if (error) throw error;
+      return new Map(
+        (data ?? []).map((r) => [String(r.source_hash), String(r.translation)]),
+      );
+    },
+    async save(rows) {
+      const { error } = await admin
+        .from("text_translations")
+        .upsert(rows, { onConflict: "source_hash,lang", ignoreDuplicates: true });
+      if (error) throw error;
+    },
+  };
+}
+
+// [fields] (a name and the IGDB text under it) translated into [lang], as
+// { lang, <name>: <translation> }; null when nothing was: no [lang] (English),
+// no DEEPL_API_KEY, no text, or DeepL could not be reached. Never throws.
+async function translateFields(
+  fields: Record<string, unknown>,
+  lang: string | null,
+): Promise<Record<string, string> | null> {
+  if (!lang) return null;
+  const key = Deno.env.get("DEEPL_API_KEY");
+  const admin = serviceClient();
+  if (!key || !admin) return null;
+  const texts: [string, string][] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    const text = translatable(value);
+    if (text) texts.push([name, text]);
+  }
+  if (texts.length === 0) return null;
+  const translated = await translateTexts(texts.map(([, t]) => t), lang, {
+    key,
+    store: translationStore(admin),
+  });
+  const result: Record<string, string> = {};
+  for (const [name, text] of texts) {
+    const translation = translated.get(text);
+    if (translation) result[name] = translation;
+  }
+  return Object.keys(result).length === 0 ? null : { lang, ...result };
 }
 
 // ---------------------------------------------------------------------------
@@ -835,12 +919,19 @@ async function addGames(
 // Companies: a publisher's or developer's page, its games, the studio search
 // ---------------------------------------------------------------------------
 
-async function companyPage(companyId: number): Promise<unknown> {
+async function companyPage(
+  companyId: number,
+  lang: string | null,
+): Promise<unknown> {
   const company = companyInfo(
     firstRow(await queryIgdb(IGDB_COMPANIES_URL, companyQuery(companyId))),
   );
   if (!company) throw new HttpError(404, "NOT_FOUND", "No such company");
-  return { company };
+  const translations = await translateFields(
+    { description: company.description },
+    lang,
+  );
+  return { company, ...(translations ? { translations } : {}) };
 }
 
 function companyGames(
@@ -946,7 +1037,9 @@ Deno.serve(withCors(async (req: Request) => {
           400,
         );
       }
-      return jsonResponse(await gameDetails(igdbId));
+      return jsonResponse(
+        await gameDetails(igdbId, translationLanguage(payload?.lang)),
+      );
     }
 
     // `media`: the art a member can pick for one game's backdrop, by IGDB id.
@@ -1008,7 +1101,9 @@ Deno.serve(withCors(async (req: Request) => {
           400,
         );
       }
-      return jsonResponse(await companyPage(companyId));
+      return jsonResponse(
+        await companyPage(companyId, translationLanguage(payload?.lang)),
+      );
     }
 
     // `company_games`: one company's games, in a role and an order.

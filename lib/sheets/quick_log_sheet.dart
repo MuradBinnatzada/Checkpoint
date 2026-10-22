@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/limits.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -17,7 +18,7 @@ bool _blockedByReadOnly(BuildContext context) {
   if (context.read<AuthStore>().isLoggedIn) return false;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('Log in to track games')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.logInToTrackGames)));
   return true;
 }
 
@@ -107,12 +108,15 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
 
   void _save(Game game, double hours) {
     final messenger = ScaffoldMessenger.of(context);
+    final logged = _platform == null
+        ? context.l10n.loggedHoursOf(fmtHours(hours), game.title)
+        : context.l10n.loggedHoursOfOn(fmtHours(hours), game.title, _platform!.label);
     context.read<LibraryStore>().logSession(gameId: game.id, hours: hours, platform: _platform, note: _note.text, at: _at);
     if (widget.fromTimer) context.read<PlayTimerStore>().clear();
     Navigator.pop(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Logged ${fmtHours(hours)}h of ${game.title} on ${_platform?.label ?? 'your platform'}')));
+      ..showSnackBar(SnackBar(content: Text(logged)));
   }
 
   @override
@@ -130,8 +134,8 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
       });
 
     return SheetFrame(
-      title: widget.fromTimer ? 'Log your timer' : 'Log a session',
-      subtitle: 'Track your time and where you played.',
+      title: widget.fromTimer ? context.l10n.logYourTimer : context.l10n.logASession,
+      subtitle: context.l10n.logSessionSubtitle,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DropdownMenu<String>(
           initialSelection: _gameId,
@@ -139,11 +143,11 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           enableFilter: true,
           requestFocusOnTap: true,
           menuHeight: 280,
-          label: const Text('Game'),
+          label: Text(context.l10n.game),
           leadingIcon: const Icon(Icons.sports_esports_rounded),
           // The arrow is a button of its own: screen readers say what it does.
-          trailingIcon: const Icon(Icons.arrow_drop_down, semanticLabel: 'Show games'),
-          selectedTrailingIcon: const Icon(Icons.arrow_drop_up, semanticLabel: 'Hide games'),
+          trailingIcon: Icon(Icons.arrow_drop_down, semanticLabel: context.l10n.showGames),
+          selectedTrailingIcon: Icon(Icons.arrow_drop_up, semanticLabel: context.l10n.hideGames),
           dropdownMenuEntries: [
             for (final g in sorted)
               DropdownMenuEntry<String>(value: g.id, label: g.title, leadingIcon: Icon(g.coverIcon, color: g.coverColors.first, size: 20)),
@@ -155,7 +159,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
         ),
         if (game != null) ...[
           const SizedBox(height: 18),
-          const Text('Played on', style: TextStyle(fontWeight: FontWeight.w700)),
+          Text(context.l10n.playedOn, style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           PlatformChips(platforms: game.playedOnOptions, selected: _platform, onSelected: (p) => setState(() => _platform = p)),
         ],
@@ -165,9 +169,9 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           keyboardType: decimalKeyboard,
           inputFormatters: [decimalFormatter],
           onChanged: (_) => setState(() {}),
-          decoration: fieldDecoration(context, 'Hours played this session', suffix: 'hrs').copyWith(
+          decoration: fieldDecoration(context, context.l10n.hoursThisSession, suffix: context.l10n.hrsUnit).copyWith(
             errorText: tooLong
-                ? 'One session is at most ${fmtHours(maxSessionHours)} hours. To change a game\'s total, use Log Hours on its page.'
+                ? context.l10n.sessionTooLong(fmtHours(maxSessionHours))
                 : null,
             errorMaxLines: 3,
           ),
@@ -176,7 +180,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
         Wrap(spacing: 8, children: [
           for (final h in const <double>[0.5, 1, 2, 4])
             ActionChip(
-              label: Text('+${fmtHours(h)}h'),
+              label: Text('+${context.l10n.hoursCompact(fmtHours(h))}'),
               onPressed: () => setState(() => _hours.text = fmtHours((parseNum(_hours.text) ?? 0) + h)),
             ),
         ]),
@@ -187,7 +191,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           controller: _note,
           maxLength: maxNoteLength,
           textCapitalization: TextCapitalization.sentences,
-          decoration: fieldDecoration(context, 'Note (optional)').copyWith(counterText: ''),
+          decoration: fieldDecoration(context, context.l10n.noteOptional).copyWith(counterText: ''),
         ),
         const SizedBox(height: 20),
         SizedBox(
@@ -195,7 +199,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
           child: FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             onPressed: canSave ? () => _save(game, hours) : null,
-            child: const Text('Save session'),
+            child: Text(context.l10n.saveSession),
           ),
         ),
         if (widget.fromTimer) ...[
@@ -207,7 +211,7 @@ class _QuickLogSheetState extends State<QuickLogSheet> {
                 context.read<PlayTimerStore>().clear();
                 Navigator.pop(context);
               },
-              child: const Text('Discard timer'),
+              child: Text(context.l10n.discardTimer),
             ),
           ),
         ],

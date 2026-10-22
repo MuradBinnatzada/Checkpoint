@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/sign_in_panel.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -20,11 +21,11 @@ class AuthGate extends StatelessWidget {
         Positioned.fill(
           child: ColoredBox(
             color: context.palette.background.withValues(alpha: 0.94),
-            child: const SafeArea(
+            child: SafeArea(
               child: SignInPanel(
                 icon: Icons.lock_outline_rounded,
-                title: 'Log in to track games',
-                message: 'Log in to build your library, log your hours and search every game on IGDB.',
+                title: context.l10n.logInToTrackGames,
+                message: context.l10n.logInToTrackGamesMessage,
               ),
             ),
           ),

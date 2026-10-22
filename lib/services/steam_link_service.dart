@@ -4,6 +4,7 @@ import 'dart:io' show ContentType, HttpServer, HttpStatus, InternetAddress;
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/web_address.dart';
 
 /// Asks the server to start a Steam link (CheckpointRepository.startSteamLink):
@@ -64,12 +65,10 @@ class SteamLinkFlow {
   static const _returnWait = Duration(minutes: 11);
   static const _returnPath = '/steam-link';
 
-  static const unsupportedMessage =
-      "Connecting Steam isn't available on this device yet. Connect it in "
-      'Checkpoint on the web, on your phone or on your computer.';
-  static const _noBrowser = "Couldn't open a browser for Steam sign-in.";
-  static const _timedOut = 'Steam sign-in timed out. Connect Steam again.';
-  static const _cancelled = 'Steam sign-in was cancelled.';
+  static String get unsupportedMessage => L10n.current.steamLinkUnsupported;
+  static String get _noBrowser => L10n.current.steamLinkNoBrowser;
+  static String get _timedOut => L10n.current.steamLinkTimedOut;
+  static String get _cancelled => L10n.current.steamLinkCancelled;
 
   /// The listener of an unfinished desktop sign-in, and what it waits for.
   HttpServer? _loopback;
@@ -91,7 +90,7 @@ class SteamLinkFlow {
         await _launch(await start(null), mode: LaunchMode.inAppBrowserView);
         return const SteamLinkOpened();
       case TargetPlatform.fuchsia:
-        throw const SteamLinkException(unsupportedMessage);
+        throw SteamLinkException(unsupportedMessage);
     }
   }
 
@@ -99,7 +98,7 @@ class SteamLinkFlow {
   Future<void> cancel() async {
     final returned = _returned;
     if (returned != null && !returned.isCompleted) {
-      returned.completeError(const SteamLinkException(_cancelled));
+      returned.completeError(SteamLinkException(_cancelled));
     }
     await _loopback?.close(force: true);
   }
@@ -131,9 +130,9 @@ class SteamLinkFlow {
       );
     } catch (e) {
       debugPrint('Opening Steam sign-in failed: $e');
-      throw const SteamLinkException(_noBrowser);
+      throw SteamLinkException(_noBrowser);
     }
-    if (!opened) throw const SteamLinkException(_noBrowser);
+    if (!opened) throw SteamLinkException(_noBrowser);
   }
 
   /// Opens Steam's page in the system browser and waits for Steam's return on
@@ -175,7 +174,7 @@ class SteamLinkFlow {
       await _launch(page, mode: LaunchMode.externalApplication);
       return await returned.future.timeout(
         _returnWait,
-        onTimeout: () => throw const SteamLinkException(_timedOut),
+        onTimeout: () => throw SteamLinkException(_timedOut),
       );
     } finally {
       await subscription.cancel();
@@ -189,11 +188,10 @@ class SteamLinkFlow {
 
   /// The page the browser shows when Steam's return reaches the desktop app.
   static String _returnPage({required bool ok}) {
-    final title = ok ? 'Steam connected' : 'Steam was not connected';
-    final body = ok
-        ? 'You can close this tab and go back to Checkpoint.'
-        : 'Go back to Checkpoint to see why.';
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Checkpoint</title>'
+    final l10n = L10n.current;
+    final title = ok ? l10n.steamLinkPageConnected : l10n.steamLinkPageNotConnected;
+    final body = ok ? l10n.authCallbackSignedInBody : l10n.steamLinkPageNotConnectedBody;
+    return '<!doctype html><html lang="${L10n.languageCode}"><head><meta charset="utf-8"><title>Checkpoint</title>'
         '<style>body{font-family:sans-serif;background:#0b0d12;color:#eee;display:grid;'
         'place-items:center;height:100vh;margin:0;text-align:center}</style></head>'
         '<body><div><h2>$title</h2><p>$body</p></div></body></html>';

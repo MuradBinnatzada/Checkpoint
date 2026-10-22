@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
+
 /// The six-digit code an authenticator app shows. Only digits go in (a pasted
 /// code keeps its digits), and [onSubmit] runs once all six are typed, or on
 /// the keyboard's done key.
@@ -47,7 +49,7 @@ class OneTimeCodeField extends StatelessWidget {
         LengthLimitingTextInputFormatter(length),
       ],
       decoration: InputDecoration(
-        labelText: '6-digit code',
+        labelText: context.l10n.sixDigitCode,
         errorText: errorText,
         errorMaxLines: 3,
       ),

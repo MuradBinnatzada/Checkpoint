@@ -9,6 +9,8 @@
 /coverage/
 /doc/api/
 pubspec_overrides.yaml
+# Generated from lib/l10n/*.arb by `flutter pub get` and every build
+lib/l10n/generated/
 
 # Root level stray files
 /main.dart

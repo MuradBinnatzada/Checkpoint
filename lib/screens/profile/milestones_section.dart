@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/milestone_progress.dart';
 import 'package:checkpoint/theme/palette.dart';
@@ -37,15 +38,15 @@ class MilestonesSection extends StatelessWidget {
     final latest = earned.list.take(recent).toList();
 
     return Panel(
-      title: 'Milestones',
-      trailing: TextButton(onPressed: onSeeAll, child: const Text('See all')),
+      title: context.l10n.milestones,
+      trailing: TextButton(onPressed: onSeeAll, child: Text(context.l10n.seeAllShort)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Text(
-                'Level ${level.level}',
+                context.l10n.levelN(level.level),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -54,7 +55,7 @@ class MilestonesSection extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${earned.count} / ${milestones.length} earned',
+                  context.l10n.earnedOf(earned.count, milestones.length),
                   textAlign: TextAlign.end,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -81,8 +82,8 @@ class MilestonesSection extends StatelessWidget {
           if (latest.isEmpty)
             Text(
               own
-                  ? 'Add a game or log a session to earn your first milestone.'
-                  : 'No milestones yet.',
+                  ? context.l10n.noMilestonesOwn
+                  : context.l10n.noMilestonesOther,
               style: TextStyle(
                 color: palette.muted,
                 fontSize: 13,

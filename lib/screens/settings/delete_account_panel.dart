@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/screens/settings/danger_panel.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
@@ -25,20 +26,17 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text(
-          'This permanently deletes your profile, library, play logs, follows '
-          'and photo, and removes your sign-in. It can\'t be undone.',
-        ),
+        title: Text(context.l10n.deleteAccountTitle),
+        content: Text(context.l10n.deleteAccountBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: DangerPanel.colorOf(context)),
-            child: const Text('Delete account'),
+            child: Text(context.l10n.deleteAccount),
           ),
         ],
       ),
@@ -52,6 +50,7 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
     final store = context.read<ProfileStore>();
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final deleted = context.l10n.accountDeleted;
 
     setState(() => _deleting = true);
     widget.onDeletingChanged(true);
@@ -68,18 +67,16 @@ class _DeleteAccountPanelState extends State<DeleteAccountPanel> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(error ?? 'Your account was deleted')),
+        SnackBar(content: Text(error ?? deleted)),
       );
   }
 
   @override
   Widget build(BuildContext context) {
     return DangerPanel(
-      title: 'Delete account',
-      description:
-          'Permanently deletes your profile, library, play logs, follows and '
-          'photo, and removes your sign-in. This can\'t be undone.',
-      buttonLabel: 'Delete account',
+      title: context.l10n.deleteAccount,
+      description: context.l10n.deleteAccountDescription,
+      buttonLabel: context.l10n.deleteAccount,
       icon: Icons.delete_forever_rounded,
       busy: _deleting,
       onPressed: _confirmDelete,

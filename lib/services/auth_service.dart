@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/services/mfa_recovery_failure.dart';
 import 'package:checkpoint/services/session_storage.dart';
 
@@ -147,11 +148,11 @@ class AuthService {
 
     // Native flow: Google account picker → ID token → Supabase session.
     final account = await _googleSignIn.signIn();
-    if (account == null) throw AuthException('Google sign-in was cancelled.');
+    if (account == null) throw AuthException(L10n.current.authGoogleCancelled);
 
     final googleAuth = await account.authentication;
     final idToken = googleAuth.idToken;
-    if (idToken == null) throw AuthException('Google did not return an ID token.');
+    if (idToken == null) throw AuthException(L10n.current.authGoogleNoToken);
 
     await _auth.signInWithIdToken(
       provider: OAuthProvider.google,
@@ -175,7 +176,7 @@ class AuthService {
       nonce: sha256.convert(utf8.encode(rawNonce)).toString(),
     );
     final idToken = credential.identityToken;
-    if (idToken == null) throw AuthException('Apple did not return an ID token.');
+    if (idToken == null) throw AuthException(L10n.current.authAppleNoToken);
 
     await _auth.signInWithIdToken(
       provider: OAuthProvider.apple,
@@ -216,9 +217,7 @@ class AuthService {
     try {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, _desktopRedirectPort);
     } on SocketException {
-      throw AuthException(
-        'Port $_desktopRedirectPort is already in use. Close whatever is using it and try again.',
-      );
+      throw AuthException(L10n.current.authPortInUse(_desktopRedirectPort));
     }
     _loopback = server;
 
@@ -267,9 +266,10 @@ class AuthService {
 
   /// The page the browser shows after Google sends the user back.
   static String _callbackPage({required bool ok}) {
-    final title = ok ? 'Signed in' : 'Sign-in failed';
-    final body = ok ? 'You can close this tab and go back to Checkpoint.' : 'Go back to Checkpoint and try again.';
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Checkpoint</title>'
+    final l10n = L10n.current;
+    final title = ok ? l10n.authCallbackSignedIn : l10n.authCallbackFailed;
+    final body = ok ? l10n.authCallbackSignedInBody : l10n.authCallbackFailedBody;
+    return '<!doctype html><html lang="${L10n.languageCode}"><head><meta charset="utf-8"><title>Checkpoint</title>'
         '<style>body{font-family:sans-serif;background:#0b0d12;color:#eee;display:grid;'
         'place-items:center;height:100vh;margin:0;text-align:center}</style></head>'
         '<body><div><h2>$title</h2><p>$body</p></div></body></html>';
@@ -498,50 +498,60 @@ class AuthService {
 
   /// Text for the UI. Raw exceptions never reach the screen.
   static String messageFor(Object e) {
-    if (e is AuthRetryableFetchException) return "Can't reach Checkpoint. Check your connection and try again.";
+    final l10n = L10n.current;
+    if (e is AuthRetryableFetchException) return l10n.authOffline;
     if (e is AuthException) {
       // The codes Supabase sends for email sign-in, sign-up and password
       // changes; anything else (the Google flow's own messages included) is
       // shown as it comes.
       return switch (e.code) {
-        'invalid_credentials' => 'Wrong email or password. If you joined with Google, use Continue with Google.',
-        'user_already_exists' || 'email_exists' =>
-          'That email is already registered. Sign in instead, or use Forgot password? to choose a new password.',
-        'weak_password' => 'That password is too weak. ${e.message}'.trim(),
-        'same_password' => 'That is your current password. Choose a different one.',
+        'invalid_credentials' => l10n.authInvalidCredentials,
+        'user_already_exists' || 'email_exists' => l10n.authEmailExists,
+        'weak_password' => l10n.authWeakPassword(_weakPasswordReason(e)).trim(),
+        'same_password' => l10n.authSamePassword,
         // "Secure password change" is on and this session is over a day old.
-        'reauthentication_needed' => 'For your security, sign out and sign in again, then change your password.',
-        'email_not_confirmed' => 'Confirm your email first: open the link we sent you, then sign in.',
-        'email_address_invalid' => 'Enter a valid email address.',
-        'over_email_send_rate_limit' => 'Too many emails were sent. Wait a few minutes and try again.',
-        'over_request_rate_limit' => 'Too many attempts. Wait a few minutes and try again.',
-        'email_provider_disabled' => "Email sign-in isn't available right now. Use Continue with Google.",
-        'signup_disabled' => "New accounts can't be created right now.",
+        'reauthentication_needed' => l10n.authReauthenticationNeeded,
+        'email_not_confirmed' => l10n.authEmailNotConfirmed,
+        'email_address_invalid' => l10n.authEmailInvalid,
+        'over_email_send_rate_limit' => l10n.authTooManyEmails,
+        'over_request_rate_limit' => l10n.authTooManyAttempts,
+        'email_provider_disabled' => l10n.authEmailSignInUnavailable,
+        'signup_disabled' => l10n.authSignupDisabled,
         // Two-factor authentication.
-        'mfa_verification_failed' =>
-          "That code didn't work. Enter the newest code from your authenticator app, "
-              "and check that your device's clock is right.",
-        'mfa_challenge_expired' || 'mfa_verification_rejected' => 'That code expired. Enter the newest one.',
-        'mfa_totp_enroll_not_enabled' || 'mfa_totp_verify_not_enabled' =>
-          "Two-factor authentication isn't available right now.",
-        'insufficient_aal' => 'For your security, sign out and sign in again with your code, then try again.',
-        'too_many_enrolled_mfa_factors' => 'Too many unfinished setups. Wait a few minutes and try again.',
+        'mfa_verification_failed' => l10n.authCodeDidNotWork,
+        'mfa_challenge_expired' || 'mfa_verification_rejected' => l10n.authCodeExpired,
+        'mfa_totp_enroll_not_enabled' || 'mfa_totp_verify_not_enabled' => l10n.authTwoFactorUnavailable,
+        'insufficient_aal' => l10n.authInsufficientAal,
+        'too_many_enrolled_mfa_factors' => l10n.authTooManyFactors,
         _ => e.message,
       };
     }
     if (e is SignInWithAppleAuthorizationException) {
       return switch (e.code) {
-        AuthorizationErrorCode.canceled => 'Apple sign-in was cancelled.',
-        _ => 'Apple sign-in failed. Please try again.',
+        AuthorizationErrorCode.canceled => l10n.authAppleCancelled,
+        _ => l10n.authAppleFailed,
       };
     }
-    if (e is SignInWithAppleException) return 'Apple sign-in failed. Please try again.';
+    if (e is SignInWithAppleException) return l10n.authAppleFailed;
     if (e is PlatformException) {
       return switch (e.code) {
-        GoogleSignIn.kSignInCanceledError => 'Google sign-in was cancelled.',
-        _ => 'Google sign-in failed (${e.code}). Check the OAuth client IDs in Google Cloud.',
+        GoogleSignIn.kSignInCanceledError => l10n.authGoogleCancelled,
+        _ => l10n.authGoogleFailed(e.code),
       };
     }
-    return 'Something went wrong. Please try again.';
+    return l10n.somethingWentWrong;
+  }
+
+  /// Why Supabase found a password too weak. Supabase says it in English, so
+  /// English shows its words; another language says the reasons it knows.
+  static String _weakPasswordReason(AuthException e) {
+    final l10n = L10n.current;
+    if (L10n.languageCode == 'en') return e.message;
+    final minLength = RegExp(r'at least (\d+) characters').firstMatch(e.message);
+    if (minLength != null) return l10n.authWeakPasswordMinLength(int.parse(minLength.group(1)!));
+    final reasons = e is AuthWeakPasswordException ? e.reasons : const <String>[];
+    if (reasons.contains('pwned')) return l10n.authWeakPasswordPwned;
+    if (reasons.contains('characters')) return l10n.authWeakPasswordCharacters;
+    return e.message;
   }
 }

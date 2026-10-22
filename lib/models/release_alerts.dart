@@ -1,3 +1,4 @@
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 
 /// A wishlist game around its release: [daysAway] is 0 on the day, negative
@@ -30,10 +31,10 @@ List<ReleaseAlert> releaseAlerts(
 
 /// "Out today", "Out now", "Out tomorrow", "Out in 5 days".
 String releaseLabel(int daysAway) => switch (daysAway) {
-  0 => 'Out today',
-  < 0 => 'Out now',
-  1 => 'Out tomorrow',
-  _ => 'Out in $daysAway days',
+  0 => L10n.current.releaseOutToday,
+  < 0 => L10n.current.releaseOutNow,
+  1 => L10n.current.releaseOutTomorrow,
+  _ => L10n.current.releaseOutInDays(daysAway),
 };
 
 /// Calendar days in UTC, so a daylight saving change can't make a day 23 hours.
