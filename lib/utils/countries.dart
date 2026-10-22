@@ -5,6 +5,22 @@ import 'package:checkpoint/l10n/l10n.dart';
 /// here. Only the countries game companies are commonly based in are listed.
 String? countryName(int? code) => code == null ? null : _countryName(L10n.current, code);
 
+/// The countries game companies are most often based in, first in the studio
+/// filter's list.
+const _commonCodes = [840, 392, 826, 124, 250, 276, 752, 156, 410, 616, 643, 380, 724, 804, 208, 246, 528, 36, 76];
+
+/// Every country [countryName] knows, as ISO 3166-1 numeric codes: the common
+/// ones first, in that order, then the rest by name in the app's language. What
+/// the studio filter offers.
+List<int> countryCodes() {
+  final l10n = L10n.current;
+  final others = [
+    for (var code = 1; code < 1000; code++)
+      if (!_commonCodes.contains(code) && _countryName(l10n, code) != null) code,
+  ]..sort((a, b) => _countryName(l10n, a)!.compareTo(_countryName(l10n, b)!));
+  return [..._commonCodes, ...others];
+}
+
 String? _countryName(AppLocalizations l10n, int code) => switch (code) {
   32 => l10n.countryArgentina,
   36 => l10n.countryAustralia,

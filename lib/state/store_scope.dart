@@ -8,12 +8,14 @@ import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
+import 'package:checkpoint/state/game_reviews_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/lists_store.dart';
 import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/news_store.dart';
 import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
@@ -102,7 +104,13 @@ class AppStoresScope extends StatelessWidget {
                                               store: stores.communityTimes,
                                               child: StoreScope<MilestonesStore>(
                                                 store: stores.milestones,
-                                                child: child,
+                                                child: StoreScope<GameReviewsStore>(
+                                                  store: stores.gameReviews,
+                                                  child: StoreScope<NewsStore>(
+                                                    store: stores.news,
+                                                    child: child,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),

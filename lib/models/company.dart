@@ -32,6 +32,7 @@ class CompanySummary {
     required this.name,
     this.logoUrl,
     this.country,
+    this.foundedYear,
     this.publishedCount = 0,
     this.developedCount = 0,
   });
@@ -43,6 +44,9 @@ class CompanySummary {
 
   /// ISO 3166-1 numeric code of where it is based.
   final int? country;
+
+  /// The year it was founded, when IGDB has a date for it.
+  final int? foundedYear;
 
   /// How many games IGDB lists it as publisher / developer of.
   final int publishedCount;
@@ -63,9 +67,21 @@ class CompanySummary {
       name: name,
       logoUrl: logoUrlFor(_text(json['logo_image_id'])),
       country: _positive(json['country']),
+      foundedYear: foundedYearFromUnixSeconds(json['start_date']),
       publishedCount: _positive(json['published_count']) ?? 0,
       developedCount: _positive(json['developed_count']) ?? 0,
     );
+  }
+
+  /// The year of IGDB's `start_date` (Unix seconds, UTC), or null when it is
+  /// missing or outside 1800-2100. A company can be older than any game: the
+  /// range is wider than [releaseYearFromUnixSeconds]'s.
+  static int? foundedYearFromUnixSeconds(Object? seconds) {
+    if (seconds is! num || !seconds.isFinite) return null;
+    final s = seconds.toInt();
+    if (s.abs() > 8640000000000) return null; // beyond what DateTime can represent
+    final year = DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true).year;
+    return year < 1800 || year > 2100 ? null : year;
   }
 
   /// IGDB's medium-size logo of [imageId] (a PNG, so it keeps its transparency).
@@ -164,11 +180,11 @@ class Company extends CompanySummary {
     required super.name,
     super.logoUrl,
     super.country,
+    super.foundedYear,
     super.publishedCount,
     super.developedCount,
     this.description,
     this.translatedDescription,
-    this.foundedYear,
     this.parent,
     this.websites = const [],
   });
@@ -178,7 +194,6 @@ class Company extends CompanySummary {
   /// [description] in the app's language, when it is not English and the
   /// server translated it (DeepL); null otherwise.
   final IgdbTranslation? translatedDescription;
-  final int? foundedYear;
 
   /// The company with a controlling interest in this one.
   final CompanyRef? parent;
@@ -201,11 +216,11 @@ class Company extends CompanySummary {
       name: summary.name,
       logoUrl: summary.logoUrl,
       country: summary.country,
+      foundedYear: summary.foundedYear,
       publishedCount: summary.publishedCount,
       developedCount: summary.developedCount,
       description: _text(json['description']),
       translatedDescription: IgdbTranslation.fromJson(response['translations']),
-      foundedYear: releaseYearFromUnixSeconds(json['start_date']),
       parent: parentId != null && parentName != null
           ? CompanyRef(parentId, parentName)
           : null,

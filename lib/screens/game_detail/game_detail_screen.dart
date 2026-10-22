@@ -9,6 +9,7 @@ import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/game_detail/completion_time_field.dart';
 import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
+import 'package:checkpoint/screens/game_detail/reviews_panel.dart';
 import 'package:checkpoint/screens/game_detail/sessions_screen.dart';
 import 'package:checkpoint/screens/profile/game_achievements_dialog.dart';
 import 'package:checkpoint/sheets/game_backdrop_sheet.dart';
@@ -196,6 +197,7 @@ class GameDetailScreen extends StatelessWidget {
                   _SessionsPanel(gameId: game.id),
                   _AchievementsPanel(game: game),
                   FriendsPanel(game: game),
+                  ReviewsPanel(game: game),
                   AboutPanel(game: game),
                   GameInfoSections(game: game),
                 ]),
@@ -395,26 +397,25 @@ class _ProgressPanel extends StatelessWidget {
         ]);
 
     return Panel(
-      // Stretched, so each Wrap spans the panel and its button sits on the right.
+      // Stretched, so the Wrap spans the panel and its button sits on the right.
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Each row is a Wrap: with large text the button goes under, rather than
-        // off the edge.
+        game.status == null
+            ? Text(context.l10n.notInYourLibrary, style: TextStyle(color: context.palette.muted))
+            : Wrap(spacing: 6, runSpacing: 6, children: [
+                StatusPill(game.status!),
+                if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
+                if (game.isPerfected) PerfectPill(game.perfectMark),
+              ]),
+        const SizedBox(height: 16),
+        // A Wrap: with large text the button goes under, rather than off the edge.
         Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 10, children: [
-          game.status == null
-              ? Text(context.l10n.notInYourLibrary, style: TextStyle(color: context.palette.muted))
-              : Wrap(spacing: 6, runSpacing: 6, children: [
-                  StatusPill(game.status!),
-                  if (game.status == GameStatus.completed && game.stillPlaying) const StatusPill(GameStatus.playing),
-                  if (game.isPerfected) PerfectPill(game.perfectMark),
-                ]),
+          stat(context.l10n.hoursShort(fmtHours(game.hoursPlayed)), context.l10n.played),
           FilledButton.tonalIcon(
             onPressed: () => showLogHoursSheet(context, game.id),
             icon: const Icon(Icons.timer_outlined, size: 18),
             label: Text(context.l10n.logHours),
           ),
         ]),
-        const SizedBox(height: 16),
-        stat(context.l10n.hoursShort(fmtHours(game.hoursPlayed)), context.l10n.played),
       ]),
     );
   }
@@ -445,7 +446,7 @@ class _RatingPanel extends StatelessWidget {
               onPressed: () => showReviewSheet(context, game.id),
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
               icon: const Icon(Icons.rate_review_outlined, size: 18),
-              label: Text(context.l10n.addShortReview),
+              label: Text(context.l10n.writeReview),
             )
           else
             InkWell(

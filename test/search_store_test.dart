@@ -9,6 +9,7 @@ import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/results_page.dart';
+import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
@@ -16,25 +17,32 @@ import 'package:checkpoint/state/search_store.dart';
 
 import 'support/fakes.dart';
 
-/// Serves two pages of results for any query, and a studio named after any
-/// studio search ([companies] null: the studio search fails), and notes what was
-/// asked. [gate] holds every answer until completed, to have a request in flight.
+/// Serves two pages of results for any query, and a page with a studio named
+/// after any studio search ([companies] null: the studio search fails; [studioHasMore]
+/// says a next page exists), and notes what was asked. [gate] holds every answer
+/// until completed, to have a request in flight.
 class FakeGameApi extends GameApiService {
   final List<({String query, FilterOptions filters, int offset})> calls = [];
   final List<String> companyCalls = [];
-  List<CompanySummary>? Function(String query)? companies = (query) => [
-    CompanySummary(id: query.length, name: 'Studio $query'),
+  final List<({String query, StudioFilters filters, int offset})> studioCalls = [];
+  List<CompanySummary>? Function(String query, int offset)? companies = (query, offset) => [
+    CompanySummary(id: query.length + offset, name: 'Studio $query'),
   ];
+  bool studioHasMore = false;
   Completer<void>? gate;
 
   @override
-  Future<List<CompanySummary>?> searchCompanies(
+  Future<ResultsPage<CompanySummary>?> searchCompanies(
     String query, {
+    StudioFilters filters = StudioFilters.none,
+    int offset = 0,
     int limit = GameApiService.searchPageSize,
   }) async {
     companyCalls.add(query);
+    studioCalls.add((query: query, filters: filters, offset: offset));
     await gate?.future;
-    return companies?.call(query);
+    final found = companies?.call(query, offset);
+    return found == null ? null : ResultsPage(found, hasMore: studioHasMore);
   }
 
   @override
@@ -131,24 +139,132 @@ void main() {
     });
 
     test('a failed search says so, and the next one clears it', () async {
-      api.companies = (query) => null;
+      api.companies = (query, offset) => null;
       await search.findCompanies('valve');
       expect(search.companyFailed, isTrue);
       expect(search.companyResults, isEmpty);
 
-      api.companies = (query) => [CompanySummary(id: 56, name: 'Valve')];
+      api.companies = (query, offset) => [CompanySummary(id: 56, name: 'Valve')];
       await search.findCompanies('valve');
       expect(search.companyFailed, isFalse);
       expect(names(), ['Valve']);
     });
 
-    test('leaving the Search tab drops the studios', () async {
-      await search.findCompanies('valve');
+    test('leaving the Search tab drops the studios and their filters', () async {
+      await search.filterStudios(StudioFilters(countries: [392]), 'valve');
+      expect(search.studioFilters.countries, {392});
 
       nav.select(NavTab.library);
 
       expect(search.companyResults, isEmpty);
       expect(search.companyQuery, '');
+      expect(search.studioFilters, StudioFilters.none);
+    });
+
+    group('filters', () {
+      final japanDevelopers = StudioFilters(
+        role: CompanyRole.developer,
+        countries: [392],
+        founded: const YearRange.decade(1980),
+      );
+
+      test('with no name, the studios matching them are listed', () async {
+        await search.filterStudios(japanDevelopers, '');
+
+        expect(api.studioCalls.single.query, '');
+        expect(api.studioCalls.single.filters, japanDevelopers);
+        expect(search.studioFilters, japanDevelopers);
+        expect(search.companyResults, isNotEmpty);
+        expect(search.companyLoading, isFalse);
+      });
+
+      test('narrow a search by name', () async {
+        await search.findCompanies('nin');
+        await search.filterStudios(japanDevelopers, 'nin');
+
+        expect(api.studioCalls.map((c) => (c.query, c.filters)), [
+          ('nin', StudioFilters.none),
+          ('nin', japanDevelopers),
+        ]);
+      });
+
+      test('nothing picked and an empty box ask nothing, and drop the results', () async {
+        await search.filterStudios(japanDevelopers, '');
+        expect(search.companyResults, isNotEmpty);
+
+        await search.filterStudios(japanDevelopers.cleared(), '');
+
+        expect(search.companyResults, isEmpty);
+        expect(api.studioCalls, hasLength(1));
+      });
+
+      test('only the order picked is no filter: it asks nothing either', () async {
+        await search.filterStudios(StudioFilters(sort: StudioSort.name), '');
+
+        expect(api.studioCalls, isEmpty);
+        expect(search.companyResults, isEmpty);
+      });
+    });
+
+    group('paging', () {
+      test('appends the next page after the studios fetched so far, without repeats', () async {
+        api.studioHasMore = true;
+        api.companies = (query, offset) => offset == 0
+            ? [CompanySummary(id: 1, name: 'One'), CompanySummary(id: 2, name: 'Two')]
+            : [CompanySummary(id: 2, name: 'Two'), CompanySummary(id: 3, name: 'Three')];
+        final filters = StudioFilters(countries: [752]);
+
+        await search.filterStudios(filters, '');
+        expect(search.companyHasMore, isTrue);
+        await search.loadMoreCompanies();
+
+        expect(names(), ['One', 'Two', 'Three']);
+        expect(api.studioCalls.last.offset, 2);
+        expect(api.studioCalls.last.filters, filters);
+      });
+
+      test('stops when the last page has no studio that is new', () async {
+        api.studioHasMore = true;
+        api.companies = (query, offset) => [CompanySummary(id: 1, name: 'One')];
+
+        await search.filterStudios(StudioFilters(countries: [752]), '');
+        await search.loadMoreCompanies();
+
+        expect(names(), ['One']);
+        expect(search.companyHasMore, isFalse);
+      });
+
+      test('a failed page can be tried again', () async {
+        api.studioHasMore = true;
+        await search.filterStudios(StudioFilters(countries: [752]), '');
+
+        api.companies = (query, offset) => null;
+        await search.loadMoreCompanies();
+        expect(search.companyLoadMoreFailed, isTrue);
+        expect(search.companyHasMore, isTrue);
+        expect(names(), hasLength(1));
+
+        api.companies = (query, offset) => [CompanySummary(id: 99, name: 'Later')];
+        await search.loadMoreCompanies();
+        expect(search.companyLoadMoreFailed, isFalse);
+        expect(names(), hasLength(2));
+      });
+
+      test('a new search drops the page still on its way', () async {
+        api.studioHasMore = true;
+        await search.filterStudios(StudioFilters(countries: [752]), '');
+        api.gate = Completer<void>();
+
+        final more = search.loadMoreCompanies();
+        expect(search.companyLoadingMore, isTrue);
+        final fresh = search.filterStudios(StudioFilters(countries: [392]), '');
+        api.gate!.complete();
+        await Future.wait([more, fresh]);
+
+        expect(search.studioFilters.countries, {392});
+        expect(search.companyLoadingMore, isFalse);
+        expect(names(), hasLength(1));
+      });
     });
   });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/service_link.dart';
@@ -8,6 +9,10 @@ import 'package:checkpoint/widgets/service_link.dart';
 /// A row of small brand icons, one per connected account: game profiles first,
 /// then social media. Each opens the account (Discord copies the username); one
 /// with nothing to open yet (no name saved, or Nintendo) is shown but not tappable.
+///
+/// Only Steam is proved (the server saves the ID Steam confirms after a
+/// sign-in), so it carries a check; every other account is a name the member
+/// typed, and its tooltip says so.
 ///
 /// Empty when nothing is connected.
 class ConnectedAccountIcons extends StatelessWidget {
@@ -72,7 +77,9 @@ class _AccountIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final link = serviceLink(service, name);
-    final tile = Container(
+    final verified = service == ConnectedService.steam;
+    final note = verified ? context.l10n.accountVerified : context.l10n.accountNotVerified;
+    final icon = Container(
       width: 34,
       height: 34,
       alignment: Alignment.center,
@@ -82,18 +89,35 @@ class _AccountIcon extends StatelessWidget {
       ),
       child: FaIcon(service.icon, size: 16, color: context.palette.legible(service.color)),
     );
+    final tile = verified
+        ? Stack(
+            clipBehavior: Clip.none,
+            children: [
+              icon,
+              Positioned(
+                right: -3,
+                bottom: -3,
+                child: Icon(
+                  Icons.check_circle,
+                  size: 14,
+                  color: context.palette.legible(Colors.green),
+                ),
+              ),
+            ],
+          )
+        : icon;
 
     if (link == null) {
       return Tooltip(
-        message: service.label,
-        child: Semantics(label: service.label, child: tile),
+        message: '${service.label}\n$note',
+        child: Semantics(label: '${service.label}, $note', child: tile),
       );
     }
     return Tooltip(
-      message: link.tooltip,
+      message: '${link.tooltip}\n$note',
       child: Semantics(
         button: true,
-        label: link.tooltip,
+        label: '${link.tooltip}, $note',
         excludeSemantics: true,
         // Transparent Material so the InkWell ripple still has somewhere to paint.
         child: Material(

@@ -8,6 +8,7 @@ import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -20,7 +21,8 @@ import 'package:checkpoint/state/nav_store.dart';
 /// The game search can be narrowed by [activeFilters] (genres, game modes,
 /// themes, platforms, release years). With filters and no search text, the
 /// results are the games matching the filters, in their sort order: what a tag
-/// tapped on a game's screen opens (see [NavStore.switchTab]).
+/// tapped on a game's screen opens (see [NavStore.switchTab]). The studio search
+/// is narrowed the same way by [studioFilters] (country, founding years, role).
 class SearchStore extends ChangeNotifier {
   SearchStore({
     required this._repository,
@@ -282,17 +284,29 @@ class SearchStore extends ChangeNotifier {
   }
 
   // ---- Studio search (Studios tab) ----
-  // IGDB's companies by name: one page, the best matches, no paging.
+  // IGDB's companies by name, narrowed by [studioFilters]; with filters and no
+  // name, the studios matching them. Paged like the game search.
   List<CompanySummary> _companyResults = const [];
   String _companyQuery = '';
+  StudioFilters _studioFilters = StudioFilters.none;
+  // The filters [_companyResults] were fetched with: the next pages use them
+  // too, even when [_studioFilters] changed without a new search.
+  StudioFilters _companyResultsFilters = StudioFilters.none;
   int _companySeq = 0; // bumped by every search and reset, like _searchSeq
+  int _companyNextOffset = 0;
   bool _companyLoading = false;
   bool _companyFailed = false;
+  bool _companyHasMore = false;
+  bool _companyLoadingMore = false;
+  bool _companyLoadMoreFailed = false;
 
   List<CompanySummary> get companyResults => _companyResults;
 
   /// What [companyResults] are for (trimmed); empty for none.
   String get companyQuery => _companyQuery;
+
+  /// What the studio list is narrowed down by, and its order.
+  StudioFilters get studioFilters => _studioFilters;
 
   /// A studio search is on its way.
   bool get companyLoading => _companyLoading;
@@ -300,14 +314,31 @@ class SearchStore extends ChangeNotifier {
   /// The last studio search failed; [findCompanies] tries again.
   bool get companyFailed => _companyFailed;
 
+  /// There may be more studios than [companyResults] holds.
+  bool get companyHasMore => _companyHasMore;
+
+  /// The next page is being fetched.
+  bool get companyLoadingMore => _companyLoadingMore;
+
+  /// The last attempt to fetch the next page failed; [loadMoreCompanies] retries it.
+  bool get companyLoadMoreFailed => _companyLoadMoreFailed;
+
   /// Searches the studios whose name has a word starting with every word of
-  /// [query], and replaces the results with them. An empty [query] drops them.
+  /// [query], narrowed by [studioFilters], and replaces the results with the
+  /// first page. An empty [query] lists the studios matching the filters, or,
+  /// with none picked, drops the results.
   Future<void> findCompanies(String query) async {
     final seq = ++_companySeq;
     final term = query.trim();
+    final filters = _studioFilters;
     _companyQuery = term;
+    _companyResultsFilters = filters;
     _companyFailed = false;
-    if (term.isEmpty) {
+    _companyHasMore = false;
+    _companyLoadingMore = false;
+    _companyLoadMoreFailed = false;
+    _companyNextOffset = 0;
+    if (term.isEmpty && filters.isEmpty) {
       _companyResults = const [];
       _companyLoading = false;
       notifyListeners();
@@ -315,21 +346,71 @@ class SearchStore extends ChangeNotifier {
     }
     _companyLoading = true;
     notifyListeners();
-    final results = await _apiService.searchCompanies(term);
+    final page = await _apiService.searchCompanies(term, filters: filters);
     if (seq != _companySeq) return;
     _companyLoading = false;
-    _companyResults = List.unmodifiable(results ?? const <CompanySummary>[]);
-    _companyFailed = results == null;
+    _companyResults = List.unmodifiable(page?.items ?? const <CompanySummary>[]);
+    _companyFailed = page == null;
+    _companyNextOffset = page?.fetched ?? 0;
+    _companyHasMore = page?.hasMore ?? false;
     notifyListeners();
   }
 
-  /// Drops the studio results and any studio search still on its way.
+  /// Narrows the studios down by [filters], for what is in the box ([query]): the
+  /// results are fetched again for it.
+  Future<void> filterStudios(StudioFilters filters, String query) {
+    _studioFilters = filters;
+    return findCompanies(query);
+  }
+
+  /// Fetches the next page of the current studio search and appends it. Safe to
+  /// call whenever, like [loadMoreSearchResults].
+  Future<void> loadMoreCompanies() async {
+    if (!_companyHasMore || _companyLoadingMore || _companyLoading) return;
+    final seq = _companySeq;
+    _companyLoadingMore = true;
+    _companyLoadMoreFailed = false;
+    notifyListeners();
+
+    final page = await _apiService.searchCompanies(
+      _companyQuery,
+      filters: _companyResultsFilters,
+      offset: _companyNextOffset,
+    );
+    // A newer search (or a reset) took over and already reset the flags.
+    if (seq != _companySeq) return;
+    _companyLoadingMore = false;
+    if (page == null) {
+      _companyLoadMoreFailed = true;
+    } else {
+      final seen = {for (final c in _companyResults) c.id};
+      final fresh = [
+        for (final c in page.items)
+          if (seen.add(c.id)) c,
+      ];
+      _companyResults = List.unmodifiable([..._companyResults, ...fresh]);
+      _companyNextOffset += page.fetched;
+      // A page of nothing but studios already listed means the source is not
+      // advancing (an igdb-handler deployed before it learned `offset` answers
+      // every page alike). Stop there instead of asking for the same page forever.
+      _companyHasMore = page.hasMore && !(page.items.isNotEmpty && fresh.isEmpty);
+    }
+    notifyListeners();
+  }
+
+  /// Drops the studio results, the filters, and any studio search still on its way.
   void _clearCompanySearch() {
     _companySeq++;
     _companyResults = const [];
     _companyQuery = '';
+    _studioFilters = StudioFilters.none;
+    _companyResultsFilters = StudioFilters.none;
+    _companyNextOffset = 0;
     _companyLoading = false;
     _companyFailed = false;
+    _companyHasMore = false;
+    _companyLoadingMore = false;
+    _companyLoadMoreFailed = false;
   }
 
   // ---- Member search paging (Users tab) ----

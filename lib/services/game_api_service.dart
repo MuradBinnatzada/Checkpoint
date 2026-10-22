@@ -11,6 +11,7 @@ import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/game_media.dart';
 import 'package:checkpoint/models/results_page.dart';
+import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/services/sync_failure.dart';
 
 class GameApiService {
@@ -567,21 +568,36 @@ class GameApiService {
     );
   }
 
-  // 11. The studio search: the companies whose name has a word starting with
-  //     every word of [query], best match first. One page, no paging; null when
-  //     the request failed.
-  Future<List<CompanySummary>?> searchCompanies(
+  // 11. The studio search and browse: the companies whose name has a word
+  //     starting with every word of [query] and that match [filters], in the
+  //     [StudioFilters.sort] order (best match first for a search, most games
+  //     first by default). With no [query] the filters are browsed on their own.
+  //     One page at a time; null when the request failed. [offset] counts the
+  //     studios of the pages before, as the function pages them.
+  Future<ResultsPage<CompanySummary>?> searchCompanies(
     String query, {
+    StudioFilters filters = StudioFilters.none,
+    int offset = 0,
     int limit = searchPageSize,
   }) async {
     final q = query.trim();
-    if (q.isEmpty) return const [];
+    final wireFilters = filters.toWire();
+    if (q.isEmpty && wireFilters.isEmpty) {
+      return ResultsPage<CompanySummary>(const [], hasMore: false);
+    }
     final data = await _invoke({
       'mode': 'companies',
-      'query': q,
+      if (q.isNotEmpty) 'query': q,
+      if (wireFilters.isNotEmpty) 'filters': wireFilters,
+      'sort': filters.sort.wireName,
       'limit': limit,
+      'offset': offset,
     });
     if (data == null) return null;
-    return [for (final row in data) ?CompanySummary.fromJson(row)];
+    return ResultsPage<CompanySummary>(
+      [for (final row in data) ?CompanySummary.fromJson(row)],
+      hasMore: data.length >= limit, // the page is full: another may exist
+      fetched: data.length,
+    );
   }
 }

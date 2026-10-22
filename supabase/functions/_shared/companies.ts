@@ -2,14 +2,14 @@
 //
 // What igdb-handler's company modes ask IGDB for, and what they send back: one
 // company's page (`company`), its games (`company_games`) and the studio search
-// (`companies`). IGDB keeps publishers and developers as one thing, a company.
-// Pure functions with no I/O, so they can be tested.
+// and browse (`companies`). IGDB keeps publishers and developers as one thing, a
+// company. Pure functions with no I/O, so they can be tested.
 //
 // Every value spliced into a query is a number, a fixed string, or a word from
 // titleWords (letters, digits and apostrophes only), never raw text from the
 // caller, so none of these can run arbitrary queries against the IGDB quota.
 
-import { DISCOVER_GAMES, type DiscoverSort, sortClause } from './game_filters.ts'
+import { DISCOVER_GAMES, type DiscoverSort, sortClause, startOfYear } from './game_filters.ts'
 import { wordStartCondition } from './game_search.ts'
 
 /** Which of a company's games a list holds: all, or those it published / developed. */
@@ -49,6 +49,8 @@ export type CompanySummary = {
   name: string
   logo_image_id: string | null
   country: number | null
+  /** When it was founded, in Unix seconds. */
+  start_date: number | null
   published_count: number
   developed_count: number
 }
@@ -56,8 +58,6 @@ export type CompanySummary = {
 /** A company's page, as the app gets it. */
 export type CompanyInfo = CompanySummary & {
   description: string | null
-  /** When it was founded, in Unix seconds. */
-  start_date: number | null
   parent: { id: number; name: string } | null
   websites: { url: string; type: number | null }[]
 }
@@ -93,6 +93,7 @@ export function companySummary(row: unknown): CompanySummary | null {
     name,
     logo_image_id: text(logo?.image_id),
     country: positiveId(r.country),
+    start_date: wholeNumber(r.start_date),
     published_count: count(r.published),
     developed_count: count(r.developed),
   }
@@ -116,48 +117,197 @@ export function companyInfo(row: unknown): CompanyInfo | null {
   return {
     ...summary,
     description: text(r.description),
-    start_date: wholeNumber(r.start_date),
     parent: parentId !== null && parentName !== null ? { id: parentId, name: parentName } : null,
     websites,
   }
 }
 
-/** Most companies the studio search ranks before it keeps the best. */
+/** Most companies a studio search by name ranks before it keeps the best. */
 export const COMPANY_CANDIDATES = 50
 
 /**
- * The companies with a word of their name starting with each of [words] (from
- * titleWords) that have a game. IGDB's `search` does not cover companies, so
- * the name is matched the way game titles are. Lower ids first: IGDB added the
- * well-known studios early, so they make it into the candidates.
+ * Most companies a browse by filters (no name) ranks before it keeps the best.
+ * IGDB's most per request, so the well-known studios among the earliest added
+ * are all in.
  */
-export function companySearchQuery(words: string[]): string {
-  const where = [...words.map(wordStartCondition), '(developed != null | published != null)']
-    .join(' & ')
-  return `fields name, logo.image_id, country, developed, published; where ${where}; ` +
-    `sort id asc; limit ${COMPANY_CANDIDATES};`
+export const BROWSE_CANDIDATES = 500
+
+/**
+ * How a studio list is ordered:
+ *   popular  most games first, among the earliest-added companies (IGDB can't
+ *            sort by how many games a company has, so the candidates are ranked here)
+ *   name     A to Z
+ *   oldest   founded longest ago first
+ *   newest   founded most recently first
+ */
+export const COMPANY_SORTS = ['popular', 'name', 'oldest', 'newest'] as const
+export type CompanySort = (typeof COMPANY_SORTS)[number]
+
+export function isCompanySort(value: unknown): value is CompanySort {
+  return typeof value === 'string' && (COMPANY_SORTS as readonly string[]).includes(value)
+}
+
+/** Most countries a studio filter may pick: more than any filter sheet offers. */
+export const MAX_COMPANY_COUNTRIES = 40
+
+/**
+ * Founding years outside this range are refused. Nothing before 1970 is asked
+ * for, so no Unix second is ever negative.
+ */
+export const MIN_FOUNDED_YEAR = 1970
+export const MAX_FOUNDED_YEAR = 2100
+
+/**
+ * What a studio list is narrowed down by: the role (developer or publisher, any
+ * when not narrowed), the countries (ISO 3166-1 numbers; a company needs to be in
+ * any of them, none picked: anywhere) and an inclusive range of founding years
+ * (null: open).
+ */
+export type CompanyFilters = {
+  role: CompanyRole
+  countries: number[]
+  founded: { from: number | null; to: number | null }
+}
+
+export const NO_COMPANY_FILTERS: CompanyFilters = {
+  role: 'any',
+  countries: [],
+  founded: { from: null, to: null },
+}
+
+/**
+ * The request's `filters` object as [CompanyFilters], or a message saying what is
+ * wrong with it. Missing (or null) means no filters, and so does a missing key.
+ */
+export function parseCompanyFilters(value: unknown): CompanyFilters | string {
+  if (value === undefined || value === null) return NO_COMPANY_FILTERS
+  if (typeof value !== 'object' || Array.isArray(value)) return '`filters` must be an object'
+  const raw = value as Record<string, unknown>
+
+  const role = parseCompanyRole(raw.role)
+  if (role === null) return '`filters.role` must be one of: any, publisher, developer'
+
+  const countries = new Set<number>()
+  if (raw.countries !== undefined && raw.countries !== null) {
+    const list = raw.countries
+    const valid = Array.isArray(list) && list.length <= MAX_COMPANY_COUNTRIES &&
+      list.every((c) => typeof c === 'number' && Number.isInteger(c) && c > 0 && c < 1000)
+    if (!valid) {
+      return `\`filters.countries\` must be a list of up to ${MAX_COMPANY_COUNTRIES} ISO 3166-1 numbers`
+    }
+    for (const c of list as number[]) countries.add(c)
+  }
+
+  let founded: CompanyFilters['founded'] = { from: null, to: null }
+  if (raw.founded !== undefined && raw.founded !== null) {
+    if (typeof raw.founded !== 'object' || Array.isArray(raw.founded)) {
+      return '`filters.founded` must be an object'
+    }
+    const { from, to } = raw.founded as Record<string, unknown>
+    const parsedFrom = parseFoundedYear(from)
+    const parsedTo = parseFoundedYear(to)
+    if (parsedFrom === undefined || parsedTo === undefined) {
+      return `\`filters.founded\` must give whole years from ${MIN_FOUNDED_YEAR} to ${MAX_FOUNDED_YEAR}`
+    }
+    if (parsedFrom !== null && parsedTo !== null && parsedFrom > parsedTo) {
+      return '`filters.founded.from` must not be after `filters.founded.to`'
+    }
+    founded = { from: parsedFrom, to: parsedTo }
+  }
+  return { role, countries: [...countries], founded }
+}
+
+// A year, null when not given, undefined when malformed.
+function parseFoundedYear(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined
+  if (value < MIN_FOUNDED_YEAR || value > MAX_FOUNDED_YEAR) return undefined
+  return value
+}
+
+/** Whether [filters] narrow anything down. */
+export function hasCompanyFilters(filters: CompanyFilters): boolean {
+  return filters.role !== 'any' || filters.countries.length > 0 ||
+    filters.founded.from !== null || filters.founded.to !== null
+}
+
+/**
+ * The `where` conditions of [filters]. A studio always has a game to its name
+ * (developed, published, or the one the role asks for); the others only when picked.
+ */
+export function companyConditions(filters: CompanyFilters): string[] {
+  const conditions = [
+    filters.role === 'developer'
+      ? 'developed != null'
+      : filters.role === 'publisher'
+      ? 'published != null'
+      : '(developed != null | published != null)',
+  ]
+  if (filters.countries.length > 0) conditions.push(`country = (${filters.countries.join(',')})`)
+  const { from, to } = filters.founded
+  if (from !== null) conditions.push(`start_date >= ${startOfYear(from)}`)
+  // Up to the end of `to`: before 1 January of the year after.
+  if (to !== null) conditions.push(`start_date < ${startOfYear(to + 1)}`)
+  return conditions
+}
+
+/** What the studio lists show of each company; its games are only counted. */
+const COMPANY_LIST_FIELDS = 'name, logo.image_id, country, start_date, developed, published'
+
+/**
+ * The companies with a word of their name starting with each of [words] (from
+ * titleWords, none to browse by [filters] alone) and matching [filters]. IGDB's
+ * `search` does not cover companies, so the name is matched the way game titles
+ * are.
+ *
+ * `popular` asks for the earliest-added companies, in id order (IGDB added the
+ * well-known studios early, so they make it into the candidates) and leaves the
+ * ranking and the paging to [rankCompanies]; every other sort is IGDB's own, paged
+ * with [limit] and [offset]. A founding order only lists companies that have a
+ * founding date.
+ */
+export function companiesQuery(
+  words: string[],
+  filters: CompanyFilters,
+  sort: CompanySort,
+  limit: number,
+  offset: number,
+): string {
+  const conditions = [...words.map(wordStartCondition), ...companyConditions(filters)]
+  if (sort === 'oldest' || sort === 'newest') conditions.push('start_date != null')
+  const where = conditions.join(' & ')
+  if (sort === 'popular') {
+    const candidates = words.length > 0 ? COMPANY_CANDIDATES : BROWSE_CANDIDATES
+    return `fields ${COMPANY_LIST_FIELDS}; where ${where}; sort id asc; limit ${candidates};`
+  }
+  const order = sort === 'name' ? 'name asc' : sort === 'oldest' ? 'start_date asc' : 'start_date desc'
+  return `fields ${COMPANY_LIST_FIELDS}; where ${where}; sort ${order}; limit ${limit}; offset ${offset};`
 }
 
 const normalized = (name: string) => name.toLowerCase().replace(/\s+/g, ' ').trim()
 
-/**
- * The best [limit] of [rows] (an answer to [companySearchQuery]) for [term]: the
- * company named exactly that first, then those whose name starts with it, then
- * the ones with the most games.
- */
-export function rankCompanies(rows: unknown, term: string, limit: number): CompanySummary[] {
+/** [rows] (an answer to [companiesQuery]) as summaries, in IGDB's order, without what is no company. */
+export function listCompanies(rows: unknown): CompanySummary[] {
   if (!Array.isArray(rows)) return []
+  return rows.map(companySummary).filter((c): c is CompanySummary => c !== null)
+}
+
+/**
+ * Page [offset, offset + limit) of [rows] (an answer to [companiesQuery] for the
+ * `popular` sort) as ranked for [term]: the company named exactly that first, then
+ * those whose name starts with it, then the ones with the most games. With no
+ * [term] it is the most games alone.
+ */
+export function rankCompanies(rows: unknown, term: string, limit: number, offset = 0): CompanySummary[] {
   const wanted = normalized(term)
   const closeness = (name: string) => {
     const n = normalized(name)
     return n === wanted ? 0 : n.startsWith(wanted) ? 1 : 2
   }
   const games = (c: CompanySummary) => c.published_count + c.developed_count
-  return rows
-    .map(companySummary)
-    .filter((c): c is CompanySummary => c !== null)
+  return listCompanies(rows)
     .sort((a, b) => closeness(a.name) - closeness(b.name) || games(b) - games(a) || a.id - b.id)
-    .slice(0, limit)
+    .slice(offset, offset + limit)
 }
 
 /**

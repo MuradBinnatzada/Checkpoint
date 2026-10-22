@@ -15,6 +15,7 @@ import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
 import 'package:checkpoint/models/game_friends.dart';
+import 'package:checkpoint/models/game_reviews.dart';
 import 'package:checkpoint/models/game_list.dart';
 import 'package:checkpoint/models/game_cover.dart';
 import 'package:checkpoint/models/library_stats.dart';
@@ -22,6 +23,7 @@ import 'package:checkpoint/models/log_entry.dart';
 import 'package:checkpoint/models/milestone.dart';
 import 'package:checkpoint/models/public_profile.dart';
 import 'package:checkpoint/models/results_page.dart';
+import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/auth_service.dart';
@@ -108,6 +110,26 @@ SocialUser testMember(String id, {String? name, String? avatarUrl}) => SocialUse
   gamesLogged: 0,
   followers: 0,
   avatarUrl: avatarUrl,
+);
+
+/// A review of a game by member [id], as `game_reviews` answers it.
+GameReview testReview(
+  String id, {
+  String? name,
+  String text = 'A fine game.',
+  double rating = 0,
+  GameStatus? status = GameStatus.completed,
+  double hours = 0,
+  DateTime? at,
+  bool following = false,
+}) => GameReview(
+  member: testMember(id, name: name),
+  text: text,
+  status: status,
+  rating: rating,
+  hours: hours,
+  writtenAt: at,
+  isFollowing: following,
 );
 
 /// A member the signed-in user follows who has a game with [status].
@@ -847,6 +869,89 @@ class FakeRepository implements CheckpointRepository {
     return friendsWithGame[gameId] ?? const GameFriends();
   }
 
+  /// The reviews of each game, by game id, as the members wrote them (the fake
+  /// orders, narrows and pages them like `game_reviews`, and leaves out those
+  /// reported). [reviewStats] is what `game_review_stats` answers; a game left out
+  /// of it gets the stats of its reviews. [reviewsGate] holds the reads until
+  /// completed; [failReviewReads] and [failReviewReports] fail them.
+  final Map<String, List<GameReview>> gameReviews = {};
+  final Map<String, CommunityRatings> reviewStats = {};
+  Completer<void>? reviewsGate;
+  bool failReviewReads = false;
+  bool failReviewReports = false;
+
+  /// The pages of reviews asked for, and the reviews reported, in order.
+  final List<({String gameId, ReviewFilter filter, int offset})> reviewReads = [];
+  final List<({String userId, String gameId, ReviewReportReason reason})> reviewReports = [];
+
+  @override
+  Future<ResultsPage<GameReview>> fetchGameReviews(
+    String gameId, {
+    ReviewFilter filter = ReviewFilter.standard,
+    int offset = 0,
+    int limit = CheckpointRepository.reviewsPageSize,
+  }) async {
+    reviewReads.add((gameId: gameId, filter: filter, offset: offset));
+    await reviewsGate?.future;
+    _checkOnline();
+    if (failReviewReads) throw Exception('reviews read failed');
+    final reported = {
+      for (final r in reviewReports)
+        if (r.gameId == gameId) r.userId,
+    };
+    final all = [
+      for (final r in gameReviews[gameId] ?? const <GameReview>[])
+        if (!reported.contains(r.member.id) && (!filter.onlyFollowing || r.isFollowing)) r,
+    ];
+    int newest(GameReview a, GameReview b) =>
+        (b.writtenAt ?? DateTime(1970)).compareTo(a.writtenAt ?? DateTime(1970));
+    int followedFirst(GameReview a, GameReview b) => (b.isFollowing ? 1 : 0) - (a.isFollowing ? 1 : 0);
+    int ratedFirst(GameReview a, GameReview b) => (b.rating > 0 ? 1 : 0) - (a.rating > 0 ? 1 : 0);
+    int firstDifference(List<int> comparisons) => comparisons.firstWhere((c) => c != 0, orElse: () => 0);
+    all.sort(
+      (a, b) => switch (filter.sort) {
+        ReviewSort.friends => firstDifference([followedFirst(a, b), newest(a, b)]),
+        ReviewSort.newest => newest(a, b),
+        ReviewSort.highest => firstDifference([ratedFirst(a, b), b.rating.compareTo(a.rating), newest(a, b)]),
+        ReviewSort.lowest => firstDifference([ratedFirst(a, b), a.rating.compareTo(b.rating), newest(a, b)]),
+      },
+    );
+    final page = all.skip(offset).take(limit).toList();
+    return ResultsPage(page, hasMore: page.length >= limit);
+  }
+
+  @override
+  Future<CommunityRatings> fetchReviewStats(String gameId) async {
+    await reviewsGate?.future;
+    _checkOnline();
+    if (failReviewReads) throw Exception('review stats read failed');
+    final given = reviewStats[gameId];
+    if (given != null) return given;
+    final reviews = gameReviews[gameId] ?? const <GameReview>[];
+    final rated = [for (final r in reviews) if (r.rating > 0) r.rating];
+    final halves = List.filled(10, 0);
+    for (final r in rated) {
+      halves[(r * 2).round() - 1]++;
+    }
+    return CommunityRatings(
+      ratings: rated.length,
+      average: rated.isEmpty ? 0 : rated.reduce((a, b) => a + b) / rated.length,
+      reviews: reviews.length,
+      halfStars: halves,
+    );
+  }
+
+  @override
+  Future<void> reportReview({
+    required String userId,
+    required String gameId,
+    required ReviewReportReason reason,
+  }) async {
+    _checkOnline();
+    if (failReviewReports) throw Exception('report failed');
+    reviewReports.add((userId: userId, gameId: gameId, reason: reason));
+  }
+
   /// What `completion_time_stats` answers for each game, by game id.
   /// [communityGate] holds the read until completed; [failCommunityReads]
   /// fails it.
@@ -1327,7 +1432,7 @@ class FakeCompanyApi extends FakeDetailsApi {
     companyGame('${key.$1}-${key.$2.name}-2'),
   ], hasMore: false);
 
-  /// What the studio search finds for a query (null = the request failed).
+  /// What the studio search finds for a query (null = the request failed), as one page.
   List<CompanySummary>? Function(String query) companies = (query) => [
     CompanySummary(id: 56, name: 'Studio $query'),
   ];
@@ -1336,12 +1441,15 @@ class FakeCompanyApi extends FakeDetailsApi {
   final List<(CompanyGamesKey, int)> gameCalls = [];
 
   @override
-  Future<List<CompanySummary>?> searchCompanies(
+  Future<ResultsPage<CompanySummary>?> searchCompanies(
     String query, {
+    StudioFilters filters = StudioFilters.none,
+    int offset = 0,
     int limit = GameApiService.searchPageSize,
   }) async {
     await gate?.future;
-    return companies(query);
+    final found = companies(query);
+    return found == null ? null : ResultsPage(found, hasMore: false);
   }
 
   @override

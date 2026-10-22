@@ -64,6 +64,7 @@ class LibraryStore extends ChangeNotifier {
     this._onCatalogFilled,
     this._onSteamSynced,
     this._onCompletionTimeSaved,
+    this._onReviewSaved,
     GameApiService? apiService,
   }) : _cache = cache ?? LocalCache(),
        _pendingStorage = pendingStorage ?? PendingEditsStorage(),
@@ -98,6 +99,11 @@ class LibraryStore extends ChangeNotifier {
   /// removal) reached the server, so whoever holds the members' times for the
   /// game reads them again.
   final void Function(String gameId)? _onCompletionTimeSaved;
+
+  /// Called with a game's id after the member's review or rating of it was
+  /// saved (or, with no connection, kept for later), so whoever holds what the
+  /// members think of the game reads it again.
+  final void Function(String gameId)? _onReviewSaved;
 
   final GameApiService _apiService;
 
@@ -1042,7 +1048,7 @@ class LibraryStore extends ChangeNotifier {
     await _saveUserGame(next);
   }
 
-  /// Saves the member's short review of [id] next to their rating (at most
+  /// Saves the member's review of [id] next to their rating (at most
   /// [Db.reviewMaxLength] characters; empty removes it). Like a rating, a game
   /// that is not in the library comes in with it.
   Future<void> setReview(String id, String review) async {
@@ -1057,6 +1063,7 @@ class LibraryStore extends ChangeNotifier {
     );
     _replaceGame(next);
     await _saveUserGame(next);
+    _onReviewSaved?.call(id);
   }
 
   Future<void> setRating(String id, double rating) async {
@@ -1068,6 +1075,7 @@ class LibraryStore extends ChangeNotifier {
     );
     _replaceGame(next);
     await _saveUserGame(next);
+    _onReviewSaved?.call(id);
   }
 
   Future<void> setPlayedOn(String id, GamePlatform platform) async {

@@ -6,6 +6,7 @@ import 'package:checkpoint/models/browse.dart';
 import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/release_alerts.dart';
+import 'package:checkpoint/screens/news/news_screen.dart';
 import 'package:checkpoint/sheets/pick_next_sheet.dart';
 import 'package:checkpoint/sheets/quick_log_sheet.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -87,6 +88,7 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          const _NewsButton(),
           SectionHeader(
             context.l10n.currentlyPlaying,
             actionLabel: context.l10n.seeAllShort,
@@ -149,6 +151,63 @@ class HomeScreen extends StatelessWidget {
           const _FriendsFeedRow(),
           const _PopularRow(),
         ],
+      ),
+    );
+  }
+}
+
+/// "Game news", under the greeting: opens the News screen, the gaming press for
+/// everyone, not only the games in the library.
+class _NewsButton extends StatelessWidget {
+  const _NewsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Material(
+        color: palette.surfaceHigh,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => openNews(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: palette.accent.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.newspaper_rounded, color: palette.accent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.l10n.gameNews,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        context.l10n.gameNewsSubtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: palette.muted, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: palette.muted),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

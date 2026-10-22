@@ -8,7 +8,6 @@ import 'package:checkpoint/state/load_status.dart';
 import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/navigation.dart';
-import 'package:checkpoint/widgets/expandable_text.dart';
 import 'package:checkpoint/widgets/panel.dart';
 import 'package:checkpoint/widgets/profile_avatar.dart';
 import 'package:checkpoint/widgets/star_rating.dart';
@@ -76,14 +75,6 @@ class _FriendsPanelState extends State<FriendsPanel> {
                 count: friends.countOf(groups[i]),
                 members: friends.membersOf(groups[i]),
               ),
-            ],
-            if (friends.reviews.isNotEmpty) ...[
-              Divider(height: 28, color: context.palette.hairline),
-              Text(
-                context.l10n.reviews,
-                style: TextStyle(color: context.palette.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-              for (final friend in friends.reviews) _FriendReview(friend: friend),
             ],
           ],
         ),
@@ -210,62 +201,6 @@ class _FriendAvatar extends StatelessWidget {
             SizedBox(height: starSize),
         ],
       ),
-    );
-  }
-}
-
-/// A friend's review: their photo and name (opening their profile), the stars
-/// they gave, and the text.
-class _FriendReview extends StatelessWidget {
-  const _FriendReview({required this.friend});
-
-  final FriendWithGame friend;
-
-  @override
-  Widget build(BuildContext context) {
-    final member = friend.member;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // The photo with room around it: 48 px to tap.
-        Semantics(
-          button: true,
-          label: context.l10n.openMemberProfile(member.name),
-          excludeSemantics: true,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: () => openProfile(context, userId: member.id, preview: member),
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: ProfileAvatar(name: member.name, size: 32, imageUrl: member.avatarUrl),
-            ),
-          ),
-        ),
-        const SizedBox(width: 2),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(
-                    member.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (friend.rating > 0) ...[
-                  const SizedBox(width: 8),
-                  StarRating(rating: friend.rating, size: 12),
-                ],
-              ]),
-              const SizedBox(height: 2),
-              ExpandableText(friend.review, collapsedLines: 3),
-            ]),
-          ),
-        ),
-      ]),
     );
   }
 }

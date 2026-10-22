@@ -8,7 +8,7 @@ import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/utils/formatters.dart';
 import 'package:checkpoint/widgets/sheet_frame.dart';
 
-/// Opens the sheet that writes, changes or removes the member's short review of
+/// Opens the sheet that writes, changes or removes the member's review of
 /// [gameId].
 Future<void> showReviewSheet(BuildContext context, String gameId) => showModalBottomSheet<void>(
   context: context,
@@ -17,8 +17,8 @@ Future<void> showReviewSheet(BuildContext context, String gameId) => showModalBo
   builder: (_) => ReviewSheet(gameId: gameId),
 );
 
-/// A short review next to the rating, at most [Db.reviewMaxLength] characters.
-/// Members who follow you see it on the game's screen, like your rating.
+/// A review next to the rating, at most [Db.reviewMaxLength] characters. Every
+/// member can read it on the game's screen, in its Reviews, like your rating.
 class ReviewSheet extends StatefulWidget {
   const ReviewSheet({super.key, required this.gameId});
   final String gameId;
@@ -52,8 +52,8 @@ class _ReviewSheetState extends State<ReviewSheet> {
         TextField(
           controller: _text,
           autofocus: true,
-          minLines: 4,
-          maxLines: 8,
+          minLines: 5,
+          maxLines: 12,
           maxLength: Db.reviewMaxLength,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),

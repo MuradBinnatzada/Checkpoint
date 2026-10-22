@@ -18,6 +18,8 @@ export type RateLimit = { bucket: string; maxHits: number; windowSeconds: number
 
 export const RATE_LIMITS = {
   igdb: { bucket: 'igdb-handler', maxHits: 200, windowSeconds: 60 },
+  // The news screen: a list and a page or two of it a minute at most.
+  news: { bucket: 'game-news', maxHits: 60, windowSeconds: 60 },
   steamSync: { bucket: 'sync-steam', maxHits: 10, windowSeconds: 3600 },
   achievements: { bucket: 'sync-achievements', maxHits: 100, windowSeconds: 600 },
   deleteAccount: { bucket: 'delete-account', maxHits: 10, windowSeconds: 3600 },

@@ -250,9 +250,10 @@ class _ChipFilterSectionState<T> extends State<ChipFilterSection<T>> {
   }
 }
 
-/// The release-year filter: a chip per decade from [min] to [max], and a slider
-/// for any range in between. A slider end pulled all the way out leaves that end
-/// open, so it also takes in the years past it.
+/// The year filter ("Release year" unless given a [title]): a chip per decade
+/// from [min] to [max], and a slider for any range in between. A slider end
+/// pulled all the way out leaves that end open, so it also takes in the years
+/// past it.
 class YearRangeSection extends StatelessWidget {
   const YearRangeSection({
     super.key,
@@ -260,12 +261,14 @@ class YearRangeSection extends StatelessWidget {
     required this.onChanged,
     required this.min,
     required this.max,
+    this.title,
   });
 
   final YearRange value;
   final ValueChanged<YearRange> onChanged;
   final int min;
   final int max;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +278,7 @@ class YearRangeSection extends StatelessWidget {
     final from = (value.from ?? min).clamp(min, max);
     final to = (value.to ?? max).clamp(min, max);
     return FilterSection(
-      title: context.l10n.releaseYear,
+      title: title ?? context.l10n.releaseYear,
       icon: Icons.event_rounded,
       selected: value.isAny ? 0 : 1,
       summary: value.label,
@@ -317,6 +320,40 @@ class YearRangeSection extends StatelessWidget {
   }
 }
 
+/// One thing picked, as a chip that lets go of it when its cross is tapped.
+class FilterValueChip extends StatelessWidget {
+  const FilterValueChip({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onRemoved,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onRemoved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 6),
+      child: InputChip(
+        avatar: Icon(icon, size: 16, color: color),
+        label: Text(label, style: const TextStyle(fontSize: 12.5)),
+        onDeleted: onRemoved,
+        deleteIcon: const Icon(Icons.close_rounded, size: 16),
+        deleteButtonTooltipMessage: context.l10n.removeFilter(label),
+        backgroundColor: context.palette.surfaceHigh,
+        side: BorderSide(color: context.palette.accent.withValues(alpha: 0.5)),
+        shape: const StadiumBorder(),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
 /// What is picked, as a row of removable chips, so it is clear why a list is
 /// short; nothing when nothing is picked. [labelOf] names an attribute's value
 /// (the value itself unless given).
@@ -345,19 +382,11 @@ class ActiveFilterChips extends StatelessWidget {
       required Color color,
       required String label,
       required FilterOptions without,
-    }) => Padding(
-      padding: const EdgeInsetsDirectional.only(end: 6),
-      child: InputChip(
-        avatar: Icon(icon, size: 16, color: color),
-        label: Text(label, style: const TextStyle(fontSize: 12.5)),
-        onDeleted: () => onChanged(without),
-        deleteIcon: const Icon(Icons.close_rounded, size: 16),
-        deleteButtonTooltipMessage: context.l10n.removeFilter(label),
-        backgroundColor: context.palette.surfaceHigh,
-        side: BorderSide(color: context.palette.accent.withValues(alpha: 0.5)),
-        shape: const StadiumBorder(),
-        visualDensity: VisualDensity.compact,
-      ),
+    }) => FilterValueChip(
+      icon: icon,
+      color: color,
+      label: label,
+      onRemoved: () => onChanged(without),
     );
 
     return SingleChildScrollView(
@@ -514,7 +543,7 @@ class DiscoverFilterSheet extends StatelessWidget {
                 ),
               ),
             ),
-            _SheetFooter(
+            FilterSheetFooter(
               canClear: !filters.isEmpty,
               onClear: () => edit((f) => f.cleared()),
             ),
@@ -544,8 +573,8 @@ class DiscoverFilterSheet extends StatelessWidget {
 }
 
 /// "Clear all" and "Show results", kept in view under the scrolling sheet.
-class _SheetFooter extends StatelessWidget {
-  const _SheetFooter({required this.canClear, required this.onClear});
+class FilterSheetFooter extends StatelessWidget {
+  const FilterSheetFooter({super.key, required this.canClear, required this.onClear});
 
   final bool canClear;
   final VoidCallback onClear;

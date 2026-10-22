@@ -30,6 +30,18 @@ abstract final class Db {
   /// and rating: the Friends panel on a game's screen.
   static const rpcFollowingGameActivity = 'following_game_activity';
 
+  /// One page of the reviews of a game, from every member, and the game's
+  /// community rating: the Reviews panel on a game's screen
+  /// (20261022120000_game_reviews.sql).
+  static const rpcGameReviews = 'game_reviews';
+  static const rpcGameReviewStats = 'game_review_stats';
+
+  /// A member's report of another's review: write only
+  /// (20261022120000_game_reviews.sql).
+  static const reviewReports = 'review_reports';
+  static const reviewUserId = 'review_user_id';
+  static const reason = 'reason';
+
   /// The newest sessions, completions and ratings of the members the signed-in
   /// one follows: "From people you follow" on Home.
   static const rpcFollowingRecentActivity = 'following_recent_activity';
@@ -161,10 +173,13 @@ abstract final class Db {
   static const customBackdropUrl = 'custom_backdrop_url';
 
   /// `user_games`: when the member last marked the game completed (kept by a
-  /// trigger; the app never sends it), and their short review (at most
+  /// trigger; the app never sends it), and their review (at most
   /// [reviewMaxLength] characters, '' = none). Both are in `public_user_games`.
+  /// When the review was written (`reviewed_at`, also kept by a trigger) comes
+  /// with [rpcGameReviews] only.
   static const completedAt = 'completed_at';
   static const review = 'review';
+  static const reviewedAt = 'reviewed_at';
 
   /// `user_games`: a completed game the member still plays, listed under
   /// Playing too. Cleared by the same trigger whenever the status isn't
@@ -174,7 +189,7 @@ abstract final class Db {
   /// `user_games` (and `public_user_games`): the member got everything out of
   /// the game, a Platinum trophy, every achievement or 100% (`PerfectMark`).
   static const perfected = 'perfected';
-  static const reviewMaxLength = 500;
+  static const reviewMaxLength = 2000;
 
   /// `games`: the day the game first came out, from IGDB; NULL when unknown.
   static const releaseDate = 'release_date';

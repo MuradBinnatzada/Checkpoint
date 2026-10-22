@@ -112,13 +112,27 @@
 //                          `developer` / `publisher` flags: IGDB may match the
 //                          company and the role on two different involved
 //                          companies, so the app checks the company's own entry.
-//                        or, to search the companies (the Discover tab's Studios):
-//                        { "mode": "companies", "query": "valve", "limit": 20 }
-//                          answers up to `limit` companies with a game whose name
-//                          has a word starting with every typed word, the exact
-//                          name first, then names starting with it, then most
-//                          games: [{ id, name, logo_image_id, country,
-//                          published_count, developed_count }]. No paging.
+//                        or, to search or browse the companies (the Discover tab's Studios):
+//                        { "mode": "companies", "query": "valve", "limit": 20, "offset": 0,
+//                          "filters": { "role": "developer", "countries": [840, 392],
+//                          "founded": { "from": 1990, "to": 1999 } },
+//                          "sort": "popular" }
+//                          `query` and `filters` are both optional but one of them
+//                          is needed. `role` is any (the default), developer or
+//                          publisher; `countries` are ISO 3166-1 numbers, a company
+//                          needs to be in any of them; `founded` is an inclusive
+//                          range of founding years from 1970, either end optional.
+//                          `sort` is popular (the default), name, oldest or newest
+//                          (by founding date; companies with none are left out).
+//                          Answers up to `limit` companies with a game, with a word
+//                          of their name starting with every typed word: [{ id, name,
+//                          logo_image_id, country, start_date (Unix seconds),
+//                          published_count, developed_count }]. `popular` puts the
+//                          exact name first, then names starting with it, then most
+//                          games, among the earliest-added companies (IGDB can't
+//                          sort by how many games a company has: 50 candidates for
+//                          a text, 500 to browse by filters alone); the other sorts
+//                          are IGDB's own. `offset` pages the list, like a search.
 //                        (the queries live in _shared/companies.ts)
 // Response (JSON):       the raw IGDB /v4/games array, or
 //                        { "error": "...", "code": "...", "retry_after"?: seconds }
@@ -158,11 +172,17 @@ import { withCors } from "../_shared/cors.ts";
 import { secondFactorMissing } from "../_shared/mfa.ts";
 import { RATE_LIMITS, rateLimitWait } from "../_shared/rate_limit.ts";
 import {
+  type CompanyFilters,
+  companiesQuery,
   companyGamesQuery,
   companyInfo,
   companyQuery,
-  companySearchQuery,
   type CompanyRole,
+  type CompanySort,
+  hasCompanyFilters,
+  isCompanySort,
+  listCompanies,
+  parseCompanyFilters,
   parseCompanyRole,
   rankCompanies,
 } from "../_shared/companies.ts";
@@ -942,11 +962,24 @@ function companyGames(
   );
 }
 
-async function searchCompanies(term: string, limit: number): Promise<unknown> {
+// A text of nothing to match (only punctuation) lists by the filters alone, and
+// with no filters either has nothing to list.
+async function searchCompanies(
+  term: string,
+  filters: CompanyFilters,
+  sort: CompanySort,
+  limit: number,
+  offset: number,
+): Promise<unknown> {
   const words = titleWords(term);
-  if (words.length === 0) return [];
-  const rows = await queryIgdb(IGDB_COMPANIES_URL, companySearchQuery(words));
-  return rankCompanies(rows, term, limit);
+  if (words.length === 0 && !hasCompanyFilters(filters)) return [];
+  const rows = await queryIgdb(
+    IGDB_COMPANIES_URL,
+    companiesQuery(words, filters, sort, limit, offset),
+  );
+  return sort === "popular"
+    ? rankCompanies(rows, words.length > 0 ? term : "", limit, offset)
+    : listCompanies(rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,18 +1155,43 @@ Deno.serve(withCors(async (req: Request) => {
       );
     }
 
-    // `companies`: the studio search, by name.
+    // `companies`: the studio search and browse, by name and filters.
     if (payload?.mode === "companies") {
       const raw = typeof payload?.query === "string" ? payload.query : "";
       const term = sanitizeSearchTerm(raw.slice(0, MAX_QUERY_LENGTH));
-      if (!term) {
+      const filters = parseCompanyFilters(payload?.filters);
+      if (typeof filters === "string") {
+        return jsonResponse({ error: filters, code: "BAD_REQUEST" }, 400);
+      }
+      const rawSort = payload?.sort ?? "popular";
+      if (!isCompanySort(rawSort)) {
         return jsonResponse(
-          { error: "A non-empty `query` string is required", code: "BAD_REQUEST" },
+          {
+            error: "`sort` must be one of: popular, name, oldest, newest",
+            code: "BAD_REQUEST",
+          },
           400,
         );
       }
+      if (!term && !hasCompanyFilters(filters)) {
+        return jsonResponse(
+          {
+            error: "A non-empty `query` string or at least one filter is required",
+            code: "BAD_REQUEST",
+          },
+          400,
+        );
+      }
+      const offset = parseOffset(payload?.offset);
+      if (offset >= MAX_RESULTS) return jsonResponse([]);
       return jsonResponse(
-        await searchCompanies(term, parseLimit(payload?.limit)),
+        await searchCompanies(
+          term,
+          filters,
+          rawSort,
+          parseLimit(payload?.limit),
+          offset,
+        ),
       );
     }
 

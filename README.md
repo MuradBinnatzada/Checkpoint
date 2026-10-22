@@ -5,7 +5,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 ## Features
 
 - Search games (powered by IGDB) and add them to your library, or browse the most popular, highest rated and newest releases
-- Track status, playtime, ratings and short reviews per game
+- Track status, playtime, ratings and reviews per game
 - Log play sessions, backdate them, edit or delete them later, or time them with the live play timer
 - Import your Steam library; new Steam playtime becomes play sessions on its own; achievement progress for every Steam game, on your profile and other members'
 - Year in Review: your year of play by month, game, platform and genre
@@ -20,7 +20,7 @@ Your game library and playtime tracker. Build a library, log your hours, rate ga
 
 - **App:** Flutter / Dart (Android, iOS, web, desktop targets)
 - **Backend:** [Supabase](https://supabase.com) (auth, Postgres, Edge Functions)
-- **Edge Functions** (`supabase/functions`): `igdb-handler`, `sync-steam`, `sync-achievements`, `steam-link`, `delete-account`, `mfa-recovery`. Third-party API credentials (Twitch/IGDB, Steam) live server-side only.
+- **Edge Functions** (`supabase/functions`): `igdb-handler`, `game-news`, `sync-steam`, `sync-achievements`, `steam-link`, `delete-account`, `mfa-recovery`. Third-party API credentials (Twitch/IGDB, Steam) live server-side only.
 
 ## Project layout
 
@@ -78,7 +78,7 @@ The dry run should then list only the migrations from `20261019013500` on. Until
 
 **The live database differs from the files in one place:** its `public_user_games` view had a `custom_cover_url` column the migrations never made. `20261019015200_completion_dates_reviews_release_dates.sql` drops and recreates the view, so it no longer has that column.
 
-**Limits** (`20261019013500_value_limits_and_atomic_deletes.sql`): the database refuses hours below 0 or above 100 000, ratings outside 0 to 5, prices outside 0 to 100 000, reviews over 500 characters, session notes over 1 000, and sessions dated more than a day ahead; values already saved out of range were moved into it. Removing a game from the library is one call, `remove_library_game`, which deletes its sessions and the library row in one transaction (`clear_library` does the same for the whole library).
+**Limits** (`20261019013500_value_limits_and_atomic_deletes.sql`): the database refuses hours below 0 or above 100 000, ratings outside 0 to 5, prices outside 0 to 100 000, reviews over 2 000 characters, session notes over 1 000, and sessions dated more than a day ahead; values already saved out of range were moved into it. Removing a game from the library is one call, `remove_library_game`, which deletes its sessions and the library row in one transaction (`clear_library` does the same for the whole library).
 
 ### Edge Function errors
 
@@ -88,7 +88,7 @@ The functions answer a failure with `{ "error": "...", "code": "...", "retry_aft
 
 Steam, IGDB and Twitch answer HTTP 429 when they are over their limits. The functions retry a 429 with exponential backoff and jitter (`supabase/functions/_shared/backoff.ts`), waiting for the `Retry-After` the API sent when it is short. The waits are capped so a request never hangs: a search retries for about 3.5 s, an achievements load for 6 s. A limit that outlasts the retries is reported as `*_RATE_LIMITED` with `retry_after`, and `igdb-handler` then answers further searches from the same instance with that error for up to a minute without calling IGDB.
 
-Each member also has limits of their own, so one account (or a script with its token) can't use up the shared quotas: 200 `igdb-handler` requests a minute, 10 manual Steam syncs an hour, 100 achievement loads in 10 minutes, 10 Steam sign-ins (`steam-link`) an hour, 10 account deletion attempts an hour, 10 sets of new two-factor backup codes an hour and 5 tries of a backup code an hour (`mfa-recovery`; see *Security*) (`supabase/functions/_shared/rate_limit.ts`, counted in the database by `consume_rate_limit`). Over a limit a function answers `RATE_LIMITED` (429) with `retry_after`. A limiter that can't be reached lets the call through, except for backup code tries, which it refuses until it can count them again.
+Each member also has limits of their own, so one account (or a script with its token) can't use up the shared quotas: 200 `igdb-handler` requests a minute, 10 manual Steam syncs an hour, 100 achievement loads in 10 minutes, 10 Steam sign-ins (`steam-link`) an hour, 60 `game-news` requests a minute, 10 account deletion attempts an hour, 10 sets of new two-factor backup codes an hour and 5 tries of a backup code an hour (`mfa-recovery`; see *Security*) (`supabase/functions/_shared/rate_limit.ts`, counted in the database by `consume_rate_limit`). Over a limit a function answers `RATE_LIMITED` (429) with `retry_after`. A limiter that can't be reached lets the call through, except for backup code tries, which it refuses until it can count them again.
 
 ### Row ownership
 
@@ -138,7 +138,9 @@ Profile > **Year in Review** works out a year on the device (`lib/models/year_re
 
 ### Reviews, lists and the picker
 
-**Reviews:** a short review (500 characters) under your rating on a game's screen. The members who follow you see it in the game's **Friends** panel, with your stars (`following_game_activity` and `public_user_games` return it).
+**Reviews** (`20261022120000_game_reviews.sql`): a review (2 000 characters) under your rating on a game's screen, which every signed-in member can read. The game's **Reviews** panel shows the community rating (the average and how many gave each star, `game_review_stats`) and the first reviews, the members you follow first; **See all** opens every review (`game_reviews`, paged), ordered friends first, newest, highest or lowest rated, or only those of the members you follow. A review can be reported (spam, abuse or something else): the report is written to `review_reports`, which nothing in the app reads back (moderators read it in the Supabase dashboard), and the review no longer shows for the member who reported it. `user_games.reviewed_at` dates a review, kept by a trigger.
+
+**Game news** (`game-news`): Home's **Game news** button opens the News screen. **Latest** is the gaming press for everyone, not only the games in the library: the function merges the public RSS feeds of IGN, Eurogamer, Rock Paper Shotgun, GameSpot, Kotaku, GamesRadar+, Nintendo Life and Push Square (for a Russian app, StopGame, Igromania, Playground.ru and 3DNews; `NEWS_SOURCES` in `supabase/functions/_shared/news.ts`), newest first, with a chip per outlet to narrow it. **My games** is Steam's own news (`ISteamNews/GetNewsForApp`, no key needed) for up to ten library games that have a Steam app id, the ones being played first. The app shows an outlet's name, a headline, the start of the story and a picture, and opens the outlet's own page for the rest; nothing is republished or stored. Each feed is fetched at most every 10 minutes per warm instance (Steam's news every 15) whoever asks, a feed that fails is retried after a minute with the copy held meanwhile, and a language none of whose outlets answer falls back to English. Only signed-in members can call it. It needs no secrets; it is deployed with the other functions.
 
 **Lists** (`20261019115300_game_lists.sql`): Profile > **Lists**, and the list button on a game's screen. A list holds any catalog game, in the order you drag them into; a public list shows on your profile and opens from a link for any signed-in member, a private one is yours only. 100 lists per member and 500 games per list. Lists need a connection (they aren't kept offline); an edit the server refuses is put back with a message. `merge_game_into` moves list entries when it folds a duplicate game.
 

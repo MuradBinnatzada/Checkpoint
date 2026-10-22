@@ -8,6 +8,7 @@ import 'package:checkpoint/models/company.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
+import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/screens/search/browse_results_screen.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/library_store.dart';
@@ -24,6 +25,7 @@ import 'package:checkpoint/widgets/filter_sheet.dart';
 import 'package:checkpoint/widgets/load_more_footer.dart';
 import 'package:checkpoint/widgets/member_tile.dart';
 import 'package:checkpoint/widgets/status_pill.dart';
+import 'package:checkpoint/widgets/studio_filters.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -151,9 +153,18 @@ class _SearchScreenState extends State<SearchScreen> {
     _searchFocus.requestFocus();
   }
 
-  /// Opens the filter sheet, and searches again with what it picked.
+  /// Opens the filter sheet of what is being searched, and searches again with
+  /// what it picked.
   Future<void> _openFilters() async {
     _searchFocus.unfocus();
+    if (_kind == SearchKind.studios) {
+      final picked = await showStudioFilterSheet(
+        context,
+        initial: context.read<SearchStore>().studioFilters,
+      );
+      if (picked != null && mounted) _applyStudioFilters(picked);
+      return;
+    }
     final picked = await showDiscoverFilterSheet(
       context,
       initial: context.read<SearchStore>().activeFilters,
@@ -176,6 +187,13 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  /// Narrows the studios down by [filters], for what is in the box: a search
+  /// still waiting on the typing pause starts at once.
+  void _applyStudioFilters(StudioFilters filters) {
+    _debounce?.cancel();
+    unawaited(context.read<SearchStore>().filterStudios(filters, _query));
+  }
+
   /// Tapping a recent search fills the box and runs it right away.
   void _runRecentSearch(String query) {
     _debounce?.cancel();
@@ -196,6 +214,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final hasQuery = _query.trim().isNotEmpty;
     final filters = store.activeFilters;
     final filtering = isGames && !filters.isEmpty;
+    final isStudios = _kind == SearchKind.studios;
+    final studioFilters = store.studioFilters;
 
     final Widget body;
     if (isUsers) {
@@ -294,7 +314,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Text(context.l10n.discover, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
         ),
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(20, 0, isGames ? 8 : 20, 0),
+          padding: EdgeInsetsDirectional.fromSTEB(20, 0, isUsers ? 20 : 8, 0),
           child: Row(children: [
             Expanded(
               child: TextField(
@@ -323,10 +343,13 @@ class _SearchScreenState extends State<SearchScreen> {
                 ).copyWith(labelText: null),
               ),
             ),
-            // Studios and members have nothing to filter by.
-            if (isGames) ...[
+            // Members have nothing to filter by.
+            if (!isUsers) ...[
               const SizedBox(width: 2),
-              FilterButton(count: filters.count, onPressed: _openFilters),
+              FilterButton(
+                count: isStudios ? studioFilters.count : filters.count,
+                onPressed: _openFilters,
+              ),
             ],
           ]),
         ),
@@ -379,12 +402,22 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
             ),
           ),
+        if (isStudios && !studioFilters.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: StudioFilterChips(
+              filters: studioFilters,
+              onChanged: _applyStudioFilters,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+          ),
         Expanded(child: body),
       ]),
     );
   }
 
-  /// The Studios tab: what to type before anything is, then the studios found.
+  /// The Studios tab: what to type (or filter by) before anything is, then the
+  /// studios found.
   Widget _buildStudios(SearchStore store, bool hasQuery) {
     final auth = context.watch<AuthStore>();
     if (!auth.isLoggedIn) {
@@ -397,7 +430,8 @@ class _SearchScreenState extends State<SearchScreen> {
         onAction: () => logIn(context),
       );
     }
-    if (!hasQuery) {
+    final filters = store.studioFilters;
+    if (!hasQuery && filters.isEmpty) {
       return EmptyState(
         icon: Icons.business_rounded,
         title: context.l10n.findStudio,
@@ -407,7 +441,9 @@ class _SearchScreenState extends State<SearchScreen> {
     final studios = store.companyResults;
     final loading = store.companyLoading;
     return _ResultsPane(
-      label: loading && studios.isEmpty ? context.l10n.searching : _countLabel(studios.length, false),
+      label: loading && studios.isEmpty
+          ? context.l10n.searching
+          : _countLabel(studios.length, store.companyHasMore),
       count: studios.length,
       refreshing: loading && studios.isNotEmpty,
       empty: loading
@@ -420,12 +456,24 @@ class _SearchScreenState extends State<SearchScreen> {
               actionLabel: context.l10n.tryAgain,
               onAction: () => unawaited(store.findCompanies(_query)),
             )
-          : EmptyState(
+          : filters.isEmpty
+          ? EmptyState(
               icon: Icons.search_off_rounded,
               title: context.l10n.noStudiosFound,
               message: context.l10n.noStudiosFoundMessage,
+            )
+          : EmptyState(
+              icon: Icons.filter_list_off_rounded,
+              title: context.l10n.noStudiosMatchFilters,
+              message: context.l10n.noStudiosMatchFiltersMessage,
+              actionLabel: context.l10n.clearFilters(filters.count),
+              onAction: () => _applyStudioFilters(filters.cleared()),
             ),
       itemBuilder: (_, i) => _StudioTile(company: studios[i]),
+      hasMore: store.companyHasMore,
+      loadingMore: store.companyLoadingMore,
+      loadMoreFailed: store.companyLoadMoreFailed,
+      onLoadMore: store.loadMoreCompanies,
     );
   }
 
@@ -604,11 +652,15 @@ class _StudioTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final details = [
+    final origin = [
       ?company.countryName,
+      if (company.foundedYear case final year?) context.l10n.foundedYear(year),
+    ];
+    final games = [
       if (company.publishedCount > 0) context.l10n.publishedCount(company.publishedCount, fmtCount(company.publishedCount)),
       if (company.developedCount > 0) context.l10n.developedCount(company.developedCount, fmtCount(company.developedCount)),
     ];
+    final detailStyle = TextStyle(color: context.palette.muted, fontSize: 12.5);
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => openCompany(context, company.id, name: company.name),
@@ -620,10 +672,11 @@ class _StudioTile extends StatelessWidget {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(company.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              if (details.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(details.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.palette.muted, fontSize: 12.5)),
-              ],
+              for (final line in [origin, games])
+                if (line.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(line.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: detailStyle),
+                ],
             ]),
           ),
           Icon(Icons.chevron_right_rounded, color: context.palette.muted),

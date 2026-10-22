@@ -1026,7 +1026,6 @@
   "yourRating": "Your rating",
   "clear": "Clear",
   "ratingHint": "Tap or drag across the stars (half-stars supported)",
-  "addShortReview": "Add a short review",
   "stillPlayingOn": "Listed under Playing too",
   "stillPlayingOff": "No longer under Playing",
   "noLongerMarked": "No longer marked {mark}",
@@ -1292,12 +1291,33 @@
   "logInToSearchStudios": "Log in to search studios",
   "logInToSearchStudiosMessage": "Studios come from IGDB, which Checkpoint only reaches for signed-in users.",
   "findStudio": "Find a studio",
-  "findStudioMessage": "Search publishers and developers by name, like Valve or Nintendo.",
+  "findStudioMessage": "Search publishers and developers by name, like Valve or Nintendo, or tap the filter button to browse by country and founding year.",
   "studioSearchFailed": "Couldn’t search studios",
   "checkConnection": "Check your connection and try again.",
   "tryAgain": "Try again",
   "noStudiosFound": "No studios found",
   "noStudiosFoundMessage": "Try a different name, or the start of it.",
+  "noStudiosMatchFilters": "No studios match",
+  "noStudiosMatchFiltersMessage": "Try fewer filters, or a wider range of years.",
+  "filterStudios": "Filter studios",
+  "filterStudiosSubtitle": "Browse by country, founding year and what they do",
+  "studioRole": "Role",
+  "studioRoleDevelopers": "Developers",
+  "studioRolePublishers": "Publishers",
+  "country": "Country",
+  "foundedFilter": "Founded",
+  "foundedRange": "Founded {range}",
+  "@foundedRange": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "studioSortMostGames": "Most games",
+  "studioSortName": "Name (A–Z)",
+  "studioSortOldest": "Oldest first",
+  "studioSortNewest": "Newest first",
   "recentSearches": "Recent searches",
   "noRecentSearches": "No recent searches yet.",
   "browseBy": "Browse by",
@@ -2519,9 +2539,67 @@
   "writeReview": "Write a review",
   "yourReview": "Your review",
   "whatDidYouThink": "What did you think?",
-  "reviewVisibility": "Members who follow you see it on the game's page, with your rating.",
+  "reviewVisibility": "Everyone on Checkpoint can read it on the game's page, with your rating.",
   "saveReview": "Save review",
   "removeReview": "Remove review",
+  "reviewSortFriends": "Friends first",
+  "reviewSortNewest": "Newest",
+  "reviewSortHighest": "Highest rated",
+  "reviewSortLowest": "Lowest rated",
+  "reviewsFollowingOnly": "Following only",
+  "ratingsCount": "{count, plural, =1{1 rating} other{{count} ratings}}",
+  "@ratingsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readAllReviews": "{count, plural, =1{Read the review} other{Read all {count} reviews}}",
+  "@readAllReviews": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noReviewsYet": "No reviews yet",
+  "noReviewsYetMessage": "Played it? Be the first to say what you thought.",
+  "noReviewsFollowing": "No reviews from people you follow",
+  "noReviewsFollowingMessage": "None of the members you follow reviewed this game. Try Everyone.",
+  "reviewsLoadFailed": "Couldn’t load the reviews",
+  "logInToReadReviewsMessage": "Reviews and the community rating are for signed-in members.",
+  "followedMember": "Following",
+  "editReview": "Edit review",
+  "reportReview": "Report review",
+  "reportReviewSubtitle": "What is wrong with {name}’s review?",
+  "@reportReviewSubtitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reportReasonSpam": "Spam or ads",
+  "reportReasonAbuse": "Abusive or hateful",
+  "reportReasonOther": "Something else",
+  "reviewReported": "Thanks, we’ll take a look. You won’t see this review again.",
+  "reviewReportFailed": "Couldn’t send the report. Try again.",
+  "gameNews": "Game news",
+  "gameNewsSubtitle": "Headlines from the gaming press",
+  "newsLatest": "Latest",
+  "newsMyGames": "My games",
+  "newsAllOutlets": "All outlets",
+  "newsLoadFailed": "Couldn’t load the news",
+  "noNewsYet": "No news right now",
+  "noNewsYetMessage": "Pull down to refresh, or try again in a few minutes.",
+  "noSteamNewsTitle": "No Steam games yet",
+  "noSteamNewsMessage": "News for your games comes from Steam. Sync your Steam library in Settings to see it here.",
+  "newsMyGamesQuiet": "Nothing new for your games",
+  "newsMyGamesQuietMessage": "Steam has no recent news for the games in your library.",
+  "logInToReadNews": "Log in to read the news",
+  "logInToReadNewsMessage": "The news is for signed-in members.",
+  "newsOpenFailed": "Couldn’t open the article",
   "anotherGame": "another game",
   "replaceTimerTitle": "Replace the running timer?",
   "replaceTimerBody": "A timer is running for {other}. Starting one for {game} throws its time away. To keep it, stop it and log it first.",
@@ -2536,6 +2614,8 @@
     }
   },
   "replace": "Replace",
+  "accountVerified": "Verified through sign-in",
+  "accountNotVerified": "Added by the member, not verified",
   "openServiceProfile": "Open {service} profile",
   "@openServiceProfile": {
     "placeholders": {

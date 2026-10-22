@@ -8,6 +8,7 @@ import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
+import 'package:checkpoint/services/news_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
 import 'package:checkpoint/services/steam_link_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
@@ -17,12 +18,14 @@ import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
 import 'package:checkpoint/state/game_friends_store.dart';
+import 'package:checkpoint/state/game_reviews_store.dart';
 import 'package:checkpoint/state/library_attributes_store.dart';
 import 'package:checkpoint/state/library_store.dart';
 import 'package:checkpoint/state/library_view_store.dart';
 import 'package:checkpoint/state/lists_store.dart';
 import 'package:checkpoint/state/milestones_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
+import 'package:checkpoint/state/news_store.dart';
 import 'package:checkpoint/state/play_timer_store.dart';
 import 'package:checkpoint/state/profile_store.dart';
 import 'package:checkpoint/state/public_achievements_store.dart';
@@ -56,7 +59,8 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    (a callback set here) when the server filled in catalog rows, so it reads
 ///    again;
 ///  * [PublicProfileStore], [PublicLibraryStore], [SocialGraphStore],
-///    [PublicAchievementsStore], [GameFriendsStore] and [FriendsFeedStore] hold
+///    [PublicAchievementsStore], [GameFriendsStore], [GameReviewsStore] and
+///    [FriendsFeedStore] hold
 ///    what is fetched about OTHER members. They follow [AuthStore] only, so
 ///    that a sign-out drops it, and never touch [ProfileStore] (the signed-in
 ///    member's own profile).
@@ -78,6 +82,13 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    (the medians, never one member's time). It follows [AuthStore] only;
 ///    [LibraryStore] tells it (a callback set here) when the member's own time
 ///    for a game reached the server, so it reads that game's again;
+///  * [GameReviewsStore] holds what the members wrote about a game and how they
+///    rated it. It follows [AuthStore] only; [LibraryStore] tells it (a callback
+///    set here) when the member's own review or rating of a game was saved, so
+///    it reads that game's again;
+///  * [NewsStore] holds the News screen's articles (the outlets' latest, and
+///    Steam's news for the member's games). It follows [AuthStore] only; the
+///    screen reads [LibraryStore] to say which games to ask about;
 ///  * [MilestonesStore] holds the signed-in member's own milestones. It reads
 ///    [LibraryStore], [ListsStore], [ProfileStore] and [AuthStore] to tell how
 ///    far they are and when to have the server award new ones; nothing depends
@@ -89,6 +100,7 @@ class AppStores {
     required AuthService authService,
     LocalCache? cache,
     GameApiService? apiService,
+    NewsApiService? newsApi,
     ConnectivityService? connectivity,
     LinkTarget? initialLink,
     SteamLinkFlow? steamLink,
@@ -114,6 +126,7 @@ class AppStores {
       apiService: apiService,
     );
     browse = BrowseStore(apiService: apiService);
+    news = NewsStore(auth: auth, api: newsApi);
     companies = CompanyStore(apiService: apiService);
     // Hands what it loads to the library (exact platforms and genres), which is
     // built below: the callback only runs later, by when `library` exists.
@@ -125,6 +138,7 @@ class AppStores {
     publicLibraries = PublicLibraryStore(repository: repository, auth: auth);
     socialGraph = SocialGraphStore(repository: repository, auth: auth);
     gameFriends = GameFriendsStore(repository: repository, auth: auth);
+    gameReviews = GameReviewsStore(repository: repository, auth: auth);
     friendsFeed = FriendsFeedStore(repository: repository, auth: auth);
     communityTimes = CommunityTimesStore(repository: repository, auth: auth);
     publicAchievements = PublicAchievementsStore(
@@ -154,6 +168,7 @@ class AppStores {
       onCatalogFilled: () => libraryAttributes.markStale(),
       onSteamSynced: publicAchievements.refreshAfterSync,
       onCompletionTimeSaved: (gameId) => unawaited(communityTimes.load(gameId)),
+      onReviewSaved: (gameId) => unawaited(gameReviews.refresh(gameId)),
       apiService: apiService,
     );
     libraryAttributes = LibraryAttributesStore(
@@ -193,12 +208,14 @@ class AppStores {
   late final ProfileStore profile;
   late final SearchStore search;
   late final BrowseStore browse;
+  late final NewsStore news;
   late final CompanyStore companies;
   late final GameDetailsStore gameDetails;
   late final PublicProfileStore publicProfiles;
   late final PublicLibraryStore publicLibraries;
   late final SocialGraphStore socialGraph;
   late final GameFriendsStore gameFriends;
+  late final GameReviewsStore gameReviews;
   late final FriendsFeedStore friendsFeed;
   late final CommunityTimesStore communityTimes;
   late final PublicAchievementsStore publicAchievements;
@@ -218,6 +235,8 @@ class AppStores {
     publicLibraries.initialize();
     socialGraph.initialize();
     gameFriends.initialize();
+    gameReviews.initialize();
+    news.initialize();
     friendsFeed.initialize();
     communityTimes.initialize();
     publicAchievements.initialize();
@@ -242,6 +261,8 @@ class AppStores {
     publicAchievements.dispose();
     friendsFeed.dispose();
     communityTimes.dispose();
+    gameReviews.dispose();
+    news.dispose();
     gameFriends.dispose();
     socialGraph.dispose();
     publicLibraries.dispose();

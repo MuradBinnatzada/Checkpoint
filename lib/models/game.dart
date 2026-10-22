@@ -424,7 +424,7 @@ class Game {
   /// before the date was recorded.
   final DateTime? completedAt;
 
-  /// The member's short review next to their rating (`user_games.review`);
+  /// The member's review next to their rating (`user_games.review`);
   /// empty: none.
   final String review;
 
