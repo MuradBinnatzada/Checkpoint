@@ -7,6 +7,7 @@ import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/services/auth_service.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
+import 'package:checkpoint/services/discussion_api_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
 import 'package:checkpoint/services/news_api_service.dart';
 import 'package:checkpoint/services/local_cache.dart';
@@ -14,6 +15,7 @@ import 'package:checkpoint/services/steam_link_service.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/community_times_store.dart';
+import 'package:checkpoint/state/discussions_store.dart';
 import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
@@ -86,6 +88,9 @@ import 'package:checkpoint/state/social_graph_store.dart';
 ///    rated it. It follows [AuthStore] only; [LibraryStore] tells it (a callback
 ///    set here) when the member's own review or rating of a game was saved, so
 ///    it reads that game's again;
+///  * [DiscussionsStore] holds the boards, threads and replies the Discussions tab
+///    shows, and posts through the `discussions` Edge Function. It follows
+///    [AuthStore] only; nothing depends on it;
 ///  * [NewsStore] holds the News screen's articles (the outlets' latest, and
 ///    Steam's news for the member's games). It follows [AuthStore] only; the
 ///    screen reads [LibraryStore] to say which games to ask about;
@@ -101,6 +106,7 @@ class AppStores {
     LocalCache? cache,
     GameApiService? apiService,
     NewsApiService? newsApi,
+    DiscussionApiService? discussionApi,
     ConnectivityService? connectivity,
     LinkTarget? initialLink,
     SteamLinkFlow? steamLink,
@@ -127,6 +133,7 @@ class AppStores {
     );
     browse = BrowseStore(apiService: apiService);
     news = NewsStore(auth: auth, api: newsApi);
+    discussions = DiscussionsStore(repository: repository, auth: auth, api: discussionApi);
     companies = CompanyStore(apiService: apiService);
     // Hands what it loads to the library (exact platforms and genres), which is
     // built below: the callback only runs later, by when `library` exists.
@@ -209,6 +216,7 @@ class AppStores {
   late final SearchStore search;
   late final BrowseStore browse;
   late final NewsStore news;
+  late final DiscussionsStore discussions;
   late final CompanyStore companies;
   late final GameDetailsStore gameDetails;
   late final PublicProfileStore publicProfiles;
@@ -237,6 +245,7 @@ class AppStores {
     gameFriends.initialize();
     gameReviews.initialize();
     news.initialize();
+    discussions.initialize();
     friendsFeed.initialize();
     communityTimes.initialize();
     publicAchievements.initialize();
@@ -262,6 +271,7 @@ class AppStores {
     friendsFeed.dispose();
     communityTimes.dispose();
     gameReviews.dispose();
+    discussions.dispose();
     news.dispose();
     gameFriends.dispose();
     socialGraph.dispose();

@@ -202,6 +202,7 @@ void main() {
 
       for (final tab in [
         NavTab.search,
+        NavTab.discussions,
         NavTab.library,
         NavTab.profile,
         NavTab.home,

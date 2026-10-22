@@ -3,6 +3,7 @@
 abstract final class NavTab {
   static const home = 0;
   static const search = 1;
-  static const library = 2;
-  static const profile = 3;
+  static const discussions = 2;
+  static const library = 3;
+  static const profile = 4;
 }

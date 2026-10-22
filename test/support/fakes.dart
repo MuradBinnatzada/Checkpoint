@@ -14,6 +14,7 @@ import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
 import 'package:checkpoint/models/game_details.dart';
+import 'package:checkpoint/models/discussion.dart';
 import 'package:checkpoint/models/game_friends.dart';
 import 'package:checkpoint/models/game_reviews.dart';
 import 'package:checkpoint/models/game_list.dart';
@@ -27,6 +28,8 @@ import 'package:checkpoint/models/studio_filters.dart';
 import 'package:checkpoint/models/social_user.dart';
 import 'package:checkpoint/models/user_profile.dart';
 import 'package:checkpoint/services/auth_service.dart';
+import 'package:checkpoint/services/discussion_api_service.dart';
+import 'package:checkpoint/services/discussion_failure.dart';
 import 'package:checkpoint/services/checkpoint_repository.dart';
 import 'package:checkpoint/services/connectivity_service.dart';
 import 'package:checkpoint/services/game_api_service.dart';
@@ -110,6 +113,50 @@ SocialUser testMember(String id, {String? name, String? avatarUrl}) => SocialUse
   gamesLogged: 0,
   followers: 0,
   avatarUrl: avatarUrl,
+);
+
+/// A thread of the discussions by member [author], written in at [at] (its last
+/// post; the thread was started then too).
+DiscussionThread testThread(
+  String id, {
+  String board = 'general',
+  String? title,
+  String text = 'Opening text of the thread.',
+  String author = 'a',
+  String? authorName,
+  int replies = 0,
+  DateTime? at,
+  bool pinned = false,
+  bool locked = false,
+  DiscussionGame? game,
+}) => DiscussionThread(
+  id: id,
+  boardId: board,
+  author: testMember(author, name: authorName),
+  title: title ?? 'Thread $id',
+  text: text,
+  createdAt: at ?? DateTime.utc(2026, 10, 20),
+  lastPostAt: at ?? DateTime.utc(2026, 10, 20),
+  replyCount: replies,
+  pinned: pinned,
+  locked: locked,
+  game: game,
+);
+
+/// A reply to [threadId] by member [author].
+DiscussionPost testPost(
+  String id,
+  String threadId, {
+  String author = 'b',
+  String? authorName,
+  String text = 'A reply.',
+  DateTime? at,
+}) => DiscussionPost(
+  id: id,
+  threadId: threadId,
+  author: testMember(author, name: authorName),
+  text: text,
+  createdAt: at ?? DateTime.utc(2026, 10, 21),
 );
 
 /// A review of a game by member [id], as `game_reviews` answers it.
@@ -882,7 +929,7 @@ class FakeRepository implements CheckpointRepository {
 
   /// The pages of reviews asked for, and the reviews reported, in order.
   final List<({String gameId, ReviewFilter filter, int offset})> reviewReads = [];
-  final List<({String userId, String gameId, ReviewReportReason reason})> reviewReports = [];
+  final List<({String userId, String gameId, ReportReason reason})> reviewReports = [];
 
   @override
   Future<ResultsPage<GameReview>> fetchGameReviews(
@@ -945,11 +992,165 @@ class FakeRepository implements CheckpointRepository {
   Future<void> reportReview({
     required String userId,
     required String gameId,
-    required ReviewReportReason reason,
+    required ReportReason reason,
   }) async {
     _checkOnline();
     if (failReviewReports) throw Exception('report failed');
     reviewReports.add((userId: userId, gameId: gameId, reason: reason));
+  }
+
+  // ---- Discussions ----
+
+  /// The boards, the threads and the replies of each thread, as the server holds
+  /// them. The fake lists them like the functions do: the ones written in last
+  /// first (pinned ones first on a board), leaving out the threads and replies of
+  /// the members blocked and what was reported, and pages them.
+  List<DiscussionBoard> discussionBoards = const [
+    DiscussionBoard(id: 'general', titleFallback: 'General', descriptionFallback: 'Anything about games.', threadCount: 2),
+    DiscussionBoard(id: 'games', titleFallback: 'Game talk', descriptionFallback: 'One game at a time.'),
+    DiscussionBoard(id: 'help', titleFallback: 'Help & tips', descriptionFallback: 'Stuck? Ask.'),
+  ];
+  final List<DiscussionThread> discussionThreads = [];
+  final Map<String, List<DiscussionPost>> discussionPosts = {};
+  final Map<String, SocialUser> blockedMembers = {};
+  final List<({String? threadId, String? postId, ReportReason reason})> discussionReports = [];
+  final List<String> deletedDiscussionThreads = [];
+  final List<String> deletedDiscussionPosts = [];
+
+  /// The threads and replies read, in order.
+  final List<({String? board, String? game, int offset})> threadReads = [];
+  final List<({String thread, int offset})> postReads = [];
+  Completer<void>? discussionGate;
+  bool failDiscussionReads = false;
+  bool failDiscussionWrites = false;
+
+  Future<void> _discussionRead() async {
+    await discussionGate?.future;
+    _checkOnline();
+    if (failDiscussionReads) throw Exception('discussions read failed');
+  }
+
+  bool _hidden(String? threadId, String? postId, String authorId) =>
+      blockedMembers.containsKey(authorId) ||
+      discussionReports.any((r) => (threadId != null && r.threadId == threadId) || (postId != null && r.postId == postId));
+
+  @override
+  Future<List<DiscussionBoard>> fetchDiscussionBoards() async {
+    await _discussionRead();
+    return [
+      for (final b in discussionBoards)
+        DiscussionBoard(
+          id: b.id,
+          titleFallback: b.titleFallback,
+          descriptionFallback: b.descriptionFallback,
+          threadCount: discussionThreads.where((t) => t.boardId == b.id && !_hidden(null, null, t.author.id)).length,
+        ),
+    ];
+  }
+
+  @override
+  Future<ResultsPage<DiscussionThread>> fetchDiscussionThreads({
+    String? boardId,
+    String? gameId,
+    int offset = 0,
+    int limit = CheckpointRepository.discussionThreadsPageSize,
+  }) async {
+    threadReads.add((board: boardId, game: gameId, offset: offset));
+    await _discussionRead();
+    final all = [
+      for (final t in discussionThreads)
+        if ((boardId == null || t.boardId == boardId) &&
+            (gameId == null || t.game?.id == gameId) &&
+            !_hidden(t.id, null, t.author.id))
+          t,
+    ]..sort((a, b) {
+      final pinned = boardId == null ? 0 : (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      return pinned != 0 ? pinned : b.lastPostAt.compareTo(a.lastPostAt);
+    });
+    final page = all.skip(offset).take(limit).toList();
+    return ResultsPage(page, hasMore: page.length >= limit);
+  }
+
+  @override
+  Future<DiscussionThread?> fetchDiscussionThread(String id) async {
+    await _discussionRead();
+    for (final t in discussionThreads) {
+      if (t.id == id && !_hidden(t.id, null, t.author.id)) return t;
+    }
+    return null;
+  }
+
+  @override
+  Future<ResultsPage<DiscussionPost>> fetchDiscussionPosts(
+    String threadId, {
+    int offset = 0,
+    int limit = CheckpointRepository.discussionPostsPageSize,
+  }) async {
+    postReads.add((thread: threadId, offset: offset));
+    await _discussionRead();
+    final all = [
+      for (final p in discussionPosts[threadId] ?? const <DiscussionPost>[])
+        if (!_hidden(null, p.id, p.author.id)) p,
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final page = all.skip(offset).take(limit).toList();
+    return ResultsPage(page, hasMore: page.length >= limit);
+  }
+
+  void _discussionWrite() {
+    _checkOnline();
+    if (failDiscussionWrites) throw Exception('discussion write failed');
+  }
+
+  @override
+  Future<bool> deleteDiscussionThread(String id) async {
+    _discussionWrite();
+    deletedDiscussionThreads.add(id);
+    discussionThreads.removeWhere((t) => t.id == id);
+    discussionPosts.remove(id);
+    return true;
+  }
+
+  @override
+  Future<bool> deleteDiscussionPost(String id) async {
+    _discussionWrite();
+    deletedDiscussionPosts.add(id);
+    for (final entry in discussionPosts.entries) {
+      entry.value.removeWhere((p) => p.id == id);
+    }
+    return true;
+  }
+
+  @override
+  Future<void> reportDiscussion({String? threadId, String? postId, required ReportReason reason}) async {
+    _discussionWrite();
+    discussionReports.add((threadId: threadId, postId: postId, reason: reason));
+  }
+
+  @override
+  Future<void> blockDiscussionMember(String userId) async {
+    _discussionWrite();
+    SocialUser? member;
+    for (final t in discussionThreads) {
+      if (t.author.id == userId) member = t.author;
+    }
+    for (final posts in discussionPosts.values) {
+      for (final p in posts) {
+        if (p.author.id == userId) member = p.author;
+      }
+    }
+    blockedMembers[userId] = member ?? testMember(userId);
+  }
+
+  @override
+  Future<void> unblockDiscussionMember(String userId) async {
+    _discussionWrite();
+    blockedMembers.remove(userId);
+  }
+
+  @override
+  Future<List<SocialUser>> fetchBlockedDiscussionMembers() async {
+    await _discussionRead();
+    return blockedMembers.values.toList();
   }
 
   /// What `completion_time_stats` answers for each game, by game id.
@@ -1561,3 +1762,75 @@ class FakeSteamLink implements SteamLinkFlow {
   @override
   Future<void> closeBrowser() async => browserCloses++;
 }
+
+/// Posts to the discussions like the `discussions` function would, into the
+/// [repo]'s threads and replies as [me]. [failWith] refuses the next posts with
+/// that failure; [gate] holds every call until completed.
+class FakeDiscussionApi extends DiscussionApiService {
+  FakeDiscussionApi(this.repo, {required this.me});
+
+  final FakeRepository repo;
+  final SocialUser me;
+  DiscussionFailure? failWith;
+  Completer<void>? gate;
+
+  final List<({String board, String title, String text, String? gameId})> threadCalls = [];
+  final List<({String thread, String text})> replyCalls = [];
+  int _made = 0;
+
+  @override
+  Future<String> createThread({
+    required String boardId,
+    required String title,
+    required String text,
+    String? gameId,
+  }) async {
+    threadCalls.add((board: boardId, title: title, text: text, gameId: gameId));
+    await gate?.future;
+    final failure = failWith;
+    if (failure != null) throw failure;
+    final id = 'new-thread-${++_made}';
+    repo.discussionThreads.add(
+      DiscussionThread(
+        id: id,
+        boardId: boardId,
+        author: me,
+        title: title,
+        text: text,
+        createdAt: DateTime.now().toUtc(),
+        lastPostAt: DateTime.now().toUtc(),
+        game: gameId == null ? null : DiscussionGame(id: gameId, title: 'Game $gameId'),
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> reply(String threadId, String text) async {
+    replyCalls.add((thread: threadId, text: text));
+    await gate?.future;
+    final failure = failWith;
+    if (failure != null) throw failure;
+    final now = DateTime.now().toUtc();
+    final posts = repo.discussionPosts.putIfAbsent(threadId, () => []);
+    posts.add(DiscussionPost(id: 'new-post-${++_made}', threadId: threadId, author: me, text: text, createdAt: now));
+    final i = repo.discussionThreads.indexWhere((t) => t.id == threadId);
+    if (i >= 0) {
+      final t = repo.discussionThreads[i];
+      repo.discussionThreads[i] = DiscussionThread(
+        id: t.id,
+        boardId: t.boardId,
+        author: t.author,
+        title: t.title,
+        text: t.text,
+        createdAt: t.createdAt,
+        lastPostAt: now,
+        replyCount: posts.length,
+        pinned: t.pinned,
+        locked: t.locked,
+        game: t.game,
+      );
+    }
+  }
+}
+

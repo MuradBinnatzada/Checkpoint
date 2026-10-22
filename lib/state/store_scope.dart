@@ -4,6 +4,7 @@ import 'package:checkpoint/state/app_stores.dart';
 import 'package:checkpoint/state/auth_store.dart';
 import 'package:checkpoint/state/browse_store.dart';
 import 'package:checkpoint/state/community_times_store.dart';
+import 'package:checkpoint/state/discussions_store.dart';
 import 'package:checkpoint/state/company_store.dart';
 import 'package:checkpoint/state/friends_feed_store.dart';
 import 'package:checkpoint/state/game_details_store.dart';
@@ -108,7 +109,10 @@ class AppStoresScope extends StatelessWidget {
                                                   store: stores.gameReviews,
                                                   child: StoreScope<NewsStore>(
                                                     store: stores.news,
-                                                    child: child,
+                                                    child: StoreScope<DiscussionsStore>(
+                                                      store: stores.discussions,
+                                                      child: child,
+                                                    ),
                                                   ),
                                                 ),
                                               ),

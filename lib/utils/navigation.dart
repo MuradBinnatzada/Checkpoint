@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:checkpoint/app/nav_tab.dart';
+import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/filter_options.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/social_user.dart';
@@ -11,12 +12,32 @@ import 'package:checkpoint/screens/profile/milestones_screen.dart';
 import 'package:checkpoint/screens/profile/public_library_screen.dart';
 import 'package:checkpoint/screens/profile/public_profile_screen.dart';
 import 'package:checkpoint/state/library_state.dart';
+import 'package:checkpoint/state/library_store.dart';
+import 'package:checkpoint/state/shared_link_store.dart';
 import 'package:checkpoint/state/nav_store.dart';
 import 'package:checkpoint/state/social_graph_store.dart';
 import 'package:checkpoint/state/store_scope.dart';
 
 void openGame(BuildContext context, String id) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => GameDetailScreen(gameId: id)));
+
+/// Opens the game with the IGDB id [igdbId]: from the library, or from the catalog
+/// when it is not there (a game a discussion is about). Says so when it can't be found.
+Future<void> openGameByIgdbId(BuildContext context, int igdbId) async {
+  final library = context.read<LibraryStore>();
+  final links = context.read<SharedLinkStore>();
+  final messenger = ScaffoldMessenger.of(context);
+  final message = context.l10n.linkGameNotFound;
+  final game = library.maybeGame(gameIdForIgdb(igdbId)) ?? await links.loadGame(igdbId);
+  if (!context.mounted) return;
+  if (game == null) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  } else {
+    openGame(context, game.id);
+  }
+}
 
 /// Opens a publisher's or developer's page, by IGDB company id. [name] (what
 /// was tapped) is its title while the page loads.

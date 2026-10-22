@@ -315,7 +315,7 @@ class GameReviewsStore extends AccountScopedStore {
   Future<void> report(
     String gameId,
     GameReview review,
-    ReviewReportReason reason,
+    ReportReason reason,
   ) async {
     if (accountId == null) return;
     await _repository.reportReview(

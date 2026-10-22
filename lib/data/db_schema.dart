@@ -36,6 +36,28 @@ abstract final class Db {
   static const rpcGameReviews = 'game_reviews';
   static const rpcGameReviewStats = 'game_review_stats';
 
+  /// The discussions (20261023120000_discussions.sql): boards, one page of
+  /// threads, one thread, a page of its replies and the members the caller
+  /// blocked are read through functions; a member deletes their own thread or
+  /// reply with two more. Threads and replies are written by the `discussions`
+  /// Edge Function only.
+  static const rpcDiscussionBoards = 'discussion_boards_overview';
+  static const rpcDiscussionThreads = 'discussion_threads_page';
+  static const rpcDiscussionThread = 'discussion_thread';
+  static const rpcDiscussionPosts = 'discussion_posts_page';
+  static const rpcMyDiscussionBlocks = 'my_discussion_blocks';
+  static const rpcDeleteDiscussionThread = 'delete_discussion_thread';
+  static const rpcDeleteDiscussionPost = 'delete_discussion_post';
+
+  /// A member's report of a thread or a reply, and their blocking another member:
+  /// own rows only.
+  static const discussionReports = 'discussion_reports';
+  static const discussionBlocks = 'discussion_blocks';
+  static const threadId = 'thread_id';
+  static const postId = 'post_id';
+  static const blockerId = 'blocker_id';
+  static const blockedId = 'blocked_id';
+
   /// A member's report of another's review: write only
   /// (20261022120000_game_reviews.sql).
   static const reviewReports = 'review_reports';

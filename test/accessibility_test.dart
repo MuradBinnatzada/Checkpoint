@@ -3,6 +3,11 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:checkpoint/models/discussion.dart';
+import 'package:checkpoint/screens/discussions/blocked_members_screen.dart';
+import 'package:checkpoint/screens/discussions/board_screen.dart';
+import 'package:checkpoint/screens/discussions/new_thread_screen.dart';
+import 'package:checkpoint/screens/discussions/thread_screen.dart';
 import 'package:checkpoint/app/app_shell.dart';
 import 'package:checkpoint/app/nav_tab.dart';
 import 'package:checkpoint/app/sign_in_panel.dart';
@@ -77,6 +82,13 @@ void main() {
           status: GameStatus.wishlist,
         ),
       ]
+      ..discussionThreads.addAll([
+        testThread('d1', title: 'Best soulslike?', author: 'friend-1', authorName: 'Grace Hopper', replies: 1, at: DateTime.now().toUtc().subtract(const Duration(hours: 2))),
+        testThread('d2', title: 'Locked and pinned', author: 'friend-1', authorName: 'Grace Hopper', pinned: true, locked: true),
+      ])
+      ..discussionPosts['d1'] = [
+        testPost('dp1', 'd1', author: 'friend-1', authorName: 'Grace Hopper', text: 'Elden Ring.'),
+      ]
       ..logs = [testLog('l1', 'g1'), testLog('l2', 'g2')]
       ..followingActivity = [
         testActivity(
@@ -146,6 +158,7 @@ void main() {
     await visit('Home');
     for (final (tab, name) in [
       (NavTab.search, 'Search'),
+      (NavTab.discussions, 'Discussions'),
       (NavTab.library, 'Library'),
       (NavTab.profile, 'Profile'),
     ]) {
@@ -166,6 +179,11 @@ void main() {
       'Two-factor setup': const TwoFactorSetupScreen(),
       'Public profile': const PublicProfileScreen(userId: 'friend-1'),
       'Sign in': const SignInScreen(),
+      'Board': const BoardScreen(scope: DiscussionScope(boardId: 'general')),
+      'Thread': const ThreadScreen(threadId: 'd1'),
+      'Locked thread': const ThreadScreen(threadId: 'd2'),
+      'New discussion': const NewThreadScreen(boardId: 'general'),
+      'Blocked members': const BlockedMembersScreen(),
     };
     for (final MapEntry(:key, :value) in screens.entries) {
       nav.currentState!.push(MaterialPageRoute<void>(builder: (_) => value));

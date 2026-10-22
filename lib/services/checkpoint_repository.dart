@@ -11,6 +11,7 @@ import 'package:checkpoint/models/achievement_summary.dart';
 import 'package:checkpoint/models/activity_entry.dart';
 import 'package:checkpoint/models/completion_time.dart';
 import 'package:checkpoint/models/connected_service.dart';
+import 'package:checkpoint/models/discussion.dart';
 import 'package:checkpoint/models/friend_activity.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/game_attributes.dart';
@@ -986,7 +987,7 @@ class CheckpointRepository {
   Future<void> reportReview({
     required String userId,
     required String gameId,
-    required ReviewReportReason reason,
+    required ReportReason reason,
   }) async {
     try {
       await _client.from(Db.reviewReports).insert({
@@ -998,6 +999,169 @@ class CheckpointRepository {
       // 23505: this member reported the review already.
       if (e.code != '23505') rethrow;
     }
+  }
+
+  // ---- Discussions ----
+
+  /// Threads per page of a board, and replies per page of a thread.
+  static const int discussionThreadsPageSize = 20;
+  static const int discussionPostsPageSize = 30;
+
+  /// The boards with how many threads each has and when one was last written in.
+  /// One request. Empty without a session.
+  Future<List<DiscussionBoard>> fetchDiscussionBoards() async {
+    final data = await _client.rpc(Db.rpcDiscussionBoards);
+    if (data is! List) return const [];
+    return List.unmodifiable([
+      for (final raw in data)
+        if (raw is Map)
+          if (_text(raw['id']) case final String id)
+            DiscussionBoard(
+              id: id,
+              titleFallback: _text(raw['title']) ?? id,
+              descriptionFallback: _text(raw['description']) ?? '',
+              threadCount: _int(raw['thread_count']),
+              latestAt: _date(raw['latest_at']),
+            ),
+    ]);
+  }
+
+  /// One page of threads, the ones written in last first: those of [boardId] (every
+  /// board when null) and those about the game [gameId] (a catalog id; any when
+  /// null). A full page means there may be another.
+  Future<ResultsPage<DiscussionThread>> fetchDiscussionThreads({
+    String? boardId,
+    String? gameId,
+    int offset = 0,
+    int limit = discussionThreadsPageSize,
+  }) async {
+    final data = await _client.rpc(
+      Db.rpcDiscussionThreads,
+      params: {
+        'board': boardId,
+        'about_game': gameId,
+        'page_size': limit,
+        'page_offset': offset,
+      },
+    );
+    if (data is! List) return ResultsPage(const [], hasMore: false);
+    return ResultsPage(
+      List.unmodifiable([
+        for (final raw in data)
+          if (raw is Map) ?_threadFromRow(Map<String, dynamic>.from(raw), 'preview'),
+      ]),
+      hasMore: data.length >= limit,
+      fetched: data.length,
+    );
+  }
+
+  /// The thread [id] with its whole opening text, or null when it is gone (or the
+  /// signed-in member blocked or reported it).
+  Future<DiscussionThread?> fetchDiscussionThread(String id) async {
+    final data = await _client.rpc(
+      Db.rpcDiscussionThread,
+      params: {'thread': id},
+    );
+    if (data is! List || data.isEmpty || data.first is! Map) return null;
+    return _threadFromRow(Map<String, dynamic>.from(data.first as Map), 'body');
+  }
+
+  /// One page of the replies to [threadId], oldest first.
+  Future<ResultsPage<DiscussionPost>> fetchDiscussionPosts(
+    String threadId, {
+    int offset = 0,
+    int limit = discussionPostsPageSize,
+  }) async {
+    final data = await _client.rpc(
+      Db.rpcDiscussionPosts,
+      params: {
+        'thread': threadId,
+        'page_size': limit,
+        'page_offset': offset,
+      },
+    );
+    if (data is! List) return ResultsPage(const [], hasMore: false);
+    final posts = <DiscussionPost>[];
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final id = _text(row['id']);
+      final text = _text(row['body']);
+      final at = _date(row['created_at']);
+      if (id == null || text == null || at == null) continue;
+      posts.add(
+        DiscussionPost(
+          id: id,
+          threadId: '${row['thread_id']}',
+          author: _authorFromRow(row),
+          text: text,
+          createdAt: at,
+        ),
+      );
+    }
+    return ResultsPage(
+      List.unmodifiable(posts),
+      hasMore: data.length >= limit,
+      fetched: data.length,
+    );
+  }
+
+  /// Deletes the signed-in member's own thread (with its replies); false when it
+  /// was not theirs or is gone.
+  Future<bool> deleteDiscussionThread(String id) async {
+    final data = await _client.rpc(Db.rpcDeleteDiscussionThread, params: {'thread': id});
+    return data == true;
+  }
+
+  /// Deletes the signed-in member's own reply; false when it was not theirs or is gone.
+  Future<bool> deleteDiscussionPost(String id) async {
+    final data = await _client.rpc(Db.rpcDeleteDiscussionPost, params: {'post': id});
+    return data == true;
+  }
+
+  /// Reports a thread ([threadId]) or a reply ([postId]), one of them, as the
+  /// signed-in member. Reporting the same thing again changes nothing. Throws
+  /// when it could not be sent.
+  Future<void> reportDiscussion({
+    String? threadId,
+    String? postId,
+    required ReportReason reason,
+  }) async {
+    assert((threadId == null) != (postId == null));
+    try {
+      await _client.from(Db.discussionReports).insert({
+        'thread_id': ?threadId,
+        'post_id': ?postId,
+        Db.reason: reason.wireName,
+      });
+    } on PostgrestException catch (e) {
+      // 23505: this member reported it already.
+      if (e.code != '23505') rethrow;
+    }
+  }
+
+  /// Blocks [userId] in the discussions as the signed-in member; blocking twice
+  /// changes nothing.
+  Future<void> blockDiscussionMember(String userId) async {
+    try {
+      await _client.from(Db.discussionBlocks).insert({Db.blockedId: userId});
+    } on PostgrestException catch (e) {
+      if (e.code != '23505') rethrow;
+    }
+  }
+
+  Future<void> unblockDiscussionMember(String userId) async {
+    await _client.from(Db.discussionBlocks).delete().eq(Db.blockedId, userId);
+  }
+
+  /// The members the signed-in one blocked, the newest block first.
+  Future<List<SocialUser>> fetchBlockedDiscussionMembers() async {
+    final data = await _client.rpc(Db.rpcMyDiscussionBlocks);
+    if (data is! List) return const [];
+    return List.unmodifiable([
+      for (final raw in data)
+        if (raw is Map) _socialUserFromProfile(Map<String, dynamic>.from(raw)),
+    ]);
   }
 
   /// How long the members took to finish [gameId], by category: the median and
@@ -1506,6 +1670,54 @@ UserProfile _profileFromRow(Map<String, dynamic> row, {User? fallbackUser}) {
     joined: _date(row[Db.createdAt]) ?? DateTime.now(),
     followers: 0,
     following: 0,
+  );
+}
+
+/// [value] trimmed, or null when it is not text or is blank.
+String? _text(Object? value) => _firstText([value]);
+
+/// The author columns of a discussion row (`author_*`) as a member.
+SocialUser _authorFromRow(Map<String, dynamic> row) => _socialUserFromProfile({
+  Db.id: row['author_id'],
+  Db.handle: row['author_handle'],
+  Db.displayName: row['author_name'],
+  Db.avatarUrl: row['author_avatar_url'],
+  Db.avatarFrame: row['author_avatar_frame'],
+  Db.showcasedMilestones: row['author_showcase'],
+});
+
+/// A thread of `discussion_threads_page` ([textColumn] `preview`) or
+/// `discussion_thread` (`body`), or null when it lacks what a thread needs.
+DiscussionThread? _threadFromRow(Map<String, dynamic> row, String textColumn) {
+  final id = _text(row['id']);
+  final boardId = _text(row['board_id']);
+  final title = _text(row['title']);
+  final text = _text(row[textColumn]);
+  final created = _date(row['created_at']);
+  if (id == null || boardId == null || title == null || text == null || created == null) {
+    return null;
+  }
+  final gameId = _text(row['game_id']);
+  final gameTitle = _text(row['game_title']);
+  return DiscussionThread(
+    id: id,
+    boardId: boardId,
+    author: _authorFromRow(row),
+    title: title,
+    text: text,
+    createdAt: created,
+    lastPostAt: _date(row['last_post_at']) ?? created,
+    replyCount: _int(row['reply_count']),
+    pinned: row['pinned'] == true,
+    locked: row['locked'] == true,
+    game: gameId == null || gameTitle == null
+        ? null
+        : DiscussionGame(
+            id: gameId,
+            title: gameTitle,
+            igdbId: _intOrNull(row['game_igdb_id']),
+            coverUrl: _text(row['game_cover_url']),
+          ),
   );
 }
 

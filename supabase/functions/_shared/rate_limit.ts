@@ -20,6 +20,11 @@ export const RATE_LIMITS = {
   igdb: { bucket: 'igdb-handler', maxHits: 200, windowSeconds: 60 },
   // The news screen: a list and a page or two of it a minute at most.
   news: { bucket: 'game-news', maxHits: 60, windowSeconds: 60 },
+  // Discussions: a few new threads an hour, and a reply every half minute or so
+  // (a burst of 20, then the window rolls over). Counted before the word filter, so
+  // refused posts count too.
+  discussionThread: { bucket: 'discussion-thread', maxHits: 5, windowSeconds: 3600 },
+  discussionPost: { bucket: 'discussion-post', maxHits: 20, windowSeconds: 600 },
   steamSync: { bucket: 'sync-steam', maxHits: 10, windowSeconds: 3600 },
   achievements: { bucket: 'sync-achievements', maxHits: 100, windowSeconds: 600 },
   deleteAccount: { bucket: 'delete-account', maxHits: 10, windowSeconds: 3600 },

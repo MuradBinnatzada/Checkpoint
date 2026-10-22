@@ -85,13 +85,14 @@ class GameReview {
   final bool isFollowing;
 }
 
-/// Why a review is reported. [wireName] is the `reason` of `review_reports`.
-enum ReviewReportReason {
+/// Why a review or a discussion post is reported. [wireName] is the `reason` of
+/// `review_reports` and `discussion_reports`.
+enum ReportReason {
   spam('spam'),
   abuse('abuse'),
   other('other');
 
-  const ReviewReportReason(this.wireName);
+  const ReportReason(this.wireName);
   final String wireName;
 
   String get label => switch (this) {

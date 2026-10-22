@@ -8,6 +8,7 @@ import 'package:checkpoint/app/new_password_screen.dart';
 import 'package:checkpoint/l10n/l10n.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
+import 'package:checkpoint/screens/discussions/discussions_screen.dart';
 import 'package:checkpoint/screens/lists/lists_screen.dart';
 import 'package:checkpoint/screens/home/home_screen.dart';
 import 'package:checkpoint/screens/library/library_screen.dart';
@@ -37,6 +38,7 @@ class _AppShellState extends State<AppShell> {
   static const _screens = <Widget>[
     HomeScreen(),
     SearchScreen(),
+    DiscussionsScreen(),
     AuthGate(child: LibraryScreen()),
     AuthGate(child: ProfileScreen()),
   ];
@@ -255,6 +257,7 @@ class _AppShellState extends State<AppShell> {
             destinations: [
               NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home_rounded), label: context.l10n.navHome),
               NavigationDestination(icon: const Icon(Icons.search_rounded), selectedIcon: const Icon(Icons.search_rounded), label: context.l10n.navSearch),
+              NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: context.l10n.navDiscussions),
               NavigationDestination(icon: const Icon(Icons.collections_bookmark_outlined), selectedIcon: const Icon(Icons.collections_bookmark_rounded), label: context.l10n.navLibrary),
               NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: context.l10n.navProfile),
             ],

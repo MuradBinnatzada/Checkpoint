@@ -344,7 +344,7 @@ void main() {
         await store.load('g1');
         final review = store.viewOf('g1').reviews[1];
 
-        await store.report('g1', review, ReviewReportReason.spam);
+        await store.report('g1', review, ReportReason.spam);
 
         final view = store.viewOf('g1');
         // The next review takes its place in the preview.
@@ -354,7 +354,7 @@ void main() {
         expect(repo.reviewReports.single, (
           userId: 'r1',
           gameId: 'g1',
-          reason: ReviewReportReason.spam,
+          reason: ReportReason.spam,
         ));
       });
 
@@ -368,7 +368,7 @@ void main() {
             store.report(
               'g1',
               store.viewOf('g1').reviews.first,
-              ReviewReportReason.abuse,
+              ReportReason.abuse,
             ),
             throwsException,
           );
@@ -385,7 +385,7 @@ void main() {
           await store.report(
             'g1',
             store.viewOf('g1').reviews.first,
-            ReviewReportReason.other,
+            ReportReason.other,
           );
 
           await store.load('g1');
@@ -580,7 +580,7 @@ void main() {
       await tester.tap(find.text('Abusive or hateful'));
       await settle(tester);
 
-      expect(repo.reviewReports.single.reason, ReviewReportReason.abuse);
+      expect(repo.reviewReports.single.reason, ReportReason.abuse);
       expect(repo.reviewReports.single.gameId, 'g1');
       expect(find.text('Review number 0.'), findsNothing);
       expect(find.textContaining('we’ll take a look'), findsOneWidget);

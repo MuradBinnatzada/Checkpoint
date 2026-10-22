@@ -7,19 +7,27 @@ import 'package:checkpoint/state/store_scope.dart';
 import 'package:checkpoint/theme/palette.dart';
 import 'package:checkpoint/widgets/sheet_frame.dart';
 
+/// Asks why something is reported, in a sheet with a row for each [ReportReason];
+/// the one tapped is answered, or null when the sheet is closed without one.
+Future<ReportReason?> pickReportReason(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+}) => showModalBottomSheet<ReportReason>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  builder: (_) => _ReportReasonSheet(title: title, subtitle: subtitle),
+);
+
 /// Asks why [review] of [gameId] is reported, sends the report, and says how it
 /// went. The server leaves a reported review out for the member who reported it,
 /// so it also disappears from the lists on screen.
-Future<void> reportReview(
-  BuildContext context,
-  String gameId,
-  GameReview review,
-) async {
-  final reason = await showModalBottomSheet<ReviewReportReason>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => _ReportReviewSheet(review: review),
+Future<void> reportReview(BuildContext context, String gameId, GameReview review) async {
+  final reason = await pickReportReason(
+    context,
+    title: context.l10n.reportReview,
+    subtitle: context.l10n.reportReviewSubtitle(review.member.name),
   );
   if (reason == null || !context.mounted) return;
   final store = context.read<GameReviewsStore>();
@@ -37,29 +45,24 @@ Future<void> reportReview(
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
-class _ReportReviewSheet extends StatelessWidget {
-  const _ReportReviewSheet({required this.review});
+class _ReportReasonSheet extends StatelessWidget {
+  const _ReportReasonSheet({required this.title, required this.subtitle});
 
-  final GameReview review;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return SheetFrame(
-      title: context.l10n.reportReview,
-      subtitle: context.l10n.reportReviewSubtitle(review.member.name),
+      title: title,
+      subtitle: subtitle,
       child: Column(
         children: [
-          for (final reason in ReviewReportReason.values)
+          for (final reason in ReportReason.values)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(
-                reason.label,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              trailing: Icon(
-                Icons.chevron_right_rounded,
-                color: context.palette.muted,
-              ),
+              title: Text(reason.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              trailing: Icon(Icons.chevron_right_rounded, color: context.palette.muted),
               onTap: () => Navigator.of(context).pop(reason),
             ),
         ],

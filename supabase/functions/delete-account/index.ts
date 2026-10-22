@@ -9,7 +9,8 @@
  * leaves an account the user can still sign in to and retry; every step is safe
  * to run again):
  *   1. Avatars     remove the files under `avatars/<user id>/`
- *   2. Log         delete the user's `log_entries`
+ *   2. Log         delete the user's `log_entries`, then their discussions: replies,
+ *                  threads (with the replies of others to them), reports and blocks
  *   3. Library     delete the user's `user_games`
  *   4. Follows     delete the follows in both directions (`social_follows`)
  *   5. Catalog     games the user added to the shared catalog stay for other
@@ -103,6 +104,14 @@ async function deleteAccount(admin: SupabaseClient, userId: string): Promise<voi
   await deleteAvatars(admin, userId)
 
   await deleteRows(admin, 'log_entries', 'user_id', userId)
+  // Their discussions: replies, then threads (which take other members' replies
+  // to them along), then what they reported and blocked, and who blocked them.
+  await deleteRows(admin, 'discussion_posts', 'author_id', userId)
+  await deleteRows(admin, 'discussion_threads', 'author_id', userId)
+  await deleteRows(admin, 'discussion_reports', 'reporter_id', userId)
+  await deleteRows(admin, 'discussion_blocks', 'blocker_id', userId)
+  await deleteRows(admin, 'discussion_blocks', 'blocked_id', userId)
+  await deleteRows(admin, 'review_reports', 'reporter_id', userId)
   await deleteRows(admin, 'user_games', 'user_id', userId)
   await deleteRows(admin, 'social_follows', 'follower_id', userId)
   await deleteRows(admin, 'social_follows', 'followee_id', userId)

@@ -2600,6 +2600,162 @@
   "logInToReadNews": "Log in to read the news",
   "logInToReadNewsMessage": "The news is for signed-in members.",
   "newsOpenFailed": "Couldn’t open the article",
+  "navDiscussions": "Discussions",
+  "discussions": "Discussions",
+  "discussion": "Discussion",
+  "gameDiscussions": "Game discussions",
+  "latestDiscussions": "Latest discussions",
+  "newDiscussion": "New discussion",
+  "startDiscussion": "Start a discussion",
+  "postDiscussion": "Post",
+  "discussionTitle": "Title",
+  "discussionText": "What do you want to talk about?",
+  "board": "Board",
+  "aboutGame": "About {title}",
+  "@aboutGame": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "postingAgreesToRules": "By posting you agree to the chat rules.",
+  "noDiscussionsYet": "No discussions yet",
+  "noDiscussionsYetMessage": "Start the first one: ask something, share a find, say hello.",
+  "noGameDiscussionsYet": "Nobody has talked about this game yet.",
+  "discussionsLoadFailed": "Couldn’t load the discussions",
+  "discussionLoadFailed": "Couldn’t load this discussion",
+  "discussionGone": "This discussion is gone",
+  "discussionGoneMessage": "It was deleted, or you reported it or blocked its author.",
+  "logInToJoinDiscussions": "Log in to join the discussions",
+  "logInToJoinDiscussionsMessage": "Talk about games with other members: ask, answer and share.",
+  "threadsCount": "{count, plural, =1{{formatted} thread} other{{formatted} threads}}",
+  "@threadsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "formatted": {
+        "type": "String"
+      }
+    }
+  },
+  "repliesCount": "{count, plural, =1{1 reply} other{{count} replies}}",
+  "@repliesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noRepliesYet": "No replies yet",
+  "writeReply": "Write a reply",
+  "sendReply": "Send reply",
+  "pinned": "Pinned",
+  "threadLocked": "Locked",
+  "threadLockedNotice": "This discussion is locked.",
+  "threadAuthorBadge": "Author",
+  "reportPost": "Report",
+  "reportPostSubtitle": "What is wrong with {name}’s post?",
+  "@reportPostSubtitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "postReported": "Thanks, we’ll take a look. You won’t see it again.",
+  "postReportFailed": "Couldn’t send the report. Try again.",
+  "blockMember": "Block {name}",
+  "@blockMember": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "blockMemberTitle": "Block {name}?",
+  "@blockMemberTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "blockMemberBody": "You won’t see their threads or replies in the discussions. You can unblock them in Blocked members.",
+  "block": "Block",
+  "unblock": "Unblock",
+  "memberBlocked": "{name} is blocked.",
+  "@memberBlocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "memberUnblocked": "{name} is unblocked.",
+  "@memberUnblocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "blockFailed": "Couldn’t do that. Try again.",
+  "blockedMembers": "Blocked members",
+  "noBlockedMembers": "Nobody is blocked",
+  "noBlockedMembersMessage": "Members you block in the discussions are listed here.",
+  "blockedLoadFailed": "Couldn’t load the blocked members",
+  "deletePost": "Delete",
+  "deleteThreadTitle": "Delete this discussion?",
+  "deleteThreadBody": "It and all its replies are removed for everyone.",
+  "deleteReplyTitle": "Delete this reply?",
+  "deleteReplyBody": "It is removed for everyone.",
+  "deleteFailed": "Couldn’t delete it. Try again.",
+  "postBreaksRules": "This post breaks the chat rules, so it can’t be sent. Change it and try again.",
+  "postTooManyLinks": "At most 3 links in a post.",
+  "postRateLimited": "You’re posting fast. Try again in a little while.",
+  "postRateLimitedMinute": "You’re posting fast. Try again in a minute.",
+  "postRateLimitedMinutes": "You’re posting fast. Try again in {minutes} minutes.",
+  "@postRateLimitedMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "postDuplicate": "You posted this just now.",
+  "postThreadLocked": "This discussion is locked.",
+  "postNotFound": "That discussion or game isn’t there any more.",
+  "postFailed": "Couldn’t post. Try again.",
+  "chatRules": "Chat rules",
+  "chatRulesSubtitle": "Short, so you’ll read them.",
+  "iAgree": "I agree",
+  "gotIt": "Got it",
+  "rulesBeKind": "Be kind",
+  "rulesBeKindText": "No harassing, threatening or attacking people. Argue with ideas, not with members.",
+  "rulesNoHate": "No hate",
+  "rulesNoHateText": "No racial slurs or hate speech, and nothing that sexualizes or harms children. Posts with such words can’t be sent.",
+  "rulesNoSpam": "No spam",
+  "rulesNoSpamText": "No ads, scams or piles of links. At most 3 links in a post.",
+  "rulesSpoilers": "Mind spoilers",
+  "rulesSpoilersText": "Write “spoilers” in the title when you give away a story.",
+  "rulesReport": "Report, don’t feud",
+  "rulesReportText": "Report posts that break these rules and block anyone you’d rather not read. Posts that break the rules may be removed.",
+  "boardGeneral": "General",
+  "boardGeneralDescription": "Anything about games and gaming.",
+  "boardGames": "Game talk",
+  "boardGamesDescription": "One game at a time: story, builds, bosses, tips.",
+  "boardRecommendations": "What should I play?",
+  "boardRecommendationsDescription": "Ask for a game, or suggest one.",
+  "boardHelp": "Help & tips",
+  "boardHelpDescription": "Stuck? Ask, and share what helped you.",
+  "boardNews": "News talk",
+  "boardNewsDescription": "What did you read today?",
+  "boardOffTopic": "Off-topic",
+  "boardOffTopicDescription": "Everything else, kept friendly.",
+  "boardFeedback": "Checkpoint feedback",
+  "boardFeedbackDescription": "Ideas, bugs and questions about the app.",
   "anotherGame": "another game",
   "replaceTimerTitle": "Replace the running timer?",
   "replaceTimerBody": "A timer is running for {other}. Starting one for {game} throws its time away. To keep it, stop it and log it first.",

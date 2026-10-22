@@ -7,6 +7,7 @@ import 'package:checkpoint/models/connected_service.dart';
 import 'package:checkpoint/models/game.dart';
 import 'package:checkpoint/models/share_link.dart';
 import 'package:checkpoint/screens/game_detail/completion_time_field.dart';
+import 'package:checkpoint/screens/game_detail/discussions_panel.dart';
 import 'package:checkpoint/screens/game_detail/friends_panel.dart';
 import 'package:checkpoint/screens/game_detail/igdb_sections.dart';
 import 'package:checkpoint/screens/game_detail/reviews_panel.dart';
@@ -198,6 +199,7 @@ class GameDetailScreen extends StatelessWidget {
                   _AchievementsPanel(game: game),
                   FriendsPanel(game: game),
                   ReviewsPanel(game: game),
+                  DiscussionsPanel(game: game),
                   AboutPanel(game: game),
                   GameInfoSections(game: game),
                 ]),
